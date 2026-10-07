@@ -1,0 +1,9 @@
+[package]
+name = "backends"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = ["discord"]
+discord = []
+telegram = []

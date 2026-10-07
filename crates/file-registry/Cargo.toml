@@ -4,3 +4,5 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+backends = { path = "../backends" }
+futures-core = "0.3"
