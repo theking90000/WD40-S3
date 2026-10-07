@@ -1,0 +1,6 @@
+[package]
+name = "wd40-cli"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
