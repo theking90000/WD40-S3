@@ -1,9 +1,26 @@
+use std::future::Future;
+
 use futures_core::Stream;
+use futures_io::{AsyncRead, AsyncWrite};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::Error;
 
-pub trait FileBackend {}
+pub trait FileBackend: Clone + Send {
+    type ReadAccessPath;
+    type WriteAccessPath;
+    type ReadFile: AsyncRead + Unpin;
+    type WriteFile: AsyncWrite + Unpin;
+
+    fn write(&self, path: &Self::WriteAccessPath) -> impl Future<Output = Self::WriteFile>;
+
+    fn read(
+        &self,
+        path: &Self::ReadAccessPath,
+        start: usize,
+        end: Option<usize>,
+    ) -> impl Future<Output = Self::ReadFile>;
+}
 
 pub trait Expired {
     fn is_expired(&self) -> bool;

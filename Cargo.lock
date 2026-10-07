@@ -8,6 +8,7 @@ version = "0.1.0"
 dependencies = [
  "discord-webhook-storage",
  "futures-core",
+ "futures-io",
  "futures-util",
  "serde",
  "tokio-tcp-pool",
