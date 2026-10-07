@@ -2,5 +2,5 @@
 
 pub mod traits;
 
-pub use backends::{Backend, FileBackend};
+pub use backends::{FileBackend, RegistryBackend};
 pub use traits::{FileAccess, FileId, FileRegistry, ReadAccessPath, WriteAccessPath};

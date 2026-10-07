@@ -1,17 +1,21 @@
 use std::future::Future;
 
 use futures_core::Stream;
+use serde::{Deserialize, Serialize};
 
 pub type FileId = u128; // 128 bits file ID.
 
+#[derive(Serialize, Deserialize)]
 pub struct WriteAccessPath {
-    pub id: FileId,
+    id: FileId,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct ReadAccessPath {}
 
+#[derive(Serialize, Deserialize)]
 pub struct FileAccess {
-    pub id: FileId,
+    id: FileId,
 }
 
 pub trait FileRegistry {

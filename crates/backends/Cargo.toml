@@ -7,3 +7,10 @@ edition.workspace = true
 default = ["discord"]
 discord = []
 telegram = []
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+futures-core = "0.3"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+tokio-tcp-pool = "0.1.3"
+discord-webhook-storage = "0.1.0"
