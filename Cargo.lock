@@ -3,9 +3,5 @@
 version = 4
 
 [[package]]
-name = "wd40-cli"
-version = "0.1.0"
-
-[[package]]
-name = "wd40-core"
+name = "file-registry"
 version = "0.1.0"

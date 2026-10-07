@@ -1,6 +1,0 @@
-[package]
-name = "wd40-core"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
