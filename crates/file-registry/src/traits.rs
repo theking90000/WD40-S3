@@ -1,14 +1,14 @@
-use std::future::Future;
-
 use backends::AccessPath;
 use futures_core::Stream;
 use serde::{Deserialize, Serialize};
+
+use crate::Error;
 
 pub type FileId = u128; // 128 bits file ID.
 
 #[derive(Serialize, Deserialize)]
 pub struct WriteAccessPath {
-    id: FileId,
+    pub id: FileId,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -16,18 +16,26 @@ pub struct ReadAccessPath {}
 
 #[derive(Serialize, Deserialize)]
 pub struct FileAccess {
-    id: FileId,
-    access_path: AccessPath,
+    pub id: FileId,
+    pub access_path: AccessPath,
 }
 
 pub trait FileRegistry {
     type WriteAccessPathStream: Stream<Item = WriteAccessPath>;
     type ReadAccessPathStream: Stream<Item = ReadAccessPath>;
-    type StoreFuture: Future<Output = ()>;
 
-    fn create(&self, count: usize) -> Self::WriteAccessPathStream;
+    fn create(
+        &self,
+        count: usize,
+    ) -> impl std::future::Future<Output = Result<Self::WriteAccessPathStream, Error>> + Send;
 
-    fn retrieve(&self, ids: &[FileId]) -> Self::ReadAccessPathStream;
+    fn retrieve(
+        &self,
+        ids: &[FileId],
+    ) -> impl std::future::Future<Output = Result<Self::ReadAccessPathStream, Error>> + Send;
 
-    fn store(&self, files: &[FileAccess]) -> Self::StoreFuture;
+    fn store(
+        &self,
+        files: &[FileAccess],
+    ) -> impl std::future::Future<Output = Result<(), Error>> + Send;
 }
