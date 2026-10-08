@@ -9,7 +9,7 @@ discord = []
 telegram = []
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
 futures-core = "0.3"
 futures-io = "0.3"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }

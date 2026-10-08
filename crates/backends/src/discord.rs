@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use discord_webhook_storage::{
     BotCredentials, DiscordFile as StoredDiscordFile, WebhookCredentials, WriteConfig, renew_urls,
 };
@@ -13,6 +15,10 @@ use crate::{
 
 pub use discord_webhook_storage::DiscordFileUrl as DiscordReadAccessPath;
 
+// ponytail: shared URLs avoid copies; the dependency requires parsing at upload opening.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct DiscordWriteAccessPath(Arc<str>);
+
 pub type DiscordReadFile = discord_webhook_storage::ReadFile<Connection>;
 pub type DiscordUploadFile = discord_webhook_storage::WriteFile<Connection>;
 
@@ -24,10 +30,6 @@ impl Expired for DiscordAccessPath {
         !self.0.is_valid()
     }
 }
-
-// ponytail: store the webhook URL; upload settings are always WriteConfig::default().
-#[derive(Clone, Serialize, Deserialize)]
-pub struct DiscordWriteAccessPath(String);
 
 /// Opens Discord files using existing TLS connection pools.
 #[derive(Clone)]
@@ -72,11 +74,11 @@ impl FileBackend for DiscordFile {
 
 /// Discord backend with a TLS connection pool targeting `discord.com:443`.
 ///
-/// Owns the credential lists, including their URL and token strings.
+/// Owns the credential lists, including webhook URLs and bot tokens.
 #[derive(Clone)]
 pub struct DiscordRegistry {
     pool: Pool,
-    webhook_credentials: RotatingVec<String>,
+    webhook_credentials: RotatingVec<DiscordWriteAccessPath>,
     bot_credentials: RotatingVec<String>,
 }
 
@@ -84,10 +86,19 @@ impl DiscordRegistry {
     /// Creates a backend from an existing pool and both credential lists.
     ///
     /// The caller must configure the pool for TLS connections to `discord.com:443`.
-    pub fn new(pool: Pool, webhook_credentials: Vec<String>, bot_credentials: Vec<String>) -> Self {
+    pub fn new(
+        pool: Pool,
+        webhook_credentials: Vec<String>,
+        bot_credentials: Vec<String>,
+    ) -> Self {
         Self {
             pool,
-            webhook_credentials: RotatingVec::new(webhook_credentials),
+            webhook_credentials: RotatingVec::new(
+                webhook_credentials
+                    .into_iter()
+                    .map(|url| DiscordWriteAccessPath(Arc::from(url)))
+                    .collect(),
+            ),
             bot_credentials: RotatingVec::new(bot_credentials),
         }
     }
@@ -99,12 +110,7 @@ impl RegistryBackend for DiscordRegistry {
     type ReadAccessPath = DiscordReadAccessPath;
 
     fn write(&self, count: usize) -> impl Stream<Item = Self::WriteAccessPath> {
-        stream::iter((0..count).map_while(|_| {
-            self.webhook_credentials
-                .get()
-                .cloned()
-                .map(DiscordWriteAccessPath)
-        }))
+        stream::iter((0..count).map_while(|_| self.webhook_credentials.get().cloned()))
     }
 
     fn read<'stream>(
@@ -147,7 +153,10 @@ mod tests {
         .build()?;
         let backend = crate::RegistryBackend::Discord(DiscordRegistry::new(
             pool,
-            vec!["first".into(), "second".into()],
+            vec![
+                "https://discord.com/api/webhooks/first/token".into(),
+                "https://discord.com/api/webhooks/second/token".into(),
+            ],
             Vec::new(),
         ));
         let waker = futures_util::task::noop_waker();
@@ -161,9 +170,10 @@ mod tests {
             let paths = RegistryBackend::write(&backend, expected.len());
             let mut paths = std::pin::pin!(paths);
             for expected in expected {
+                let expected_url = format!("https://discord.com/api/webhooks/{expected}/token");
                 match paths.as_mut().poll_next(&mut context) {
                     Poll::Ready(Some(crate::WriteAccessPath::Discord(path)))
-                        if path.0 == expected => {}
+                        if path.0.as_ref() == expected_url => {}
                     _ => return Err("unexpected webhook rotation".into()),
                 }
             }
