@@ -15,7 +15,8 @@ pub mod traits;
 
 #[cfg(feature = "discord")]
 pub use discord::{
-    DiscordAccessPath, DiscordReadAccessPath, DiscordRegistry, DiscordWriteAccessPath,
+    DiscordAccessPath, DiscordFile, DiscordReadAccessPath, DiscordReadFile, DiscordRegistry,
+    DiscordUploadFile, DiscordWriteAccessPath,
 };
 pub use error::Error;
 pub use rotating_vec::RotatingVec;

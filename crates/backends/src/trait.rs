@@ -12,14 +12,17 @@ pub trait FileBackend: Clone + Send {
     type ReadFile: AsyncRead + Unpin;
     type WriteFile: AsyncWrite + Unpin;
 
-    fn write(&self, path: &Self::WriteAccessPath) -> impl Future<Output = Self::WriteFile>;
+    fn write(
+        &self,
+        path: &Self::WriteAccessPath,
+    ) -> impl Future<Output = Result<Self::WriteFile, Error>>;
 
     fn read(
         &self,
         path: &Self::ReadAccessPath,
         start: usize,
         end: Option<usize>,
-    ) -> impl Future<Output = Self::ReadFile>;
+    ) -> impl Future<Output = Result<Self::ReadFile, Error>>;
 }
 
 pub trait Expired {

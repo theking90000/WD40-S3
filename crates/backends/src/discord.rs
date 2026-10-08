@@ -1,15 +1,20 @@
-use discord_webhook_storage::{BotCredentials, DiscordFile, renew_urls};
+use discord_webhook_storage::{
+    BotCredentials, DiscordFile as StoredDiscordFile, WebhookCredentials, WriteConfig, renew_urls,
+};
 use futures_core::Stream;
 use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
-use tokio_tcp_pool::Pool;
+use tokio_tcp_pool::{Connection, Pool};
 
-use crate::{Error, Expired, RotatingVec, traits::RegistryBackend};
+use crate::{Error, Expired, FileBackend, RotatingVec, traits::RegistryBackend};
 
 pub use discord_webhook_storage::DiscordFileUrl as DiscordReadAccessPath;
 
+pub type DiscordReadFile = discord_webhook_storage::ReadFile<Connection>;
+pub type DiscordUploadFile = discord_webhook_storage::WriteFile<Connection>;
+
 #[derive(Clone, Serialize, Deserialize)]
-pub struct DiscordAccessPath(DiscordFile);
+pub struct DiscordAccessPath(StoredDiscordFile);
 
 impl Expired for DiscordAccessPath {
     fn is_expired(&self) -> bool {
@@ -20,6 +25,47 @@ impl Expired for DiscordAccessPath {
 // ponytail: store the webhook URL; upload settings are always WriteConfig::default().
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DiscordWriteAccessPath(String);
+
+/// Opens Discord files using existing TLS connection pools.
+#[derive(Clone)]
+pub struct DiscordFile {
+    read_pool: Pool,
+    write_pool: Pool,
+}
+
+impl DiscordFile {
+    /// Uses pools targeting `cdn.discordapp.com:443` for reads and
+    /// `discord.com:443` for uploads, both with TLS and HTTP/1.1.
+    pub fn new(read_pool: Pool, write_pool: Pool) -> Self {
+        Self {
+            read_pool,
+            write_pool,
+        }
+    }
+}
+
+impl FileBackend for DiscordFile {
+    type ReadAccessPath = DiscordReadAccessPath;
+    type WriteAccessPath = DiscordWriteAccessPath;
+    type ReadFile = DiscordReadFile;
+    type WriteFile = DiscordUploadFile;
+
+    async fn write(&self, path: &Self::WriteAccessPath) -> Result<Self::WriteFile, Error> {
+        let credentials = WebhookCredentials::parse(&path.0)?;
+        let connection = self.write_pool.acquire().await?;
+        Ok(DiscordUploadFile::open(connection, &credentials, &WriteConfig::default()).await?)
+    }
+
+    async fn read(
+        &self,
+        path: &Self::ReadAccessPath,
+        start: usize,
+        end: Option<usize>,
+    ) -> Result<Self::ReadFile, Error> {
+        let connection = self.read_pool.acquire().await?;
+        Ok(DiscordReadFile::open_with_range(connection, path, start, end).await?)
+    }
+}
 
 /// Discord backend with a TLS connection pool targeting `discord.com:443`.
 ///
