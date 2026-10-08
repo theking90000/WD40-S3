@@ -1,6 +1,11 @@
-use std::pin::Pin;
+use std::{
+    io::{self, IoSlice},
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 use futures_core::Stream;
+use futures_io::{AsyncRead, AsyncWrite};
 use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
 
@@ -20,7 +25,128 @@ pub use discord::{
 };
 pub use error::Error;
 pub use rotating_vec::RotatingVec;
-pub use traits::{Expired, FileBackend};
+pub use traits::Expired;
+
+#[derive(Clone)]
+pub enum FileBackend {
+    #[cfg(feature = "discord")]
+    Discord(DiscordFile),
+    #[cfg(feature = "telegram")]
+    Telegram,
+}
+
+pub enum ReadFile {
+    #[cfg(feature = "discord")]
+    Discord(DiscordReadFile),
+    #[cfg(feature = "telegram")]
+    Telegram,
+}
+
+impl AsyncRead for ReadFile {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<io::Result<usize>> {
+        match *self.get_mut() {
+            #[cfg(feature = "discord")]
+            Self::Discord(ref mut file) => Pin::new(file).poll_read(cx, buf),
+            #[cfg(feature = "telegram")]
+            Self::Telegram => unimplemented!("Telegram file reading"),
+        }
+    }
+}
+
+pub enum WriteFile {
+    #[cfg(feature = "discord")]
+    Discord(DiscordUploadFile),
+    #[cfg(feature = "telegram")]
+    Telegram,
+}
+
+impl AsyncWrite for WriteFile {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        match *self.get_mut() {
+            #[cfg(feature = "discord")]
+            Self::Discord(ref mut file) => Pin::new(file).poll_write(cx, buf),
+            #[cfg(feature = "telegram")]
+            Self::Telegram => unimplemented!("Telegram file writing"),
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        match *self.get_mut() {
+            #[cfg(feature = "discord")]
+            Self::Discord(ref mut file) => Pin::new(file).poll_flush(cx),
+            #[cfg(feature = "telegram")]
+            Self::Telegram => unimplemented!("Telegram file flushing"),
+        }
+    }
+
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        match *self.get_mut() {
+            #[cfg(feature = "discord")]
+            Self::Discord(ref mut file) => Pin::new(file).poll_close(cx),
+            #[cfg(feature = "telegram")]
+            Self::Telegram => unimplemented!("Telegram file closing"),
+        }
+    }
+
+    fn poll_write_vectored(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bufs: &[IoSlice<'_>],
+    ) -> Poll<io::Result<usize>> {
+        match *self.get_mut() {
+            #[cfg(feature = "discord")]
+            Self::Discord(ref mut file) => Pin::new(file).poll_write_vectored(cx, bufs),
+            #[cfg(feature = "telegram")]
+            Self::Telegram => unimplemented!("Telegram vectored file writing"),
+        }
+    }
+}
+
+impl traits::FileBackend for FileBackend {
+    type ReadAccessPath = ReadAccessPath;
+    type WriteAccessPath = WriteAccessPath;
+    type ReadFile = ReadFile;
+    type WriteFile = WriteFile;
+
+    async fn write(&self, path: &Self::WriteAccessPath) -> Result<Self::WriteFile, Error> {
+        #[allow(unreachable_patterns)]
+        match (self, path) {
+            #[cfg(feature = "discord")]
+            (Self::Discord(backend), WriteAccessPath::Discord(path)) => {
+                traits::FileBackend::write(backend, path).await.map(WriteFile::Discord)
+            }
+            #[cfg(feature = "telegram")]
+            (Self::Telegram, WriteAccessPath::Telegram) => unimplemented!("Telegram file backend"),
+            _ => Err(Error::BackendMismatch),
+        }
+    }
+
+    async fn read(
+        &self,
+        path: &Self::ReadAccessPath,
+        start: usize,
+        end: Option<usize>,
+    ) -> Result<Self::ReadFile, Error> {
+        #[allow(unreachable_patterns)]
+        match (self, path) {
+            #[cfg(feature = "discord")]
+            (Self::Discord(backend), ReadAccessPath::Discord(path)) => {
+                traits::FileBackend::read(backend, path, start, end).await.map(ReadFile::Discord)
+            }
+            #[cfg(feature = "telegram")]
+            (Self::Telegram, ReadAccessPath::Telegram) => unimplemented!("Telegram file backend"),
+            _ => Err(Error::BackendMismatch),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub enum RegistryBackend {

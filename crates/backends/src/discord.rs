@@ -6,7 +6,10 @@ use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
 use tokio_tcp_pool::{Connection, Pool};
 
-use crate::{Error, Expired, FileBackend, RotatingVec, traits::RegistryBackend};
+use crate::{
+    Error, Expired, RotatingVec,
+    traits::{FileBackend, RegistryBackend},
+};
 
 pub use discord_webhook_storage::DiscordFileUrl as DiscordReadAccessPath;
 
