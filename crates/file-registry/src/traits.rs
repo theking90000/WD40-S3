@@ -1,5 +1,6 @@
 use std::future::Future;
 
+use backends::AccessPath;
 use futures_core::Stream;
 use serde::{Deserialize, Serialize};
 
@@ -16,6 +17,7 @@ pub struct ReadAccessPath {}
 #[derive(Serialize, Deserialize)]
 pub struct FileAccess {
     id: FileId,
+    access_path: AccessPath,
 }
 
 pub trait FileRegistry {
