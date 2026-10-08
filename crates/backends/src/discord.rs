@@ -116,7 +116,7 @@ impl RegistryBackend for DiscordRegistry {
     fn read<'stream>(
         &'stream self,
         access_paths: &'stream [Self::AccessPath],
-    ) -> impl Stream<Item = Result<Self::ReadAccessPath, Error>> + 'stream {
+    ) -> impl Stream<Item = Result<Self::ReadAccessPath, Error>> + Send + 'stream {
         stream::iter(access_paths).then(move |access_path| async move {
             let mut url = access_path.0.url.clone();
             if !access_path.is_expired() {

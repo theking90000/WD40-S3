@@ -191,6 +191,17 @@ pub enum ReadAccessPath {
     Telegram,
 }
 
+impl Expired for ReadAccessPath {
+    fn is_expired(&self) -> bool {
+        match *self {
+            #[cfg(feature = "discord")]
+            Self::Discord(ref path) => !path.is_valid(),
+            #[cfg(feature = "telegram")]
+            Self::Telegram => true,
+        }
+    }
+}
+
 // ponytail: boxed streams keep dispatch simple across backend stream types.
 impl traits::RegistryBackend for RegistryBackend {
     type AccessPath = AccessPath;
@@ -216,9 +227,9 @@ impl traits::RegistryBackend for RegistryBackend {
     fn read<'stream>(
         &'stream self,
         access_paths: &'stream [Self::AccessPath],
-    ) -> impl Stream<Item = Result<Self::ReadAccessPath, Error>> + 'stream {
+    ) -> impl Stream<Item = Result<Self::ReadAccessPath, Error>> + Send + 'stream {
         stream::iter(access_paths).flat_map(
-            move |path| -> Pin<Box<dyn Stream<Item = Result<Self::ReadAccessPath, Error>> + 'stream>> {
+            move |path| -> Pin<Box<dyn Stream<Item = Result<Self::ReadAccessPath, Error>> + Send + 'stream>> {
                 #[allow(unreachable_patterns)]
                 match (self, path) {
                     #[cfg(feature = "discord")]

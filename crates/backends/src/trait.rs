@@ -39,5 +39,5 @@ pub trait RegistryBackend: Clone + Send {
     fn read<'stream>(
         &'stream self,
         access_paths: &'stream [Self::AccessPath],
-    ) -> impl Stream<Item = Result<Self::ReadAccessPath, Error>> + 'stream;
+    ) -> impl Stream<Item = Result<Self::ReadAccessPath, Error>> + Send + 'stream;
 }

@@ -6,8 +6,10 @@ use crate::FileId;
 pub enum Error {
     Database(sled::Error),
     Serialization(postcard::Error),
+    Backend(backends::Error),
     FileNotFound(FileId),
     FilePending(FileId),
+    MissingReadAccessPath(FileId),
 }
 
 impl fmt::Display for Error {
@@ -15,8 +17,12 @@ impl fmt::Display for Error {
         match self {
             Self::Database(error) => write!(f, "registry database operation failed: {error}"),
             Self::Serialization(error) => write!(f, "registry serialization failed: {error}"),
+            Self::Backend(error) => write!(f, "registry backend operation failed: {error}"),
             Self::FileNotFound(id) => write!(f, "file {id} was not found"),
             Self::FilePending(id) => write!(f, "file {id} is still pending"),
+            Self::MissingReadAccessPath(id) => {
+                write!(f, "backend returned no read access path for file {id}")
+            }
         }
     }
 }
@@ -25,7 +31,11 @@ impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
             Self::Database(error) => Some(error),
-            Self::Serialization(_) | Self::FileNotFound(_) | Self::FilePending(_) => None,
+            Self::Backend(error) => Some(error),
+            Self::Serialization(_)
+            | Self::FileNotFound(_)
+            | Self::FilePending(_)
+            | Self::MissingReadAccessPath(_) => None,
         }
     }
 }
@@ -39,5 +49,11 @@ impl From<sled::Error> for Error {
 impl From<postcard::Error> for Error {
     fn from(error: postcard::Error) -> Self {
         Self::Serialization(error)
+    }
+}
+
+impl From<backends::Error> for Error {
+    fn from(error: backends::Error) -> Self {
+        Self::Backend(error)
     }
 }

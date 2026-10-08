@@ -12,7 +12,10 @@ pub struct WriteAccessPath {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct ReadAccessPath {}
+pub struct ReadAccessPath {
+    pub id: FileId,
+    pub access_path: backends::ReadAccessPath,
+}
 
 #[derive(Serialize, Deserialize)]
 pub struct FileAccess {
@@ -22,7 +25,7 @@ pub struct FileAccess {
 
 pub trait FileRegistry {
     type WriteAccessPathStream: Stream<Item = WriteAccessPath>;
-    type ReadAccessPathStream: Stream<Item = ReadAccessPath>;
+    type ReadAccessPathStream: Stream<Item = Result<ReadAccessPath, Error>> + Send;
 
     fn create(
         &self,
