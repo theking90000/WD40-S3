@@ -124,6 +124,7 @@ fn missing_part_and_length_overflow_do_not_publish_manifests() -> TestResult {
         )?;
 
         let large = Metadata::from_parts(MetadataParts {
+            schema_version: craft_codec::METADATA_SCHEMA_VERSION,
             version: craft_codec::FORMAT_VERSION,
             config: Config::new(Framing::Fixed(1), Compression::None, Encryption::None)?,
             frame_count: u64::MAX,
