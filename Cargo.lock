@@ -173,9 +173,9 @@ dependencies = [
 
 [[package]]
 name = "craft-codec"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1de338c97157fa197f3314b7a529b70e67cc07d286805eb4806666f84ad8aab"
+checksum = "1a61fb61023a1c95ef2957d46d037d91c8f9aae6f29045e12da4132531dc4bcb"
 dependencies = [
  "aes-gcm",
  "lz4_flex",
@@ -832,6 +832,7 @@ dependencies = [
  "carbon-io",
  "craft-codec",
  "file-registry",
+ "futures-io",
  "futures-util",
  "getrandom 0.4.3",
  "stream-registry",

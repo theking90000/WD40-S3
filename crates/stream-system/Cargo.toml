@@ -7,8 +7,9 @@ edition.workspace = true
 backends = { path = "../backends" }
 file-registry = { path = "../file-registry" }
 stream-registry = { path = "../stream-registry" }
-craft-codec = { version = "0.2.0", default-features = false, features = ["aes-gcm", "lz4"] }
+craft-codec = { version = "0.2.2", default-features = false, features = ["aes-gcm", "lz4"] }
 carbon-io = "0.4.1"
+futures-io = "0.3"
 futures-util = { version = "0.3", default-features = false, features = ["std", "async-await"] }
 getrandom = "0.4.3"
 

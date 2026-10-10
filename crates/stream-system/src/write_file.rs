@@ -1,12 +1,14 @@
 use std::{
     future::Future,
+    io,
     pin::Pin,
     task::{Context, Poll},
 };
 
 use backends::traits::FileBackend as _;
-use craft_codec::{Compression, Config, Encoder, Encryption as CodecEncryption, Framing, Metadata};
+use craft_codec::{Compression, Config, Encoder, Encryption as CodecEncryption, FrameSizes, Framing, Metadata};
 use file_registry::{FileId, WriteAccessPath, traits::FileRegistry as _};
+use futures_io::AsyncWrite;
 use futures_util::StreamExt;
 
 use crate::{Error, FileBackend, FileRegistry};
@@ -19,13 +21,58 @@ enum State {
     Opened(OpenedFile),
 }
 
-// These resources will be used by the frame-writing increment.
-#[expect(dead_code, reason = "this increment implements only file opening")]
 struct OpenedFile {
+    #[expect(dead_code, reason = "file ID will be returned by poll_close")]
     file_id: FileId,
     metadata: Metadata,
     encoder: Encoder,
     file: backends::WriteFile,
+    written: usize,
+    buffer: Option<(Vec<u8>, FrameSizes)>,
+}
+
+impl OpenedFile {
+    fn poll_write(
+        &mut self,
+        cx: &mut Context<'_>,
+        frame: &[u8],
+    ) -> Poll<Result<(), Error>> {
+        if self.buffer.is_none() {
+            // ponytail: CRAFT owns allocation and encoding; pending polls retain its result.
+            self.buffer = Some(self.encoder
+                .encode_frame_alloc(self.metadata.frame_count(), frame)
+                .map_err(Error::Codec)?);
+            self.written = 0;
+        }
+
+        let (buffer, sizes) = self.buffer.as_ref()
+            .ok_or(Error::Codec(craft_codec::Error::InvalidMetadata))?;
+        while self.written < buffer.len() {
+            let remaining = buffer.get(self.written..)
+                .ok_or(Error::Codec(craft_codec::Error::Overflow))?;
+            let count = std::task::ready!(Pin::new(&mut self.file).poll_write(cx, remaining))
+                .map_err(Error::Io)?;
+            if count == 0 {
+                return Poll::Ready(Err(Error::Io(io::Error::new(
+                    io::ErrorKind::WriteZero,
+                    "backend accepted no bytes from a nonempty frame",
+                ))));
+            }
+            if count > remaining.len() {
+                return Poll::Ready(Err(Error::Io(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "backend reported more written bytes than supplied",
+                ))));
+            }
+            self.written = self.written.checked_add(count)
+                .ok_or(Error::Codec(craft_codec::Error::Overflow))?;
+        }
+
+        self.metadata.push(*sizes).map_err(Error::Codec)?;
+        self.buffer = None;
+        self.written = 0;
+        Poll::Ready(Ok(()))
+    }
 }
 
 /// Encryption mode used by each file of a stream.
@@ -50,10 +97,9 @@ pub struct StreamWriterConfig {
     pub max_file_size: u64,
 }
 
-/// File destination under construction for CARBON's write scheduler.
+/// File destination for CARBON's write scheduler.
 ///
-/// This increment exposes opening only. Frame writing and CARBON's
-/// `WriteFile<Vec<u8>>` implementation follow in the next increment.
+/// Opening and frame writing are implemented. Finalization remains unimplemented.
 pub struct WriteFile {
     file_registry: FileRegistry,
     file_backend: FileBackend,
@@ -83,9 +129,14 @@ impl WriteFile {
             state: State::Closed,
         })
     }
+}
+
+impl carbon_io::WriteFile<Vec<u8>> for WriteFile {
+    type Error = Error;
+    type Output = (Metadata, FileId);
 
     /// Fixed frame capacity, available before opening the backend writer.
-    pub fn frame_capacity(&self) -> u32 {
+    fn frame_capacity(&self) -> u32 {
         self.frame_capacity
     }
 
@@ -95,7 +146,7 @@ impl WriteFile {
     /// enabled, a fresh system key. Pending polls retain the same future and
     /// supplied waker. An error resets the destination for a fresh attempt.
     /// Polling an opened destination succeeds without allocating another file.
-    pub fn poll_open(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+    fn poll_open(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
         let this = self.get_mut();
         loop {
             match &mut this.state {
@@ -116,6 +167,8 @@ impl WriteFile {
                             metadata,
                             encoder,
                             file,
+                            written: 0,
+                            buffer: None,
                         })
                     }));
                 }
@@ -135,6 +188,35 @@ impl WriteFile {
                 State::Opened(_file) => return Poll::Ready(Ok(())),
             }
         }
+    }
+
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        frame: &Vec<u8>,
+    ) -> Poll<Result<(), Error>> {
+        let this = self.get_mut();
+        let result = match &mut this.state {
+            State::Opened(opened) => {
+                if opened.metadata.frame_count() >= u64::from(this.frame_capacity) {
+                    Poll::Ready(Err(Error::FrameCapacityExceeded))
+                } else {
+                    opened.poll_write(cx, frame)
+                }
+            }
+            State::Closed | State::Opening(_) => Poll::Ready(Err(Error::FileNotOpen)),
+        };
+        if matches!(&result, Poll::Ready(Err(_))) {
+            this.state = State::Closed;
+        }
+        result
+    }
+
+    fn poll_close(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+    ) -> Poll<Result<Self::Output, Error>> {
+        unimplemented!("stream file finalization")
     }
 }
 
@@ -241,8 +323,8 @@ mod tests {
                     return Err("metadata does not match requested codec options".into());
                 }
                 let original = vec![42; 4096];
-                let mut encoded = original.clone();
-                metadata.push(encoder.encode_frame(0, &mut encoded)?)?;
+                let (mut encoded, sizes) = encoder.encode_frame_alloc(0, &original)?;
+                metadata.push(sizes)?;
                 if u64::try_from(encoded.len())? > settings.max_file_size {
                     return Err("encoded frame exceeded the configured file size".into());
                 }
@@ -281,8 +363,8 @@ mod tests {
         }
 
         let original = vec![42; 4096];
-        let mut encoded = original.clone();
-        first.push(encoder.encode_frame(0, &mut encoded)?)?;
+        let (mut encoded, sizes) = encoder.encode_frame_alloc(0, &original)?;
+        first.push(sizes)?;
         let spec = first.frame(0).ok_or("encoded frame missing from metadata")?;
         Decoder::try_from(&first)?.decode_frame(spec, &mut encoded)?;
         if encoded != original {
