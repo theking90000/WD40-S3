@@ -7,22 +7,23 @@ use std::{
 
 use backends::traits::FileBackend as _;
 use craft_codec::{Compression, Config, Encoder, Encryption as CodecEncryption, FrameSizes, Framing, Metadata};
-use file_registry::{FileId, WriteAccessPath, traits::FileRegistry as _};
+use file_registry::{FileAccess, FileId, WriteAccessPath, traits::FileRegistry as _};
 use futures_io::AsyncWrite;
 use futures_util::StreamExt;
 
 use crate::{Error, FileBackend, FileRegistry};
 
 type OpenFuture = Pin<Box<dyn Future<Output = Result<OpenedFile, Error>>>>;
+type CloseFuture = Pin<Box<dyn Future<Output = Result<(Metadata, FileId), Error>>>>;
 
 enum State {
     Closed,
     Opening(OpenFuture),
     Opened(OpenedFile),
+    Closing(CloseFuture),
 }
 
 struct OpenedFile {
-    #[expect(dead_code, reason = "file ID will be returned by poll_close")]
     file_id: FileId,
     metadata: Metadata,
     encoder: Encoder,
@@ -98,8 +99,6 @@ pub struct StreamWriterConfig {
 }
 
 /// File destination for CARBON's write scheduler.
-///
-/// Opening and frame writing are implemented. Finalization remains unimplemented.
 pub struct WriteFile {
     file_registry: FileRegistry,
     file_backend: FileBackend,
@@ -186,6 +185,10 @@ impl carbon_io::WriteFile<Vec<u8>> for WriteFile {
                     };
                 }
                 State::Opened(_file) => return Poll::Ready(Ok(())),
+                State::Closing(_) => {
+                    this.state = State::Closed;
+                    return Poll::Ready(Err(Error::FileNotOpen));
+                }
             }
         }
     }
@@ -204,7 +207,9 @@ impl carbon_io::WriteFile<Vec<u8>> for WriteFile {
                     opened.poll_write(cx, frame)
                 }
             }
-            State::Closed | State::Opening(_) => Poll::Ready(Err(Error::FileNotOpen)),
+            State::Closed | State::Opening(_) | State::Closing(_) => {
+                Poll::Ready(Err(Error::FileNotOpen))
+            }
         };
         if matches!(&result, Poll::Ready(Err(_))) {
             this.state = State::Closed;
@@ -212,11 +217,41 @@ impl carbon_io::WriteFile<Vec<u8>> for WriteFile {
         result
     }
 
+    /// Finishes the backend upload, persists its access path, then returns metadata and ID.
+    /// Pending polls retain the same finalization future. Errors permit a fresh open attempt.
     fn poll_close(
         self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
+        cx: &mut Context<'_>,
     ) -> Poll<Result<Self::Output, Error>> {
-        unimplemented!("stream file finalization")
+        let this = self.get_mut();
+        if matches!(&this.state, State::Opened(_)) {
+            let State::Opened(opened) = std::mem::replace(&mut this.state, State::Closed) else {
+                return Poll::Ready(Err(Error::FileNotOpen));
+            };
+            if opened.buffer.is_some() {
+                return Poll::Ready(Err(Error::FrameWritePending));
+            }
+            let file_registry = this.file_registry.clone();
+            // ponytail: finish also closes the backend; keep one owned future across polls.
+            this.state = State::Closing(Box::pin(async move {
+                let access_path = opened.file.finish().await.map_err(Error::Backend)?;
+                let file = FileAccess { id: opened.file_id, access_path };
+                file_registry.store(&[file]).await.map_err(Error::FileRegistry)?;
+                Ok((opened.metadata, opened.file_id))
+            }));
+        }
+
+        match &mut this.state {
+            State::Closing(future) => {
+                let result = std::task::ready!(future.as_mut().poll(cx));
+                this.state = State::Closed;
+                Poll::Ready(result)
+            }
+            State::Closed | State::Opening(_) | State::Opened(_) => {
+                this.state = State::Closed;
+                Poll::Ready(Err(Error::FileNotOpen))
+            }
+        }
     }
 }
 
