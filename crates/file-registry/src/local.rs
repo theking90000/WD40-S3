@@ -13,7 +13,7 @@ use sled::{
     transaction::{TransactionError, Transactional},
 };
 
-use crate::{Error, FileAccess, FileId, FileRegistry, ReadAccessPath, WriteAccessPath};
+use crate::{Error, FileAccess, FileId, ReadAccessPath, WriteAccessPath, traits::FileRegistry};
 
 type FileLocks = Arc<MapMutex<HashMap<FileId, Weak<Mutex<()>>>>>;
 
