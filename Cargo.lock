@@ -95,9 +95,9 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "carbon-io"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e094f150fa61d65ff3c7cc67a00291e6c6884c1cbd545a6283d43e80cd329ff"
+checksum = "9cc384c2452d851a10a06400e9d5fd41cf15cce0d99564909200cedc2b9eba6d"
 dependencies = [
  "futures-core",
  "pin-project-lite",
@@ -832,13 +832,9 @@ dependencies = [
  "carbon-io",
  "craft-codec",
  "file-registry",
- "futures-core",
- "futures-executor",
- "futures-io",
  "futures-util",
- "sled",
+ "getrandom 0.4.3",
  "stream-registry",
- "tokio-tcp-pool",
 ]
 
 [[package]]

@@ -114,7 +114,11 @@ impl FileRegistry for LocalRegistry {
     type WriteAccessPathStream = stream::Iter<std::vec::IntoIter<WriteAccessPath>>;
     type ReadAccessPathStream = Pin<Box<dyn Stream<Item = Result<ReadAccessPath, Error>> + Send>>;
 
-    async fn create(&self, count: usize) -> Result<Self::WriteAccessPathStream, Error> {
+    async fn create(
+        &self,
+        count: usize,
+        max_file_size: u64,
+    ) -> Result<Self::WriteAccessPathStream, Error> {
         let mut paths = Vec::new();
         if count == 0 {
             return Ok(stream::iter(paths));
@@ -122,7 +126,7 @@ impl FileRegistry for LocalRegistry {
 
         let data = postcard::to_allocvec(&LocalFile::Pending)?;
         let mut batch = Batch::default();
-        let mut access_paths = Box::pin(self.registry.write(count));
+        let mut access_paths = Box::pin(self.registry.write(count, max_file_size));
         for _ in 0..count {
             let access_path = access_paths.next().await.ok_or(Error::MissingWriteAccessPath)?;
             let id = FileId::from(self.database.generate_id()?);

@@ -32,7 +32,9 @@ list has its own cursor. Rotation uses checked arithmetic and fallible access.
 `DiscordAccessPath` wraps a stored `DiscordFile`. Its `is_expired()` method checks
 the download URL expiration against the local clock.
 
-`write(count)` selects webhook credentials in rotation. An empty webhook list
+`write(count, max_file_size)` selects webhook credentials in rotation whose
+destinations accept payloads up to the requested size. Sizes exceeding the
+20,000,000-byte limit yield no paths. An empty webhook list
 produces an empty stream. The existing `DiscordWriteAccessPath` owns an `Arc<str>`.
 Cloning a write path shares the URL allocation. Backend traits and enums have
 no credential lifetime parameters. The published dependency exposes borrowed

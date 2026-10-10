@@ -34,7 +34,13 @@ pub trait RegistryBackend: Clone + Send + Sync {
     type WriteAccessPath: Serialize + DeserializeOwned;
     type ReadAccessPath: Serialize + DeserializeOwned;
 
-    fn write(&self, count: usize) -> impl Stream<Item = Self::WriteAccessPath> + Send;
+    /// Select paths accepting file payloads up to `max_file_size` bytes.
+    /// Unsupported sizes or unavailable destinations yield fewer than `count` paths.
+    fn write(
+        &self,
+        count: usize,
+        max_file_size: u64,
+    ) -> impl Stream<Item = Self::WriteAccessPath> + Send;
 
     fn read<'stream>(
         &'stream self,

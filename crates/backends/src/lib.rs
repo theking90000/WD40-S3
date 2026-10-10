@@ -220,17 +220,21 @@ impl traits::RegistryBackend for RegistryBackend {
     type WriteAccessPath = WriteAccessPath;
     type ReadAccessPath = ReadAccessPath;
 
-    fn write(&self, count: usize) -> impl Stream<Item = Self::WriteAccessPath> + Send {
+    fn write(
+        &self,
+        count: usize,
+        max_file_size: u64,
+    ) -> impl Stream<Item = Self::WriteAccessPath> + Send {
         stream::iter((count != 0).then_some(self)).flat_map(
             move |backend| -> Pin<Box<dyn Stream<Item = Self::WriteAccessPath> + Send + '_>> {
                 match *backend {
                     #[cfg(feature = "discord")]
                     Self::Discord(ref registry) => Box::pin(
-                        traits::RegistryBackend::write(registry, count)
+                        traits::RegistryBackend::write(registry, count, max_file_size)
                             .map(WriteAccessPath::Discord),
                     ),
                     #[cfg(feature = "telegram")]
-                    Self::Telegram => unimplemented!("Telegram registry backend"),
+                    Self::Telegram => Box::pin(stream::empty()),
                 }
             },
         )

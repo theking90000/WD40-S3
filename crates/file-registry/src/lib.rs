@@ -19,9 +19,13 @@ impl traits::FileRegistry for FileRegistry {
     type WriteAccessPathStream = <LocalRegistry as traits::FileRegistry>::WriteAccessPathStream;
     type ReadAccessPathStream = <LocalRegistry as traits::FileRegistry>::ReadAccessPathStream;
 
-    async fn create(&self, count: usize) -> Result<Self::WriteAccessPathStream, Error> {
+    async fn create(
+        &self,
+        count: usize,
+        max_file_size: u64,
+    ) -> Result<Self::WriteAccessPathStream, Error> {
         match self {
-            Self::Local(registry) => traits::FileRegistry::create(registry, count).await,
+            Self::Local(registry) => traits::FileRegistry::create(registry, count, max_file_size).await,
         }
     }
 

@@ -19,6 +19,10 @@ pub use discord_webhook_storage::DiscordFileUrl as DiscordReadAccessPath;
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DiscordWriteAccessPath(Arc<str>);
 
+// Mirrors the documented WriteConfig::default limit in discord-webhook-storage
+// 0.1.0. This limit excludes multipart framing.
+const DISCORD_MAX_FILE_SIZE: u64 = 20_000_000;
+
 pub type DiscordReadFile = discord_webhook_storage::ReadFile<Connection>;
 pub type DiscordUploadFile = discord_webhook_storage::WriteFile<Connection>;
 
@@ -115,7 +119,12 @@ impl RegistryBackend for DiscordRegistry {
     type WriteAccessPath = DiscordWriteAccessPath;
     type ReadAccessPath = DiscordReadAccessPath;
 
-    fn write(&self, count: usize) -> impl Stream<Item = Self::WriteAccessPath> + Send {
+    fn write(
+        &self,
+        count: usize,
+        max_file_size: u64,
+    ) -> impl Stream<Item = Self::WriteAccessPath> + Send {
+        let count = if max_file_size <= DISCORD_MAX_FILE_SIZE { count } else { 0 };
         stream::iter((0..count).map_while(|_| self.webhook_credentials.get().cloned()))
     }
 
@@ -168,12 +177,20 @@ mod tests {
         let waker = futures_util::task::noop_waker();
         let mut context = Context::from_waker(&waker);
 
+        {
+            let oversized = RegistryBackend::write(&backend, 1, 20_000_001);
+            let mut oversized = std::pin::pin!(oversized);
+            if !matches!(oversized.as_mut().poll_next(&mut context), Poll::Ready(None)) {
+                return Err("write path accepted an unsupported file size".into());
+            }
+        }
+
         for (backend, expected) in [
             (backend.clone(), Vec::new()),
             (backend.clone(), vec!["first", "second", "first"]),
             (backend, vec!["second", "first"]),
         ] {
-            let paths = RegistryBackend::write(&backend, expected.len());
+            let paths = RegistryBackend::write(&backend, expected.len(), 20_000_000);
             let mut paths = std::pin::pin!(paths);
             for expected in expected {
                 let expected_url = format!("https://discord.com/api/webhooks/{expected}/token");

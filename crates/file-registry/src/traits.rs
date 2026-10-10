@@ -28,9 +28,12 @@ pub trait FileRegistry {
     type WriteAccessPathStream: Stream<Item = WriteAccessPath> + Send;
     type ReadAccessPathStream: Stream<Item = Result<ReadAccessPath, Error>> + Send;
 
+    /// Allocate IDs and paths supporting payloads up to `max_file_size` bytes.
+    /// Fails when the backend cannot supply the requested paths.
     fn create(
         &self,
         count: usize,
+        max_file_size: u64,
     ) -> impl std::future::Future<Output = Result<Self::WriteAccessPathStream, Error>> + Send;
 
     fn retrieve(
