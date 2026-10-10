@@ -9,7 +9,7 @@ pub use carbon_io::{BytesFrameAllocator, FrameBudget, SchedulerConfig, Window};
 pub use craft_codec::Compression;
 pub use error::Error;
 pub use file_registry::FileRegistry;
-pub use stream_registry::StreamRegistry;
+pub use stream_registry::{StreamId, StreamRegistry};
 pub use write_file::{Encryption, StreamWriterConfig, WriteFile};
 pub use write_stream::WriteStream;
 

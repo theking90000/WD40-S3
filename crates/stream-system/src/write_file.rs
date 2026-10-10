@@ -10,11 +10,12 @@ use craft_codec::{Compression, Config, Encoder, Encryption as CodecEncryption, F
 use file_registry::{FileAccess, FileId, WriteAccessPath, traits::FileRegistry as _};
 use futures_io::AsyncWrite;
 use futures_util::StreamExt;
+use stream_registry::{StreamPartId, traits::StreamRegistry as _};
 
-use crate::{Error, FileBackend, FileRegistry};
+use crate::{Error, FileBackend, FileRegistry, StreamRegistry};
 
 type OpenFuture = Pin<Box<dyn Future<Output = Result<OpenedFile, Error>>>>;
-type CloseFuture = Pin<Box<dyn Future<Output = Result<(Metadata, FileId), Error>>>>;
+type CloseFuture = Pin<Box<dyn Future<Output = Result<StreamPartId, Error>>>>;
 
 enum State {
     Closed,
@@ -101,6 +102,7 @@ pub struct StreamWriterConfig {
 /// File destination for CARBON's write scheduler.
 pub struct WriteFile {
     file_registry: FileRegistry,
+    stream_registry: StreamRegistry,
     file_backend: FileBackend,
     config: StreamWriterConfig,
     frame_capacity: u32,
@@ -111,6 +113,7 @@ impl WriteFile {
     /// Validates settings and fixes capacity without allocating an ID or path.
     pub fn new(
         file_registry: FileRegistry,
+        stream_registry: StreamRegistry,
         file_backend: FileBackend,
         config: StreamWriterConfig,
     ) -> Result<Self, Error> {
@@ -122,6 +125,7 @@ impl WriteFile {
         }
         Ok(Self {
             file_registry,
+            stream_registry,
             file_backend,
             config,
             frame_capacity,
@@ -132,7 +136,7 @@ impl WriteFile {
 
 impl carbon_io::WriteFile<Vec<u8>> for WriteFile {
     type Error = Error;
-    type Output = (Metadata, FileId);
+    type Output = StreamPartId;
 
     /// Fixed frame capacity, available before opening the backend writer.
     fn frame_capacity(&self) -> u32 {
@@ -217,7 +221,7 @@ impl carbon_io::WriteFile<Vec<u8>> for WriteFile {
         result
     }
 
-    /// Finishes the backend upload, persists its access path, then returns metadata and ID.
+    /// Finishes the upload, registers the file, then persists and returns its stream part ID.
     /// Pending polls retain the same finalization future. Errors permit a fresh open attempt.
     fn poll_close(
         self: Pin<&mut Self>,
@@ -232,12 +236,14 @@ impl carbon_io::WriteFile<Vec<u8>> for WriteFile {
                 return Poll::Ready(Err(Error::FrameWritePending));
             }
             let file_registry = this.file_registry.clone();
+            let stream_registry = this.stream_registry.clone();
             // ponytail: finish also closes the backend; keep one owned future across polls.
             this.state = State::Closing(Box::pin(async move {
                 let access_path = opened.file.finish().await.map_err(Error::Backend)?;
                 let file = FileAccess { id: opened.file_id, access_path };
                 file_registry.store(&[file]).await.map_err(Error::FileRegistry)?;
-                Ok((opened.metadata, opened.file_id))
+                stream_registry.insert(opened.file_id, opened.metadata)
+                    .await.map_err(Error::StreamRegistry)
             }));
         }
 
