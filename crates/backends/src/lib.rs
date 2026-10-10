@@ -64,6 +64,18 @@ pub enum WriteFile {
     Telegram,
 }
 
+impl WriteFile {
+    /// Finishes the upload and returns the persistent path accepted by its backend.
+    pub async fn finish(self) -> Result<AccessPath, Error> {
+        match self {
+            #[cfg(feature = "discord")]
+            Self::Discord(file) => Ok(AccessPath::Discord(DiscordAccessPath::from(file.finish().await?))),
+            #[cfg(feature = "telegram")]
+            Self::Telegram => Err(Error::UnsupportedBackend),
+        }
+    }
+}
+
 impl AsyncWrite for WriteFile {
     fn poll_write(
         self: Pin<&mut Self>,
@@ -208,9 +220,9 @@ impl traits::RegistryBackend for RegistryBackend {
     type WriteAccessPath = WriteAccessPath;
     type ReadAccessPath = ReadAccessPath;
 
-    fn write(&self, count: usize) -> impl Stream<Item = Self::WriteAccessPath> {
+    fn write(&self, count: usize) -> impl Stream<Item = Self::WriteAccessPath> + Send {
         stream::iter((count != 0).then_some(self)).flat_map(
-            move |backend| -> Pin<Box<dyn Stream<Item = Self::WriteAccessPath> + '_>> {
+            move |backend| -> Pin<Box<dyn Stream<Item = Self::WriteAccessPath> + Send + '_>> {
                 match *backend {
                     #[cfg(feature = "discord")]
                     Self::Discord(ref registry) => Box::pin(

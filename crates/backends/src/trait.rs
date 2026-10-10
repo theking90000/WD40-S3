@@ -29,12 +29,12 @@ pub trait Expired {
     fn is_expired(&self) -> bool;
 }
 
-pub trait RegistryBackend: Clone + Send {
+pub trait RegistryBackend: Clone + Send + Sync {
     type AccessPath: Expired + Serialize + DeserializeOwned;
     type WriteAccessPath: Serialize + DeserializeOwned;
     type ReadAccessPath: Serialize + DeserializeOwned;
 
-    fn write(&self, count: usize) -> impl Stream<Item = Self::WriteAccessPath>;
+    fn write(&self, count: usize) -> impl Stream<Item = Self::WriteAccessPath> + Send;
 
     fn read<'stream>(
         &'stream self,

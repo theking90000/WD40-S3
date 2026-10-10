@@ -122,10 +122,12 @@ impl FileRegistry for LocalRegistry {
 
         let data = postcard::to_allocvec(&LocalFile::Pending)?;
         let mut batch = Batch::default();
+        let mut access_paths = Box::pin(self.registry.write(count));
         for _ in 0..count {
+            let access_path = access_paths.next().await.ok_or(Error::MissingWriteAccessPath)?;
             let id = FileId::from(self.database.generate_id()?);
             batch.insert(id.to_be_bytes().to_vec(), data.clone());
-            paths.push(WriteAccessPath { id });
+            paths.push(WriteAccessPath { id, access_path });
         }
 
         self.database.apply_batch(batch)?;

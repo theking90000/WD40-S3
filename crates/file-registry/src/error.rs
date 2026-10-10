@@ -10,6 +10,7 @@ pub enum Error {
     FileNotFound(FileId),
     FilePending(FileId),
     MissingReadAccessPath(FileId),
+    MissingWriteAccessPath,
 }
 
 impl fmt::Display for Error {
@@ -23,6 +24,7 @@ impl fmt::Display for Error {
             Self::MissingReadAccessPath(id) => {
                 write!(f, "backend returned no read access path for file {id}")
             }
+            Self::MissingWriteAccessPath => f.write_str("backend returned too few write access paths"),
         }
     }
 }
@@ -35,6 +37,7 @@ impl StdError for Error {
             Self::Serialization(_)
             | Self::FileNotFound(_)
             | Self::FilePending(_)
+            | Self::MissingWriteAccessPath
             | Self::MissingReadAccessPath(_) => None,
         }
     }

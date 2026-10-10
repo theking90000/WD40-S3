@@ -8,6 +8,7 @@ pub enum Error {
     Acquire(AcquireError),
     Discord(discord_webhook_storage::Error),
     BackendMismatch,
+    UnsupportedBackend,
 }
 
 impl fmt::Display for Error {
@@ -17,6 +18,7 @@ impl fmt::Display for Error {
             Self::Acquire(error) => write!(f, "connection acquisition failed: {error}"),
             Self::Discord(error) => write!(f, "Discord request failed: {error}"),
             Self::BackendMismatch => f.write_str("access path belongs to another backend"),
+            Self::UnsupportedBackend => f.write_str("backend operation is not implemented"),
         }
     }
 }
@@ -26,7 +28,7 @@ impl StdError for Error {
         match self {
             Self::Acquire(error) => Some(error),
             Self::Discord(error) => Some(error),
-            Self::MissingBotCredentials | Self::BackendMismatch => None,
+            Self::MissingBotCredentials | Self::BackendMismatch | Self::UnsupportedBackend => None,
         }
     }
 }

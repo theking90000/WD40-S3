@@ -6,9 +6,10 @@ use crate::Error;
 
 pub type FileId = u128; // 128 bits file ID.
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct WriteAccessPath {
     pub id: FileId,
+    pub access_path: backends::WriteAccessPath,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -24,7 +25,7 @@ pub struct FileAccess {
 }
 
 pub trait FileRegistry {
-    type WriteAccessPathStream: Stream<Item = WriteAccessPath>;
+    type WriteAccessPathStream: Stream<Item = WriteAccessPath> + Send;
     type ReadAccessPathStream: Stream<Item = Result<ReadAccessPath, Error>> + Send;
 
     fn create(

@@ -25,6 +25,12 @@ pub type DiscordUploadFile = discord_webhook_storage::WriteFile<Connection>;
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DiscordAccessPath(StoredDiscordFile);
 
+impl From<StoredDiscordFile> for DiscordAccessPath {
+    fn from(file: StoredDiscordFile) -> Self {
+        Self(file)
+    }
+}
+
 impl Expired for DiscordAccessPath {
     fn is_expired(&self) -> bool {
         !self.0.is_valid()
@@ -109,7 +115,7 @@ impl RegistryBackend for DiscordRegistry {
     type WriteAccessPath = DiscordWriteAccessPath;
     type ReadAccessPath = DiscordReadAccessPath;
 
-    fn write(&self, count: usize) -> impl Stream<Item = Self::WriteAccessPath> {
+    fn write(&self, count: usize) -> impl Stream<Item = Self::WriteAccessPath> + Send {
         stream::iter((0..count).map_while(|_| self.webhook_credentials.get().cloned()))
     }
 
