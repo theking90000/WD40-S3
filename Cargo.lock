@@ -93,6 +93,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "craft-codec"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7030a9816b0cf2bb59d184f30129b90995d291d5eaf0e0d8a228971bd27cee10"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "crc32fast"
 version = "1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -646,6 +655,20 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
+
+[[package]]
+name = "stream-registry"
+version = "0.1.0"
+dependencies = [
+ "craft-codec",
+ "file-registry",
+ "futures-core",
+ "futures-executor",
+ "futures-util",
+ "postcard",
+ "serde",
+ "sled",
+]
 
 [[package]]
 name = "subtle"
