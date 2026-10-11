@@ -145,13 +145,9 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "carbon-io"
-version = "0.4.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9cc384c2452d851a10a06400e9d5fd41cf15cce0d99564909200cedc2b9eba6d"
-dependencies = [
- "futures-core",
- "pin-project-lite",
-]
+checksum = "21bd253e97df44be0293c2cf841f1e032c0d7b1801d3d5c059f427bf94e76160"
 
 [[package]]
 name = "cc"
