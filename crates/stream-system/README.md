@@ -72,8 +72,34 @@ The [API and polling guide](docs/guide.md) covers resource setup, guarded
 `select!` loops, empty read selections, errors and the individual file adapters.
 The read-loop helper in that guide is application-local and uses existing APIs.
 
-The optional upload CLI is available with:
+The optional CLI is enabled with the `cli` feature. Common registry, pool and
+CARBON options work before or after the subcommand and retain their `WD40_*`
+environment variables.
 
 ```sh
 cargo run -p stream-system --features cli -- --help
+cargo run -p stream-system --features cli -- upload --help
+cargo run -p stream-system --features cli -- download --help
 ```
+
+Upload a file and print its decimal stream ID. Set `WD40_DISCORD_WEBHOOK_URLS`
+or pass `--webhook` for upload:
+
+```sh
+cargo run -p stream-system --features cli -- upload --input input.bin
+```
+
+Download using the same persistent registries. A webhook is unnecessary for
+download; `--bot-token` or `WD40_DISCORD_BOT_TOKENS` can renew expired URLs.
+The codec settings are recovered from stored metadata.
+
+```sh
+cargo run -p stream-system --features cli -- download 123 --output output.bin
+cargo run -p stream-system --features cli -- download 123 --start 100 --end 200 --output range.bin
+```
+
+`--start` defaults to zero and `--end` is exclusive; omitting it reads through
+EOF. Offsets select plaintext bytes across file boundaries. `--output -`, the
+default, writes raw bytes to stdout. An existing output file is truncated;
+an I/O or range error can leave partial output. The download options also accept
+`WD40_STREAM_ID`, `WD40_OUTPUT`, `WD40_START` and `WD40_END`.
