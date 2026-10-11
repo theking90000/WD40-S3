@@ -7,7 +7,7 @@ use std::{
 };
 
 use backends::traits::FileBackend as _;
-use craft_codec::{Decoder, FrameIter, FrameRead, Metadata};
+use craft_codec::{Decoder, FrameRead, Metadata};
 use file_registry::{FileId, ReadAccessPath, traits::FileRegistry as _};
 use futures_io::AsyncRead;
 use futures_util::StreamExt;
@@ -33,18 +33,81 @@ pub struct ReadFrame {
     pub selected: Range<usize>,
 }
 
+/// Owned counterpart of CRAFT's borrowing frame iterator.
+/// The range is mapped once; subsequent descriptors use Metadata::frame(index).
+struct OwnedFrameIter {
+    metadata: Metadata,
+    next_index: u64,
+    remaining: u64,
+    logical_position: u64,
+    selection: Range<u64>,
+}
+
+impl OwnedFrameIter {
+    fn new(metadata: Metadata, start: u64, end: Option<u64>) -> Result<(Range<u64>, Self), Error> {
+        let logical_end = end.unwrap_or(metadata.logical_len());
+        let (physical, count, next_index, logical_position) = {
+            let (physical, mut frames) = metadata.range(start, end).map_err(Error::Codec)?;
+            let count = frames.remaining();
+            if count == 0 {
+                return Err(Error::Carbon(carbon_io::ContractError::ZeroFrameCount));
+            }
+            let first = frames.next().ok_or(Error::Codec(craft_codec::Error::InvalidMetadata))?;
+            let selected_start = u64::try_from(first.selected.start)
+                .map_err(|_| Error::Codec(craft_codec::Error::Overflow))?;
+            let logical_position = start.checked_sub(selected_start)
+                .ok_or(Error::Codec(craft_codec::Error::InvalidRange))?;
+            (physical, count, first.spec.index(), logical_position)
+        };
+        Ok((physical, Self {
+            metadata,
+            next_index,
+            remaining: count,
+            logical_position,
+            selection: start..logical_end,
+        }))
+    }
+
+    fn next(&mut self) -> Result<Option<FrameRead>, Error> {
+        if self.remaining == 0 {
+            return Ok(None);
+        }
+        let spec = self.metadata.frame(self.next_index)
+            .ok_or(Error::Codec(craft_codec::Error::InvalidMetadata))?;
+        let raw_len = u64::try_from(spec.raw_len())
+            .map_err(|_| Error::Codec(craft_codec::Error::Overflow))?;
+        let logical_end = self.logical_position.checked_add(raw_len)
+            .ok_or(Error::Codec(craft_codec::Error::Overflow))?;
+        let start = self.selection.start.max(self.logical_position)
+            .checked_sub(self.logical_position)
+            .ok_or(Error::Codec(craft_codec::Error::InvalidRange))?;
+        let end = self.selection.end.min(logical_end).checked_sub(self.logical_position)
+            .ok_or(Error::Codec(craft_codec::Error::InvalidRange))?;
+        let selected = usize::try_from(start)
+            .map_err(|_| Error::Codec(craft_codec::Error::Overflow))?
+            ..usize::try_from(end).map_err(|_| Error::Codec(craft_codec::Error::Overflow))?;
+        let next_index = self.next_index.checked_add(1)
+            .ok_or(Error::Codec(craft_codec::Error::Overflow))?;
+        let remaining = self.remaining.checked_sub(1)
+            .ok_or(Error::Codec(craft_codec::Error::InvalidMetadata))?;
+        self.next_index = next_index;
+        self.remaining = remaining;
+        self.logical_position = logical_end;
+        Ok(Some(FrameRead { spec, selected }))
+    }
+}
+
 /// Reads one stream part at a logical range relative to its file.
 ///
-/// Stream offsets must first be resolved to a part and a local offset by the
-/// caller. Construction prepares the physical range without registry or backend
+/// Stream offsets are first resolved to a part and local offsets by ReadStream
+/// or its caller. Construction prepares the physical range without registry or backend
 /// I/O. CARBON supplies reusable frame buffers. Each poll performs at most one
 /// backend read; pending polls retain the frame descriptor and byte offset.
-pub struct ReadFile<'a> {
+pub struct ReadFile {
     file_registry: FileRegistry,
     file_backend: FileBackend,
     file_id: FileId,
-    metadata: &'a Metadata,
-    frames: FrameIter<'a>,
+    frames: OwnedFrameIter,
     logical_range: Range<u64>,
     physical_start: usize,
     physical_end: Option<usize>,
@@ -54,29 +117,28 @@ pub struct ReadFile<'a> {
     state: State,
 }
 
-impl<'a> ReadFile<'a> {
+impl ReadFile {
     /// Selects logical `[start, end)` bytes; `None` means the end of this part.
     ///
     /// CRAFT expands the selection to complete stored frames. Empty selections
     /// are rejected because CARBON requires a nonzero frame count; the stream
-    /// reader must skip them. The caller retains the metadata; its frame iterator
-    /// is kept for incremental reading without collecting descriptors.
+    /// reader must skip them. Metadata is moved into an owned frame cursor,
+    /// without collecting descriptors or retaining references into the file.
     pub fn new(
         file_registry: FileRegistry,
         file_backend: FileBackend,
         file_id: FileId,
-        metadata: &'a Metadata,
+        metadata: Metadata,
         start: u64,
         end: Option<u64>,
     ) -> Result<Self, Error> {
+        let logical_end = end.unwrap_or(metadata.logical_len());
         let (physical_start, physical_end, frame_count, frames) =
             prepare_range(metadata, start, end)?;
-        let logical_end = end.unwrap_or(metadata.logical_len());
         Ok(Self {
             file_registry,
             file_backend,
             file_id,
-            metadata,
             frames,
             logical_range: start..logical_end,
             physical_start,
@@ -94,7 +156,7 @@ impl<'a> ReadFile<'a> {
     }
 }
 
-impl carbon_io::ReadFile<ReadFrame> for ReadFile<'_> {
+impl carbon_io::ReadFile<ReadFrame> for ReadFile {
     type Error = Error;
 
     /// Exact number of complete frames covering the selection, before opening.
@@ -112,7 +174,7 @@ impl carbon_io::ReadFile<ReadFrame> for ReadFile<'_> {
         loop {
             match &mut this.state {
                 State::Closed => {
-                    let decoder = Decoder::try_from(this.metadata).map_err(Error::Codec)?;
+                    let decoder = Decoder::try_from(&this.frames.metadata).map_err(Error::Codec)?;
                     let registry = this.file_registry.clone();
                     let backend = this.file_backend.clone();
                     let id = this.file_id;
@@ -155,7 +217,7 @@ impl carbon_io::ReadFile<ReadFrame> for ReadFile<'_> {
         };
         let result = (|| {
             if this.current.is_none() {
-                let Some(descriptor) = this.frames.next() else {
+                let Some(descriptor) = this.frames.next()? else {
                     return Poll::Ready(Ok(None));
                 };
                 let length = descriptor.spec.stored_len();
@@ -216,12 +278,13 @@ impl carbon_io::ReadFile<ReadFrame> for ReadFile<'_> {
 }
 
 fn prepare_range(
-    metadata: &Metadata,
+    metadata: Metadata,
     start: u64,
     end: Option<u64>,
-) -> Result<(usize, Option<usize>, u32, FrameIter<'_>), Error> {
-    let (physical, frames) = metadata.range(start, end).map_err(Error::Codec)?;
-    let count = u32::try_from(frames.remaining())
+) -> Result<(usize, Option<usize>, u32, OwnedFrameIter), Error> {
+    let stored_len = metadata.stored_len();
+    let (physical, frames) = OwnedFrameIter::new(metadata, start, end)?;
+    let count = u32::try_from(frames.remaining)
         .map_err(|_| Error::Codec(craft_codec::Error::Overflow))?;
     if count == 0 {
         return Err(Error::Carbon(carbon_io::ContractError::ZeroFrameCount));
@@ -230,7 +293,7 @@ fn prepare_range(
         .map_err(|_| Error::Codec(craft_codec::Error::Overflow))?;
     // The current backend uses an inclusive end. A selection reaching file EOF
     // uses its existing open-ended range instead.
-    let physical_end = if physical.end == metadata.stored_len() {
+    let physical_end = if physical.end == stored_len {
         None
     } else {
         let last = physical.end.checked_sub(1)
@@ -277,25 +340,67 @@ mod tests {
                     (5, None, (stride, None, 2), 1..4),
                 ] {
                     let (physical_start, physical_end, count, mut frames) =
-                        prepare_range(&metadata, start, end)?;
+                        prepare_range(metadata.clone(), start, end)?;
                     if (physical_start, physical_end, count) != expected
-                        || frames.remaining() != u64::from(count)
+                        || frames.remaining != u64::from(count)
                     {
                         return Err("logical offsets did not select the expected stored frames".into());
                     }
-                    let first = frames.next().ok_or("selected frame iterator was lost")?;
+                    let first = frames.next()?.ok_or("selected frame iterator was lost")?;
                     if first.spec.index() != 1 || first.selected != selected {
                         return Err("frame iterator lost its original index or selection".into());
                     }
+                    let (_, mut expected) = metadata.range(start, end)?;
+                    if expected.next().as_ref() != Some(&first) {
+                        return Err("owned cursor changed the first CRAFT descriptor".into());
+                    }
+                    while let Some(expected) = expected.next() {
+                        if frames.next()? != Some(expected) {
+                            return Err("owned cursor changed a CRAFT descriptor".into());
+                        }
+                    }
+                    if frames.next()?.is_some() {
+                        return Err("owned cursor emitted extra frames".into());
+                    }
                 }
-                if !matches!(prepare_range(&metadata, 6, Some(6)),
+                if !matches!(prepare_range(metadata.clone(), 6, Some(6)),
                     Err(Error::Carbon(carbon_io::ContractError::ZeroFrameCount)))
-                    || !matches!(prepare_range(&metadata, 5, Some(4)),
+                    || !matches!(prepare_range(metadata.clone(), 5, Some(4)),
                         Err(Error::Codec(craft_codec::Error::InvalidRange)))
-                    || !matches!(prepare_range(&metadata, 13, None),
+                    || !matches!(prepare_range(metadata.clone(), 13, None),
                         Err(Error::Codec(craft_codec::Error::InvalidRange)))
                 {
                     return Err("empty or invalid selections were not rejected".into());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn owned_cursor_matches_craft_for_variable_frame_ranges() -> Result<(), Box<dyn std::error::Error>> {
+        let mut metadata = Metadata::new(Config::new(
+            Framing::Variable(8), Compression::Lz4,
+            Encryption::Aes256Gcm { key: [0; 32] },
+        )?);
+        for length in [3, 5, 2] {
+            metadata.push(FrameSizes::new(length, 1)?)?;
+        }
+        for start in 0..metadata.logical_len() {
+            let first_end = start.checked_add(1).ok_or("range overflow")?;
+            for end in first_end..=metadata.logical_len() {
+                let (expected_physical, expected) = metadata.range(start, Some(end))?;
+                let (physical, mut owned) = OwnedFrameIter::new(metadata.clone(), start, Some(end))?;
+                if physical != expected_physical || owned.remaining != expected.remaining() {
+                    return Err("owned cursor changed the mapped range".into());
+                }
+                for descriptor in expected {
+                    if owned.next()? != Some(descriptor) {
+                        return Err("owned cursor changed a variable-frame descriptor".into());
+                    }
+                }
+                if owned.next()?.is_some() || owned.remaining != 0 {
+                    return Err("owned cursor did not end at its declared frame count".into());
                 }
             }
         }

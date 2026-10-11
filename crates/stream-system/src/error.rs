@@ -14,6 +14,7 @@ pub enum Error {
     FrameWritePending,
     FrameCapacityExceeded,
     FileTooSmall { limit: u64 },
+    ReadStreamPending(stream_registry::StreamId),
 }
 
 impl fmt::Display for Error {
@@ -32,6 +33,7 @@ impl fmt::Display for Error {
             Self::FileTooSmall { limit } => {
                 write!(f, "maximum file size of {limit} bytes cannot fit one configured frame")
             }
+            Self::ReadStreamPending(id) => write!(f, "stream {id} has not been fully consumed"),
         }
     }
 }
@@ -46,7 +48,17 @@ impl StdError for Error {
             Self::Backend(error) => Some(error),
             Self::Carbon(error) => Some(error),
             Self::Io(error) => Some(error),
-            Self::FileNotOpen | Self::FrameWritePending | Self::FrameCapacityExceeded | Self::FileTooSmall { .. } => None,
+            Self::FileNotOpen | Self::FrameWritePending | Self::FrameCapacityExceeded | Self::FileTooSmall { .. }
+                | Self::ReadStreamPending(_) => None,
+        }
+    }
+}
+
+impl From<carbon_io::SchedulerError<Error>> for Error {
+    fn from(error: carbon_io::SchedulerError<Error>) -> Self {
+        match error {
+            carbon_io::SchedulerError::Backend(error) => error,
+            carbon_io::SchedulerError::Contract(error) => Self::Carbon(error),
         }
     }
 }
