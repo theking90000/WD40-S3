@@ -1,6 +1,6 @@
 use std::{convert::Infallible, error::Error as StdError, fmt, io};
 
-/// Failures while constructing a stream or opening, writing, and finalizing its files.
+/// Failures while constructing a stream or opening, reading, writing, and finalizing its files.
 #[derive(Debug)]
 pub enum Error {
     Random(getrandom::Error),
@@ -25,7 +25,7 @@ impl fmt::Display for Error {
             Self::StreamRegistry(error) => write!(f, "stream registry operation failed: {error}"),
             Self::Backend(error) => write!(f, "stream backend operation failed: {error}"),
             Self::Carbon(error) => write!(f, "CARBON scheduler contract failed: {error}"),
-            Self::Io(error) => write!(f, "stream file writing failed: {error}"),
+            Self::Io(error) => write!(f, "stream file I/O failed: {error}"),
             Self::FileNotOpen => f.write_str("stream file is not open"),
             Self::FrameWritePending => f.write_str("cannot close a stream file with a pending frame write"),
             Self::FrameCapacityExceeded => f.write_str("stream file frame capacity exceeded"),
