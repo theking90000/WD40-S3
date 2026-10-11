@@ -1,3 +1,5 @@
+//! CARBON file reads with owned CRAFT metadata and an incremental frame cursor.
+
 use std::{
     future::Future,
     io,
@@ -32,7 +34,17 @@ enum State {
 /// The selection becomes available only when a complete frame has been decoded.
 #[derive(Debug, Default)]
 pub struct ReadFrame {
+    /// Complete decoded plaintext frame, including bytes outside the selection.
+    ///
+    /// Ownership is exchanged with CARBON on a successful stream frame read.
+    /// Only the bytes identified by [`Self::selected`] belong to the requested
+    /// range. The returned buffer is outside CARBON's shared frame budget.
     pub buffer: Vec<u8>,
+    /// Requested half-open byte range relative to [`Self::buffer`].
+    ///
+    /// May exclude a prefix or suffix of the complete decoded frame. The
+    /// default frame has an empty buffer and selection. A successful producer
+    /// read sets this range within the buffer's bounds.
     pub selected: Range<usize>,
 }
 
@@ -127,6 +139,11 @@ impl OwnedFrameIter {
 /// or its caller. Construction prepares the physical range without registry or backend
 /// I/O. CARBON supplies reusable frame buffers. Each poll performs at most one
 /// backend read; pending polls retain the frame descriptor and byte offset.
+///
+/// This is a low-level [`carbon_io::ReadFile`] implementation, not an
+/// [`futures_io::AsyncRead`] object. [`crate::ReadStream`] normally constructs
+/// and admits these files. Metadata moves with the file and does not borrow the
+/// resolver. Opening can be retried; a read/decode failure is terminal.
 pub struct ReadFile {
     file_registry: FileRegistry,
     file_backend: FileBackend,
@@ -148,6 +165,13 @@ impl ReadFile {
     /// are rejected because CARBON requires a nonzero frame count; the stream
     /// reader must skip them. Metadata is moved into an owned frame cursor,
     /// without collecting descriptors or retaining references into the file.
+    /// `start` and `end` refer to decoded bytes of this part, not the whole
+    /// stream or encoded backend bytes. No file ID or backend object is created.
+    ///
+    /// # Errors
+    /// Returns [`Error::Codec`] for reversed/out-of-bounds ranges or unrepresentable
+    /// sizes, and [`Error::Carbon`] with `ZeroFrameCount` for an empty selection.
+    /// The exact nonzero count must also fit CARBON's `u32` file contract.
     pub fn new(
         file_registry: FileRegistry,
         file_backend: FileBackend,
@@ -175,15 +199,18 @@ impl ReadFile {
     }
 
     /// Requested plaintext range relative to this part, excluding its end.
+    /// This range remains unchanged as frames are consumed.
     pub fn logical_range(&self) -> &Range<u64> {
         &self.logical_range
     }
 }
 
 impl carbon_io::ReadFile<ReadFrame> for ReadFile {
+    /// Registry, backend, codec, range and byte-I/O failures for this file.
     type Error = Error;
 
     /// Exact number of complete frames covering the selection, before opening.
+    /// Remains constant during consumption, including partially selected frames.
     fn frame_count(&self) -> u32 {
         self.frame_count
     }
@@ -193,6 +220,13 @@ impl carbon_io::ReadFile<ReadFrame> for ReadFile {
     /// Pending polls retain the same future. An opening error resets the state
     /// so the next call can resolve a fresh path and retry. An already opened
     /// file succeeds immediately. Dropping the descriptor cancels its operation.
+    /// The physical range is derived from CRAFT metadata; bytes preceding it
+    /// are not read from the backend. Retries preserve the file ID and selection
+    /// but resolve a fresh access path. A terminal read failure cannot be reopened.
+    ///
+    /// # Errors
+    /// Returns codec initialization, access-path lookup or backend opening
+    /// failures. Invalid lifecycle states return [`Error::FileNotOpen`].
     fn poll_open(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
         let this = self.get_mut();
         loop {
@@ -232,6 +266,23 @@ impl carbon_io::ReadFile<ReadFrame> for ReadFile {
         }
     }
 
+    /// Reads and decodes one complete stored frame into CARBON's supplied buffer.
+    ///
+    /// Returns `Some(())` only after decoding succeeds, with the complete raw
+    /// buffer and its logical selection. Returns `None` after the advertised
+    /// frame count. CARBON itself stops at that count without an extra EOF probe.
+    ///
+    /// Each invocation performs at most one backend read. Partial reads retain
+    /// the descriptor and byte offset; the same logical buffer must be supplied
+    /// on subsequent pending polls. The original frame index is preserved for
+    /// decoding. Unlike stream output exchange, this low-level operation can
+    /// modify its supplied work buffer before returning `Pending`.
+    ///
+    /// # Errors
+    /// Reports premature backend EOF, allocation/size failures and decoding or
+    /// byte-I/O errors. A read error clears the work buffer, drops the backend
+    /// reader and makes this file terminal. Polling before opening returns
+    /// [`Error::FileNotOpen`].
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,

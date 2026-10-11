@@ -1,3 +1,5 @@
+//! Fixed-framing codec configuration and CARBON upload destinations.
+
 use std::{
     future::Future,
     io,
@@ -83,6 +85,9 @@ impl OpenedFile {
 }
 
 /// Encryption mode used by each file of a stream.
+///
+/// This enum chooses a mode, not a caller-provided key. Generated keys are
+/// retained in the file's CRAFT metadata stored by the stream registry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Encryption {
     /// Store frames without encryption.
@@ -92,19 +97,38 @@ pub enum Encryption {
 }
 
 /// Object-wide settings used by every destination of a stream writer.
+///
+/// Frame size and encoded file size are separate limits. Capacity is fixed
+/// before opening, using a full plaintext frame plus codec overhead. Compression
+/// savings do not increase that advertised frame capacity. Construct the
+/// caller's [`crate::BytesFrameAllocator`] with the same frame size.
 #[derive(Clone, Copy, Debug)]
 pub struct StreamWriterConfig {
     /// Encryption mode; keys are generated internally for each open attempt.
+    /// An encrypted retry uses a new key as well as a new file ID/access path.
     pub encryption: Encryption,
     /// Compression mode applied independently to each frame.
+    /// [`Compression::None`] stores uncompressed payloads; [`Compression::Lz4`]
+    /// lets CRAFT encode independent blocks with its uncompressed fallback.
     pub compression: Compression,
     /// Fixed raw frame size in bytes, except for the final short frame.
+    /// Must be nonzero and supported by CRAFT. This is a plaintext size, not the
+    /// encrypted/compressed frame's stored size.
     pub frame_size: u64,
     /// Maximum encoded file payload in bytes, including authentication tags.
+    /// Passed to file allocation on each open. Must fit at least one full
+    /// configured frame with overhead. Does not include registry metadata or
+    /// the backend's transport envelope.
     pub max_file_size: u64,
 }
 
 /// File destination for CARBON's write scheduler.
+///
+/// Implements [`carbon_io::WriteFile`] for `Vec<u8>` plaintext frames. The
+/// scheduler owns/replays those frames; this adapter keeps an encoded work copy
+/// during partial backend writes. Opening creates one file; closing finishes
+/// the upload, stores its access path and inserts its metadata as a stream part.
+/// The close output is a part ID, not a complete [`crate::StreamId`].
 pub struct WriteFile {
     file_registry: FileRegistry,
     stream_registry: StreamRegistry,
@@ -116,6 +140,14 @@ pub struct WriteFile {
 
 impl WriteFile {
     /// Validates settings and fixes capacity without allocating an ID or path.
+    ///
+    /// Retains owned registry/backend handles and does not start backend I/O.
+    /// Capacity is limited by the file size, CRAFT's profile and CARBON's `u32`
+    /// frame contract. A fresh encryption key is generated later on opening.
+    ///
+    /// # Errors
+    /// Returns [`Error::Codec`] for invalid framing/size arithmetic or
+    /// [`Error::FileTooSmall`] if the destination cannot fit one full frame.
     pub fn new(
         file_registry: FileRegistry,
         stream_registry: StreamRegistry,
@@ -142,10 +174,13 @@ impl WriteFile {
 }
 
 impl carbon_io::WriteFile<Vec<u8>> for WriteFile {
+    /// Codec, registry, backend, byte-I/O and lifecycle failures.
     type Error = Error;
+    /// Persisted stream part ID linking this file and its CRAFT metadata.
     type Output = StreamPartId;
 
     /// Fixed frame capacity, available before opening the backend writer.
+    /// Remains unchanged across fresh open attempts and replay.
     fn frame_capacity(&self) -> u32 {
         self.frame_capacity
     }
@@ -156,6 +191,13 @@ impl carbon_io::WriteFile<Vec<u8>> for WriteFile {
     /// enabled, a fresh system key. Pending polls retain the same future and
     /// supplied waker. An error resets the destination for a fresh attempt.
     /// Polling an opened destination succeeds without allocating another file.
+    /// Registry lookup and backend opening use the supplied context directly.
+    /// A destination already closing must not be reopened until that operation
+    /// has returned; such polling cancels closing and reports `FileNotOpen`.
+    ///
+    /// # Errors
+    /// Reports file allocation, system key generation, codec initialization or
+    /// backend opening failures. A failed opening can be retried by CARBON.
     fn poll_open(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
         let this = self.get_mut();
         loop {
@@ -204,6 +246,17 @@ impl carbon_io::WriteFile<Vec<u8>> for WriteFile {
         }
     }
 
+    /// Encodes one borrowed plaintext frame and writes its complete stored bytes.
+    ///
+    /// Leaves the input unchanged. CRAFT allocates the encoded work buffer once
+    /// for this logical frame; pending polls reuse it and its byte offset.
+    /// Re-poll with the same logical frame until `Ready`. Metadata advances only
+    /// after all stored bytes have been accepted by the backend.
+    ///
+    /// # Errors
+    /// Reports codec or byte-I/O failures, `FrameCapacityExceeded` when full and
+    /// `FileNotOpen` outside the opened state. A write error resets the file for
+    /// a fresh open; CARBON controls replay according to its retry configuration.
     fn poll_write(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -230,6 +283,16 @@ impl carbon_io::WriteFile<Vec<u8>> for WriteFile {
 
     /// Finishes the upload, registers the file, then persists and returns its stream part ID.
     /// Pending polls retain the same finalization future. Errors permit a fresh open attempt.
+    ///
+    /// Finalization calls the backend's consuming finish operation, then
+    /// `FileRegistry::store`, then `StreamRegistry::insert`. The metadata moves
+    /// into the stream registry. A successful result acknowledges this part;
+    /// [`crate::WriteStream`] stores the complete manifest separately.
+    ///
+    /// # Errors
+    /// Returns `FrameWritePending` if an encoded frame remains unfinished,
+    /// `FileNotOpen` outside the required lifecycle, or backend/registry failures.
+    /// There is no rollback of uploads or registrations that already completed.
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<Self::Output, Error>> {
         let this = self.get_mut();
         if matches!(&this.state, State::Opened(_)) {

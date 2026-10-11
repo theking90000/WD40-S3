@@ -1,3 +1,5 @@
+//! Single-current-stream request admission and progressive CARBON file reads.
+
 use std::{
     future::{Future, poll_fn},
     ops::Range,
@@ -85,6 +87,15 @@ impl CurrentStream {
 /// the current request may hold one file refused by its admission window.
 /// Registry futures, part discovery and backend I/O are polled directly without
 /// tasks. Even when discovery is pending, admitted files continue progressing.
+///
+/// Offsets refer to plaintext stream bytes. Parts preceding the offset are
+/// resolved for their lengths but their backend files are not opened. Metadata
+/// ownership transfers from the registry to each file. The lifetime parameter
+/// belongs only to the borrowed CARBON budget and scheduling configuration.
+///
+/// A frame is consumed here when ownership is delivered to the caller, not when
+/// the application finishes using its bytes. Retained output is outside the
+/// shared budget. For byte-oriented reads, use [`crate::AsyncReadAdapter`].
 pub struct ReadStream<'a> {
     file_registry: FileRegistry,
     stream_registry: StreamRegistry,
@@ -97,6 +108,15 @@ pub struct ReadStream<'a> {
 
 impl<'a> ReadStream<'a> {
     /// Borrows only the caller's shared frame budget and CARBON configuration.
+    ///
+    /// Takes owned registry/backend handles, which can be cloned beforehand.
+    /// Creates no request, resolves no metadata and opens no backend file. Its
+    /// frame factory is internal and produces empty [`ReadFrame`] buffers.
+    /// Separate readers need separate mutable configurations but may share
+    /// one [`FrameBudget`]. Drop a reader before reusing its configuration.
+    ///
+    /// # Errors
+    /// Returns [`Error::Carbon`] for a zero frame budget or invalid window.
     pub fn new(
         file_registry: FileRegistry,
         stream_registry: StreamRegistry,
@@ -125,6 +145,18 @@ impl<'a> ReadStream<'a> {
     /// None reads through its logical EOF. Registry lookup starts on polling.
     /// Bounds beyond EOF are detected during resolution, possibly after output.
     /// Explicitly poll after pushing; this mutation does not wake a task.
+    ///
+    /// The request remains current until resolution has finished and every
+    /// selected frame has been delivered. The method creates a stored lookup
+    /// future, not a task. Empty selections still resolve enough of the stream
+    /// to establish existence and validate their offset, without opening files.
+    ///
+    /// # Errors
+    /// Returns [`Error::ReadStreamPending`] carrying the current ID if another
+    /// request is active, `InputClosed` through [`Error::Carbon`] after sealing
+    /// or failure, and `InvalidRange` through [`Error::Codec`] if `end < start`.
+    /// Rejection leaves the current request intact. Missing streams/parts and
+    /// bounds beyond EOF are reported by subsequent polling.
     pub fn push_stream(
         &mut self,
         stream_id: StreamId,
@@ -159,6 +191,11 @@ impl<'a> ReadStream<'a> {
     }
 
     /// True after resolution finishes and every selected frame is delivered.
+    ///
+    /// Initially true; false while a request is current and permanently false
+    /// after sealing or fatal failure. This is a passive predicate: it neither
+    /// polls nor registers a waker. Re-evaluate guarded `select!` admission after
+    /// a frame or current-request completion event, especially for empty ranges.
     pub fn can_push_stream(&self) -> bool {
         !self.input_closed && self.current.is_none()
     }
@@ -166,6 +203,16 @@ impl<'a> ReadStream<'a> {
     /// Drives discovery and I/O while checking admission of another stream.
     /// Does not consume frames. This also exposes completion of empty selections.
     /// Backend errors remain available through poll_read_frame().
+    ///
+    /// Returns success when another request can be pushed and `Pending` while
+    /// the current request still needs resolution or frame consumption. Existing
+    /// frames must be consumed through [`Self::poll_read_frame`]; this readiness
+    /// poll does not discard them. All progression uses the supplied context.
+    ///
+    /// # Errors
+    /// Returns a retained resolution failure once, or `InputClosed` through
+    /// [`Error::Carbon`] when no more requests are allowed. CARBON backend
+    /// failures are surfaced by the next frame read.
     pub fn poll_can_push_stream(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
         self.poll_progress(cx);
         if let Some(error) = self.error.take() {
@@ -184,6 +231,10 @@ impl<'a> ReadStream<'a> {
     /// Seals stream input, allowing the current request to finish normally.
     /// CARBON input closes once its remaining files have been admitted.
     /// Explicitly poll again after closing; this mutation does not wake a task.
+    ///
+    /// Idempotent. It does not cancel the current selection or close an active
+    /// backend immediately. New requests are rejected; polling continues until
+    /// normal EOF or an error. With no request, the next read returns EOF.
     pub fn close_stream(&mut self) {
         self.input_closed = true;
         self.finish_current();
@@ -193,6 +244,22 @@ impl<'a> ReadStream<'a> {
     /// Pending, EOF and errors preserve the caller's frame. EOF requires closed
     /// input; between requests, open input waits for another push_stream().
     /// A fatal error cancels ongoing operations and releases the frame budget.
+    ///
+    /// `Ok(Some(()))` transfers one complete decoded frame and recycles the
+    /// previous output buffer. `Ok(None)` indicates normal sealed EOF, or EOF
+    /// after a terminal error was already reported. Only [`ReadFrame::selected`]
+    /// belongs to the requested range. Open input with no current request stays
+    /// pending and does not register a request-input waker.
+    ///
+    /// Resolution is bounded per call and cannot prevent admitted files from
+    /// being polled while registry discovery or file admission waits. Cancelling
+    /// a waiting frame future preserves partial operations in this object.
+    ///
+    /// # Errors
+    /// Reports lookup, range, file-opening, backend-read, decoding and scheduler
+    /// failures. Terminal errors are emitted once, then subsequent reads return
+    /// EOF. A failure previously emitted by [`Self::poll_can_push_stream`] is
+    /// not emitted a second time here.
     pub fn poll_read_frame(
         &mut self,
         cx: &mut Context<'_>,
@@ -239,6 +306,11 @@ impl<'a> ReadStream<'a> {
     }
 
     /// Cancellation preserves resolution, admitted files and partial frame reads.
+    ///
+    /// Awaitable form of [`Self::poll_read_frame`] with identical output and
+    /// error semantics. It waits between requests rather than ending the read.
+    /// For a guarded request-source `select!`, use a local polling helper that
+    /// also reports when the current request finishes without producing a frame.
     pub async fn read_frame(&mut self, output: &mut ReadFrame) -> Result<Option<()>, Error> {
         poll_fn(|cx| self.poll_read_frame(cx, output)).await
     }
@@ -246,6 +318,11 @@ impl<'a> ReadStream<'a> {
     /// Advances resolution and backend I/O without consuming an output frame.
     /// Errors are retained for the next frame read. Backend waits use the caller's
     /// waker directly; empty open input requires a push followed by another poll.
+    ///
+    /// Can resolve and open ahead within CARBON's window but cannot complete a
+    /// request whose output frames remain undelivered. Resolution errors may
+    /// also be observed by [`Self::poll_can_push_stream`]. This method returns
+    /// no error itself and does not consume or replace the caller's output.
     pub fn poll_progress(&mut self, cx: &mut Context<'_>) {
         if self.carbon.is_none() {
             return;
@@ -261,6 +338,12 @@ impl<'a> ReadStream<'a> {
     }
 
     /// Drives without consuming frames. Never completes; errors appear on read.
+    ///
+    /// Suitable alongside an independent external future in a `select!`.
+    /// Cancelling this future preserves reader state. It remains pending even
+    /// at EOF or after an error; use frame reads to observe terminal outcomes.
+    /// A frame-read future and this future cannot simultaneously borrow the
+    /// same reader mutably; a frame read already drives its I/O.
     pub async fn progress(&mut self) {
         poll_fn(|cx| {
             self.poll_progress(cx);

@@ -1,3 +1,5 @@
+//! Futures-I/O stream writing and ordered manifest publication.
+
 use std::{
     future::{Future, poll_fn},
     io,
@@ -28,6 +30,13 @@ enum State {
 /// Closing drains CARBON and stores the ordered stream manifest. Flushing is
 /// a no-op. Work advances only while the writer is polled; dropping it does not
 /// finalize the stream.
+///
+/// Implements [`futures_io::AsyncWrite`]. Accepted bytes are framed by CARBON,
+/// encoded by CRAFT and distributed across files according to
+/// [`StreamWriterConfig`]. Each completed file registers its part independently;
+/// successful closing stores the ordered manifest only after all parts finish.
+/// Registry/backend handles are owned; allocator, budget and CARBON configuration
+/// are borrowed until the writer is dropped, including after successful closing.
 pub struct WriteStream<'a> {
     scheduler: WriteScheduler<'a, BytesFrameAllocator, WriteFile>,
     file_registry: FileRegistry,
@@ -45,6 +54,16 @@ impl<'a> WriteStream<'a> {
     /// No file IDs or backend paths are allocated here. The allocator must use
     /// the fixed frame size specified in `config`. The allocator, shared budget,
     /// and CARBON configuration remain borrowed for the writer's lifetime.
+    ///
+    /// The registry and backend handles can be cloned before passing them here.
+    /// File IDs are allocated lazily, only when a destination receives data and
+    /// opens. The constructor does not check that the allocator's frame size
+    /// matches `config.frame_size`; that correspondence is required of the caller.
+    ///
+    /// # Errors
+    /// Returns codec errors for an invalid profile, [`Error::FileTooSmall`] if
+    /// one full frame cannot fit, or [`Error::Carbon`] for invalid scheduling,
+    /// budget or file-admission constraints.
     pub fn new(
         file_registry: FileRegistry,
         stream_registry: StreamRegistry,
@@ -79,6 +98,11 @@ impl<'a> WriteStream<'a> {
     }
 
     /// Returns the persisted stream ID after a successful close.
+    ///
+    /// Returns `None` unless the writer reached its successfully closed state.
+    /// Repeated successful close polls retain the same identifier. Obtaining
+    /// the ID does not release the borrowed CARBON resources; drop the writer
+    /// before reusing its allocator or scheduling configuration.
     pub fn stream_id(&self) -> Option<StreamId> {
         match self.state {
             State::Closed(id) => Some(id),
@@ -91,6 +115,14 @@ impl<'a> WriteStream<'a> {
     /// Remains pending while the stream is open and returns only on error.
     /// Cancelling this future leaves the ongoing operations in the writer,
     /// so it can be used alongside an input read in a `select!` loop.
+    /// No bytes are consumed from the input source by this future. It cannot
+    /// finalize the writer; closing is a separate operation. Dropping only this
+    /// future leaves its current file operations stored in the writer.
+    ///
+    /// # Errors
+    /// Returns an [`io::Error`] when file writing, part registration or the
+    /// scheduler fails. It is intended for the writing phase; polling after
+    /// closing has started reports closed input.
     pub async fn progress(&mut self) -> io::Result<()> {
         poll_fn(|cx| {
             if let Poll::Ready(Err(error)) = Pin::new(&mut *self).poll_write(cx, &[]) {
@@ -185,6 +217,15 @@ impl<'a> WriteStream<'a> {
 }
 
 impl AsyncWrite for WriteStream<'_> {
+    /// Accepts a prefix of plaintext input and advances all scheduled files.
+    ///
+    /// `Ok(count)` acknowledges only the accepted prefix. `Pending` does not
+    /// acknowledge bytes, so the same remaining input must be supplied again.
+    /// Empty input can drive existing work. Acceptance does not imply that a
+    /// file or stream manifest has been durably registered yet.
+    ///
+    /// Errors are wrapped in [`io::Error`]. After a writing failure, or once
+    /// closing begins, further writes are rejected.
     fn poll_write(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -203,10 +244,19 @@ impl AsyncWrite for WriteStream<'_> {
         }
     }
 
+    /// Returns success immediately without draining, finalizing or registering.
+    /// This is a no-op even after closing or failure; use `poll_close` to finish.
     fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
         Poll::Ready(Ok(()))
     }
 
+    /// Ends input, drains the final partial frame and finalizes every file.
+    ///
+    /// After file parts finish, stores their ordered manifest. `Ok(())` makes
+    /// [`WriteStream::stream_id`] available. Pending preserves finalization;
+    /// closing can be resumed after cancelling its waiting future. Further
+    /// plaintext writes are rejected once closing begins. Successful closing
+    /// is idempotent; errors are wrapped in [`io::Error`].
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         let this = self.get_mut();
         match this.poll_finish(cx) {

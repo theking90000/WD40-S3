@@ -1,19 +1,36 @@
+//! Retained causes and lifecycle errors surfaced by stream and file adapters.
+
 use std::{convert::Infallible, error::Error as StdError, fmt, io};
 
 /// Failures while constructing a stream or opening, reading, writing, and finalizing its files.
 #[derive(Debug)]
 pub enum Error {
+    /// The system random generator could not produce a new file encryption key.
     Random(getrandom::Error),
+    /// Invalid codec configuration, metadata, logical range or encoded frame.
     Codec(craft_codec::Error),
+    /// File allocation, access-path resolution or file registration failed.
     FileRegistry(file_registry::Error),
+    /// Part insertion, manifest storage or stream/part resolution failed.
     StreamRegistry(stream_registry::Error),
+    /// Backend opening or upload finalization failed.
     Backend(backends::Error),
+    /// CARBON configuration, admission or file/frame behavior violated its contract.
     Carbon(carbon_io::ContractError),
+    /// An underlying byte read or write failed.
     Io(io::Error),
+    /// A file operation was polled outside its required open state.
     FileNotOpen,
+    /// Closing was attempted before the current encoded frame was fully written.
     FrameWritePending,
+    /// Another frame was supplied after the destination's advertised capacity.
     FrameCapacityExceeded,
-    FileTooSmall { limit: u64 },
+    /// The file limit cannot accommodate one full configured frame and its codec overhead.
+    FileTooSmall {
+        /// Configured maximum encoded file payload, in bytes.
+        limit: u64,
+    },
+    /// Another read request was pushed before this stream's selected frames were consumed.
     ReadStreamPending(stream_registry::StreamId),
 }
 
