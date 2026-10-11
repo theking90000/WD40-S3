@@ -30,6 +30,14 @@ impl traits::BlobRegistry for BlobRegistry {
         }
     }
 
+    async fn can_save(&self, blob_id: BlobId, part_id: PartId) -> Result<(), Error> {
+        match self {
+            Self::Local(registry) => {
+                traits::BlobRegistry::can_save(registry, blob_id, part_id).await
+            }
+        }
+    }
+
     async fn save_part(
         &self,
         blob_id: BlobId,

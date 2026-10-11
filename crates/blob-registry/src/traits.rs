@@ -40,6 +40,15 @@ pub trait BlobRegistry {
     /// Generates an ID and durably creates an open, empty blob.
     fn create(&self) -> impl Future<Output = Result<BlobId, Error>> + Send;
 
+    /// Checks that the blob exists, is open and has no part with this ID.
+    /// Performs no mutation and reserves nothing. The result is a snapshot;
+    /// save_part must still validate atomically when the stream is ready.
+    fn can_save(
+        &self,
+        blob_id: BlobId,
+        part_id: PartId,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+
     /// Saves a part only while the blob is open and its PartId is absent.
     /// The caller verifies the stream and supplies its plaintext byte length.
     /// Equal PartIds in different blobs are independent.

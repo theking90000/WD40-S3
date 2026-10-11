@@ -15,6 +15,7 @@ use futures_util::StreamExt;
 
 let registry = LocalRegistry::new(database)?;
 let blob_id = registry.create().await?;
+registry.can_save(blob_id, 1).await?; // Check before allocating/uploading a stream.
 registry.save_part(blob_id, first_stream_id, 10, 1).await?;
 registry.save_part(blob_id, second_stream_id, 20, 2).await?;
 let length = registry.finalize(blob_id, vec![1, 2]).await?; // 30
@@ -31,6 +32,13 @@ while let Some(slice) = slices.next().await {
 length match. Different parts may reference the same stream. Finalization uses
 exactly the supplied order, including repetitions, and excludes unselected parts.
 An empty list produces a zero-length blob. Zero-length streams are allowed.
+
+`can_save(blob_id, part_id)` returns `Ok(())` only when the blob exists, is open
+and the part ID is absent. It reports `BlobNotFound`, `BlobFinalized` or
+`PartAlreadyExists` otherwise. This read-only transaction lets the caller reject
+an upload before allocating backend files. It reserves nothing: another save or
+finalization may follow the check, so `save_part` repeats the same checks in its
+insertion transaction.
 
 Finalization checks every selected part and rejects total lengths exceeding
 `u64`. Missing parts and length overflow leave an open blob unchanged. Sled

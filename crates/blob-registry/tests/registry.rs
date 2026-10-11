@@ -28,6 +28,59 @@ fn temporary_database() -> TestResult<sled::Db> {
 fn require_send<T: Send>(_: &T) {}
 
 #[test]
+fn can_save_checks_state_without_reserving_a_part() -> TestResult {
+    block_on(async {
+        let database = temporary_database()?;
+        let registry = BlobRegistry::Local(LocalRegistry::new(database.clone())?);
+        check(
+            matches!(
+                registry.can_save(u128::MAX, 1).await,
+                Err(Error::BlobNotFound(u128::MAX))
+            ),
+            "can_save accepted a missing blob",
+        )?;
+        let blob = registry.create().await?;
+        let other = registry.create().await?;
+        let can_save = registry.can_save(blob, 1);
+        require_send(&can_save);
+        can_save.await?;
+        registry.can_save(blob, 1).await?;
+        check(
+            database.open_tree("blob-parts")?.is_empty(),
+            "can_save reserved a part",
+        )?;
+        registry.save_part(blob, 41, 3, 1).await?;
+        check(
+            matches!(
+                registry.can_save(blob, 1).await,
+                Err(Error::PartAlreadyExists { blob_id, part_id: 1 }) if blob_id == blob
+            ),
+            "can_save accepted an existing part",
+        )?;
+        registry.can_save(other, 1).await?;
+        registry.can_save(blob, 2).await?;
+        registry.finalize(blob, vec![1]).await?;
+        for part_id in [1, 2] {
+            check(
+                matches!(
+                    registry.can_save(blob, part_id).await,
+                    Err(Error::BlobFinalized(id)) if id == blob
+                ),
+                "can_save accepted a finalized blob",
+            )?;
+        }
+        check(
+            matches!(
+                registry.save_part(blob, 42, 5, 2).await,
+                Err(Error::BlobFinalized(id)) if id == blob
+            ),
+            "a successful precheck bypassed finalization",
+        )?;
+        Ok(())
+    })
+}
+
+#[test]
 fn enum_preserves_order_repetitions_and_owns_read_plans() -> TestResult {
     block_on(async {
         let registry = BlobRegistry::Local(LocalRegistry::new(temporary_database()?)?);

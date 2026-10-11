@@ -5,7 +5,10 @@ use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
 use sled::{
     Db, Tree,
-    transaction::{ConflictableTransactionError, TransactionError, Transactional},
+    transaction::{
+        ConflictableTransactionError, ConflictableTransactionResult, TransactionError,
+        Transactional, TransactionalTree,
+    },
 };
 
 use crate::{
@@ -80,6 +83,32 @@ fn transaction_error(error: TransactionError<Error>) -> Error {
     }
 }
 
+fn check_can_save(
+    parts: &TransactionalTree,
+    blobs: &TransactionalTree,
+    blob_id: BlobId,
+    part_id: PartId,
+) -> ConflictableTransactionResult<(), Error> {
+    let state = blobs
+        .get(blob_id.to_be_bytes())?
+        .ok_or(ConflictableTransactionError::Abort(Error::BlobNotFound(
+            blob_id,
+        )))?;
+    let state: BlobState = postcard::from_bytes(&state)
+        .map_err(|error| ConflictableTransactionError::Abort(Error::Serialization(error)))?;
+    if let BlobState::Finalized(_) = state {
+        return Err(ConflictableTransactionError::Abort(Error::BlobFinalized(
+            blob_id,
+        )));
+    }
+    if parts.get(part_key(blob_id, part_id))?.is_some() {
+        return Err(ConflictableTransactionError::Abort(
+            Error::PartAlreadyExists { blob_id, part_id },
+        ));
+    }
+    Ok(())
+}
+
 impl BlobRegistry for LocalRegistry {
     type StreamSliceStream = Pin<Box<dyn Stream<Item = Result<StreamSlice, Error>> + Send>>;
 
@@ -102,6 +131,12 @@ impl BlobRegistry for LocalRegistry {
         Ok(id)
     }
 
+    async fn can_save(&self, blob_id: BlobId, part_id: PartId) -> Result<(), Error> {
+        (&self.parts, &self.blobs)
+            .transaction(|(parts, blobs)| check_can_save(parts, blobs, blob_id, part_id))
+            .map_err(transaction_error)
+    }
+
     async fn save_part(
         &self,
         blob_id: BlobId,
@@ -113,22 +148,7 @@ impl BlobRegistry for LocalRegistry {
         let data = postcard::to_allocvec(&BlobPart { stream_id, length })?;
         (&self.parts, &self.blobs)
             .transaction(|(parts, blobs)| {
-                let state = blobs.get(blob_id.to_be_bytes())?.ok_or(
-                    ConflictableTransactionError::Abort(Error::BlobNotFound(blob_id)),
-                )?;
-                let state: BlobState = postcard::from_bytes(&state).map_err(|error| {
-                    ConflictableTransactionError::Abort(Error::Serialization(error))
-                })?;
-                if let BlobState::Finalized(_) = state {
-                    return Err(ConflictableTransactionError::Abort(Error::BlobFinalized(
-                        blob_id,
-                    )));
-                }
-                if parts.get(key)?.is_some() {
-                    return Err(ConflictableTransactionError::Abort(
-                        Error::PartAlreadyExists { blob_id, part_id },
-                    ));
-                }
+                check_can_save(parts, blobs, blob_id, part_id)?;
                 parts.insert(key.as_slice(), data.as_slice())?;
                 Ok(())
             })
