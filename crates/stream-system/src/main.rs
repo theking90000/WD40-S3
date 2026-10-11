@@ -31,7 +31,10 @@ enum CompressionMode {
 }
 
 #[derive(Parser)]
-#[command(version, about = "Upload or download streams using Discord and persistent registries")]
+#[command(
+    version,
+    about = "Upload or download streams using Discord and persistent registries"
+)]
 struct Args {
     #[command(subcommand)]
     command: Command,
@@ -97,7 +100,6 @@ struct DownloadArgs {
 
 #[derive(clap::Args)]
 struct CommonArgs {
-
     /// Persistent file registry database directory.
     #[arg(
         long,
@@ -141,11 +143,21 @@ struct CommonArgs {
     target_frames: NonZeroUsize,
 
     /// CARBON discovery horizon, used by reading rather than writing.
-    #[arg(long, global = true, env = "WD40_OPEN_AHEAD_FRAMES", default_value = "1024")]
+    #[arg(
+        long,
+        global = true,
+        env = "WD40_OPEN_AHEAD_FRAMES",
+        default_value = "1024"
+    )]
     open_ahead_frames: usize,
 
     /// Maximum number of active backend files.
-    #[arg(long, global = true, env = "WD40_MAX_ACTIVE_FILES", default_value = "16")]
+    #[arg(
+        long,
+        global = true,
+        env = "WD40_MAX_ACTIVE_FILES",
+        default_value = "16"
+    )]
     max_active_files: NonZeroUsize,
 
     /// Retries per file. A nonzero value requires a budget that fits a whole file.
@@ -161,11 +173,21 @@ struct CommonArgs {
     pool_max_open: NonZeroUsize,
 
     /// DNS, TCP and TLS establishment timeout in milliseconds.
-    #[arg(long, global = true, env = "WD40_POOL_CONNECT_TIMEOUT_MS", default_value = "10000")]
+    #[arg(
+        long,
+        global = true,
+        env = "WD40_POOL_CONNECT_TIMEOUT_MS",
+        default_value = "10000"
+    )]
     pool_connect_timeout_ms: u64,
 
     /// Idle connection expiration in milliseconds. Zero disables reuse.
-    #[arg(long, global = true, env = "WD40_POOL_IDLE_TIMEOUT_MS", default_value = "60000")]
+    #[arg(
+        long,
+        global = true,
+        env = "WD40_POOL_IDLE_TIMEOUT_MS",
+        default_value = "60000"
+    )]
     pool_idle_timeout_ms: u64,
 
     /// Optional maximum connection age in milliseconds.
@@ -245,10 +267,26 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
     );
     match command {
         Command::Upload(args) => {
-            upload(args, file_registry, stream_registry, backend, &budget, &mut carbon_config).await
+            upload(
+                args,
+                file_registry,
+                stream_registry,
+                backend,
+                &budget,
+                &mut carbon_config,
+            )
+            .await
         }
         Command::Download(args) => {
-            download(args, file_registry, stream_registry, backend, &budget, &mut carbon_config).await
+            download(
+                args,
+                file_registry,
+                stream_registry,
+                backend,
+                &budget,
+                &mut carbon_config,
+            )
+            .await
         }
     }
 }
@@ -323,7 +361,11 @@ async fn download(
     carbon_config: &mut SchedulerConfig,
 ) -> Result<(), Box<dyn Error>> {
     let mut stream = ReadStream::new(
-        file_registry, stream_registry, backend, budget, carbon_config,
+        file_registry,
+        stream_registry,
+        backend,
+        budget,
+        carbon_config,
     )?;
     stream.push_stream(args.stream_id, args.start, args.end)?;
     stream.close_stream();
@@ -335,7 +377,10 @@ async fn download(
     let mut frame = ReadFrame::default();
     while stream.read_frame(&mut frame).await?.is_some() {
         let bytes = frame.buffer.get(frame.selected.clone()).ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidData, "invalid decoded frame selection")
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "invalid decoded frame selection",
+            )
         })?;
         output.write_all(bytes).await?;
     }
