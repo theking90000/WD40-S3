@@ -137,21 +137,19 @@ impl RegistryBackend for DiscordRegistry {
         stream::iter(access_paths.chunks(DISCORD_RENEW_BATCH_SIZE))
             .then(move |paths| async move {
                 let mut urls: Vec<_> = paths.iter().map(|path| path.0.url.clone()).collect();
-                if paths.iter().any(Expired::is_expired) {
+                let expired_urls: Vec<_> = urls
+                    .iter_mut()
+                    .zip(paths)
+                    .filter_map(|(url, path)| path.is_expired().then_some(url))
+                    .collect();
+                if !expired_urls.is_empty() {
                     let credentials = self
                         .bot_credentials
                         .get()
                         .ok_or(Error::MissingBotCredentials)?;
                     let credentials = BotCredentials { token: credentials };
                     let mut connection = self.pool.acquire().await?;
-                    renew_urls(
-                        &mut connection,
-                        &credentials,
-                        urls.iter_mut().zip(paths).filter_map(|(url, path)| {
-                            path.is_expired().then_some(url)
-                        }),
-                    )
-                    .await?;
+                    renew_urls(&mut connection, &credentials, expired_urls).await?;
                     connection.release();
                 }
 
