@@ -25,7 +25,9 @@ impl traits::FileRegistry for FileRegistry {
         max_file_size: u64,
     ) -> Result<Self::WriteAccessPathStream, Error> {
         match self {
-            Self::Local(registry) => traits::FileRegistry::create(registry, count, max_file_size).await,
+            Self::Local(registry) => {
+                traits::FileRegistry::create(registry, count, max_file_size).await
+            }
         }
     }
 

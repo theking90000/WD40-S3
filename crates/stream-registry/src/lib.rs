@@ -26,7 +26,9 @@ impl traits::StreamRegistry for StreamRegistry {
 
     async fn insert(&self, file_id: FileId, metadata: Metadata) -> Result<StreamPartId, Error> {
         match self {
-            Self::Local(registry) => traits::StreamRegistry::insert(registry, file_id, metadata).await,
+            Self::Local(registry) => {
+                traits::StreamRegistry::insert(registry, file_id, metadata).await
+            }
         }
     }
 

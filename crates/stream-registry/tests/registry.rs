@@ -90,16 +90,17 @@ fn enum_preserves_manifest_order_repetitions_and_empty_streams() -> TestResult {
         drop(requests);
         let parts = stream.try_collect::<Vec<_>>().await?;
         check(
-            parts == vec![
-                expected_first.clone(),
-                expected_second.clone(),
-                expected_first.clone(),
-                expected_second.clone(),
-                expected_first.clone(),
-                expected_first.clone(),
-                expected_second,
-                expected_first,
-            ],
+            parts
+                == vec![
+                    expected_first.clone(),
+                    expected_second.clone(),
+                    expected_first.clone(),
+                    expected_second.clone(),
+                    expected_first.clone(),
+                    expected_first.clone(),
+                    expected_second,
+                    expected_first,
+                ],
             "part retrieval changed file IDs, metadata, order or repetitions",
         )?;
         check(
@@ -134,11 +135,18 @@ fn missing_part_and_length_overflow_do_not_publish_manifests() -> TestResult {
         })?;
         let large = registry.insert(42, large).await?;
         check(
-            matches!(registry.store(vec![large, small]).await, Err(Error::LengthOverflow)),
+            matches!(
+                registry.store(vec![large, small]).await,
+                Err(Error::LengthOverflow)
+            ),
             "store accepted an overflowing logical length",
         )?;
         check(
-            database.open_tree("stream-manifests")?.iter().next().is_none(),
+            database
+                .open_tree("stream-manifests")?
+                .iter()
+                .next()
+                .is_none(),
             "failed store published a partial manifest",
         )?;
         let id = registry.store(vec![small]).await?;
@@ -162,14 +170,22 @@ fn missing_reads_are_lazy_and_terminate_after_the_error() -> TestResult {
             "retrieve_parts failed before yielding the preceding stream's part",
         )?;
         check(
-            matches!(parts.next().await, Some(Err(Error::StreamNotFound(u128::MAX)))),
+            matches!(
+                parts.next().await,
+                Some(Err(Error::StreamNotFound(u128::MAX)))
+            ),
             "retrieve_parts did not identify the missing stream",
         )?;
-        check(parts.next().await.is_none(), "retrieve_parts continued after a missing stream")?;
+        check(
+            parts.next().await.is_none(),
+            "retrieve_parts continued after a missing stream",
+        )?;
 
         let missing = registry.insert(42, metadata(5)?).await?;
         let broken = registry.store(vec![part, missing, part]).await?;
-        database.open_tree("stream-parts")?.remove(missing.to_be_bytes())?;
+        database
+            .open_tree("stream-parts")?
+            .remove(missing.to_be_bytes())?;
         let mut parts = registry.retrieve_parts(&[broken, id]).await?;
         check(
             matches!(parts.next().await, Some(Ok(value)) if value.file_id == 41),
@@ -179,7 +195,10 @@ fn missing_reads_are_lazy_and_terminate_after_the_error() -> TestResult {
             matches!(parts.next().await, Some(Err(Error::StreamPartNotFound(value))) if value == missing),
             "retrieve_parts did not identify the missing part",
         )?;
-        check(parts.next().await.is_none(), "retrieve_parts continued after an error")
+        check(
+            parts.next().await.is_none(),
+            "retrieve_parts continued after an error",
+        )
     })
 }
 
@@ -190,7 +209,9 @@ fn corrupted_parts_abort_store_and_preserve_the_serialization_cause() -> TestRes
         let registry = LocalRegistry::new(database.clone())?;
         let id = registry.insert(41, metadata(3)?).await?;
         let stream = registry.store(vec![id]).await?;
-        database.open_tree("stream-parts")?.insert(id.to_be_bytes(), vec![0xff])?;
+        database
+            .open_tree("stream-parts")?
+            .insert(id.to_be_bytes(), vec![0xff])?;
 
         check(
             matches!(registry.store(vec![id]).await, Err(Error::Serialization(_))),
@@ -203,11 +224,17 @@ fn corrupted_parts_abort_store_and_preserve_the_serialization_cause() -> TestRes
         let mut parts = registry.retrieve_parts(&[stream, stream]).await?;
         match parts.next().await {
             Some(Err(error @ Error::Serialization(_))) => {
-                check(error.source().is_some(), "serialization error lost its cause")?;
+                check(
+                    error.source().is_some(),
+                    "serialization error lost its cause",
+                )?;
             }
             _ => return Err("corrupt metadata did not produce a serialization error".into()),
         }
-        check(parts.next().await.is_none(), "corrupt part read continued after its error")
+        check(
+            parts.next().await.is_none(),
+            "corrupt part read continued after its error",
+        )
     })
 }
 
@@ -237,10 +264,20 @@ fn manifests_and_metadata_survive_database_reopening() -> TestResult {
             "manifest did not survive database reopening",
         )?;
         check(
-            registry.retrieve_parts(&[stream]).await?.try_collect::<Vec<_>>().await?
+            registry
+                .retrieve_parts(&[stream])
+                .await?
+                .try_collect::<Vec<_>>()
+                .await?
                 == vec![
-                    StreamPart { file_id: 41, metadata: metadata(3)? },
-                    StreamPart { file_id: 41, metadata: metadata(3)? },
+                    StreamPart {
+                        file_id: 41,
+                        metadata: metadata(3)?,
+                    },
+                    StreamPart {
+                        file_id: 41,
+                        metadata: metadata(3)?,
+                    },
                 ],
             "CRAFT metadata did not survive database reopening",
         )?;

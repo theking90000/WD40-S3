@@ -97,9 +97,9 @@ impl StreamRegistry for LocalRegistry {
                     let part: StreamPart = postcard::from_bytes(&data).map_err(|error| {
                         ConflictableTransactionError::Abort(Error::Serialization(error))
                     })?;
-                    length = length.checked_add(part.metadata.logical_len()).ok_or(
-                        ConflictableTransactionError::Abort(Error::LengthOverflow),
-                    )?;
+                    length = length
+                        .checked_add(part.metadata.logical_len())
+                        .ok_or(ConflictableTransactionError::Abort(Error::LengthOverflow))?;
                 }
                 let data = postcard::to_allocvec(&StreamManifest {
                     parts: parts.clone(),
@@ -117,7 +117,11 @@ impl StreamRegistry for LocalRegistry {
     }
 
     async fn retrieve_parts(&self, ids: &[StreamId]) -> Result<Self::StreamPartStream, Error> {
-        let state = Some((self.clone(), ids.to_vec().into_iter(), Vec::new().into_iter()));
+        let state = Some((
+            self.clone(),
+            ids.to_vec().into_iter(),
+            Vec::new().into_iter(),
+        ));
         Ok(Box::pin(
             stream::unfold(state, |state| async move {
                 let (registry, mut ids, mut parts) = state?;
@@ -138,5 +142,4 @@ impl StreamRegistry for LocalRegistry {
             .fuse(),
         ))
     }
-
 }

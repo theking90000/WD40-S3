@@ -5,7 +5,9 @@ use std::{
     task::{Context, Poll, ready},
 };
 
-use carbon_io::{AsyncFilesWrite, BytesFrameAllocator, FrameBudget, SchedulerConfig, WriteScheduler};
+use carbon_io::{
+    AsyncFilesWrite, BytesFrameAllocator, FrameBudget, SchedulerConfig, WriteScheduler,
+};
 use futures_io::AsyncWrite;
 use stream_registry::{StreamId, StreamPartId, traits::StreamRegistry as _};
 
@@ -52,12 +54,15 @@ impl<'a> WriteStream<'a> {
         budget: &'a FrameBudget,
         carbon_config: &'a mut SchedulerConfig,
     ) -> Result<Self, Error> {
-        let mut scheduler = WriteScheduler::new(allocator, budget, carbon_config)
-            .map_err(Error::Carbon)?;
+        let mut scheduler =
+            WriteScheduler::new(allocator, budget, carbon_config).map_err(Error::Carbon)?;
         // Populate the window before writing; later replacements use pop_swap.
         while scheduler.accept_file() {
             let file = WriteFile::new(
-                file_registry.clone(), stream_registry.clone(), backend.clone(), config,
+                file_registry.clone(),
+                stream_registry.clone(),
+                backend.clone(),
+                config,
             )?;
             scheduler.push_file(file).map_err(Error::from)?;
         }
@@ -97,13 +102,16 @@ impl<'a> WriteStream<'a> {
                 return Poll::Ready(Err(io::Error::other(error)));
             }
             Poll::Pending
-        }).await
+        })
+        .await
     }
 
     fn new_file(&self) -> Result<WriteFile, Error> {
         WriteFile::new(
-            self.file_registry.clone(), self.stream_registry.clone(),
-            self.backend.clone(), self.config,
+            self.file_registry.clone(),
+            self.stream_registry.clone(),
+            self.backend.clone(),
+            self.config,
         )
     }
 
@@ -114,7 +122,10 @@ impl<'a> WriteStream<'a> {
                     let replacement = self.new_file()?;
                     self.scheduler.pop_swap(replacement).map_err(Error::from)?
                 }
-                State::Closing => self.scheduler.pop_file().map_err(Error::from)?
+                State::Closing => self
+                    .scheduler
+                    .pop_file()
+                    .map_err(Error::from)?
                     .ok_or(Error::Carbon(carbon_io::ContractError::AdmissionNotReady))?,
                 _ => return Err(Error::Carbon(carbon_io::ContractError::InputClosed)),
             };
@@ -130,8 +141,8 @@ impl<'a> WriteStream<'a> {
         }
         loop {
             self.collect_parts()?;
-            let status = ready!(Pin::new(&mut self.scheduler).poll_write(cx, input))
-                .map_err(Error::from)?;
+            let status =
+                ready!(Pin::new(&mut self.scheduler).poll_write(cx, input)).map_err(Error::from)?;
             self.completed_files = status.completed_files;
             if let Some(count) = status.output {
                 // Acknowledge consumed bytes before any more fallible work.

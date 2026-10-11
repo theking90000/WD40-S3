@@ -96,11 +96,7 @@ impl DiscordRegistry {
     /// Creates a backend from an existing pool and both credential lists.
     ///
     /// The caller must configure the pool for TLS connections to `discord.com:443`.
-    pub fn new(
-        pool: Pool,
-        webhook_credentials: Vec<String>,
-        bot_credentials: Vec<String>,
-    ) -> Self {
+    pub fn new(pool: Pool, webhook_credentials: Vec<String>, bot_credentials: Vec<String>) -> Self {
         Self {
             pool,
             webhook_credentials: RotatingVec::new(
@@ -124,7 +120,11 @@ impl RegistryBackend for DiscordRegistry {
         count: usize,
         max_file_size: u64,
     ) -> impl Stream<Item = Self::WriteAccessPath> + Send {
-        let count = if max_file_size <= DISCORD_MAX_FILE_SIZE { count } else { 0 };
+        let count = if max_file_size <= DISCORD_MAX_FILE_SIZE {
+            count
+        } else {
+            0
+        };
         stream::iter((0..count).map_while(|_| self.webhook_credentials.get().cloned()))
     }
 
@@ -180,7 +180,10 @@ mod tests {
         {
             let oversized = RegistryBackend::write(&backend, 1, 20_000_001);
             let mut oversized = std::pin::pin!(oversized);
-            if !matches!(oversized.as_mut().poll_next(&mut context), Poll::Ready(None)) {
+            if !matches!(
+                oversized.as_mut().poll_next(&mut context),
+                Poll::Ready(None)
+            ) {
                 return Err("write path accepted an unsupported file size".into());
             }
         }

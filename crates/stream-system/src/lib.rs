@@ -7,10 +7,10 @@ mod read_stream;
 mod write_file;
 mod write_stream;
 
+pub use async_read::AsyncReadAdapter;
 pub use backends::FileBackend;
 pub use carbon_io::{BytesFrameAllocator, FrameBudget, SchedulerConfig, Window};
 pub use craft_codec::Compression;
-pub use async_read::AsyncReadAdapter;
 pub use error::Error;
 pub use file_registry::FileRegistry;
 pub use read_file::{ReadFile, ReadFrame};

@@ -24,7 +24,9 @@ impl fmt::Display for Error {
             Self::MissingReadAccessPath(id) => {
                 write!(f, "backend returned no read access path for file {id}")
             }
-            Self::MissingWriteAccessPath => f.write_str("backend returned too few write access paths"),
+            Self::MissingWriteAccessPath => {
+                f.write_str("backend returned too few write access paths")
+            }
         }
     }
 }

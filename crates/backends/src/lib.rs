@@ -69,7 +69,9 @@ impl WriteFile {
     pub async fn finish(self) -> Result<AccessPath, Error> {
         match self {
             #[cfg(feature = "discord")]
-            Self::Discord(file) => Ok(AccessPath::Discord(DiscordAccessPath::from(file.finish().await?))),
+            Self::Discord(file) => Ok(AccessPath::Discord(DiscordAccessPath::from(
+                file.finish().await?,
+            ))),
             #[cfg(feature = "telegram")]
             Self::Telegram => Err(Error::UnsupportedBackend),
         }
@@ -133,7 +135,9 @@ impl traits::FileBackend for FileBackend {
         match (self, path) {
             #[cfg(feature = "discord")]
             (Self::Discord(backend), WriteAccessPath::Discord(path)) => {
-                traits::FileBackend::write(backend, path).await.map(WriteFile::Discord)
+                traits::FileBackend::write(backend, path)
+                    .await
+                    .map(WriteFile::Discord)
             }
             #[cfg(feature = "telegram")]
             (Self::Telegram, WriteAccessPath::Telegram) => unimplemented!("Telegram file backend"),
@@ -151,7 +155,9 @@ impl traits::FileBackend for FileBackend {
         match (self, path) {
             #[cfg(feature = "discord")]
             (Self::Discord(backend), ReadAccessPath::Discord(path)) => {
-                traits::FileBackend::read(backend, path, start, end).await.map(ReadFile::Discord)
+                traits::FileBackend::read(backend, path, start, end)
+                    .await
+                    .map(ReadFile::Discord)
             }
             #[cfg(feature = "telegram")]
             (Self::Telegram, ReadAccessPath::Telegram) => unimplemented!("Telegram file backend"),
@@ -245,7 +251,9 @@ impl traits::RegistryBackend for RegistryBackend {
         access_paths: &'stream [Self::AccessPath],
     ) -> impl Stream<Item = Result<Self::ReadAccessPath, Error>> + Send + 'stream {
         stream::iter(access_paths).flat_map(
-            move |path| -> Pin<Box<dyn Stream<Item = Result<Self::ReadAccessPath, Error>> + Send + 'stream>> {
+            move |path| -> Pin<
+                Box<dyn Stream<Item = Result<Self::ReadAccessPath, Error>> + Send + 'stream>,
+            > {
                 #[allow(unreachable_patterns)]
                 match (self, path) {
                     #[cfg(feature = "discord")]

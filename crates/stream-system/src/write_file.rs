@@ -6,7 +6,9 @@ use std::{
 };
 
 use backends::traits::FileBackend as _;
-use craft_codec::{Compression, Config, Encoder, Encryption as CodecEncryption, FrameSizes, Framing, Metadata};
+use craft_codec::{
+    Compression, Config, Encoder, Encryption as CodecEncryption, FrameSizes, Framing, Metadata,
+};
 use file_registry::{FileAccess, FileId, WriteAccessPath, traits::FileRegistry as _};
 use futures_io::AsyncWrite;
 use futures_util::StreamExt;
@@ -34,23 +36,24 @@ struct OpenedFile {
 }
 
 impl OpenedFile {
-    fn poll_write(
-        &mut self,
-        cx: &mut Context<'_>,
-        frame: &[u8],
-    ) -> Poll<Result<(), Error>> {
+    fn poll_write(&mut self, cx: &mut Context<'_>, frame: &[u8]) -> Poll<Result<(), Error>> {
         if self.buffer.is_none() {
             // ponytail: CRAFT owns allocation and encoding; pending polls retain its result.
-            self.buffer = Some(self.encoder
-                .encode_frame_alloc(self.metadata.frame_count(), frame)
-                .map_err(Error::Codec)?);
+            self.buffer = Some(
+                self.encoder
+                    .encode_frame_alloc(self.metadata.frame_count(), frame)
+                    .map_err(Error::Codec)?,
+            );
             self.written = 0;
         }
 
-        let (buffer, sizes) = self.buffer.as_ref()
+        let (buffer, sizes) = self
+            .buffer
+            .as_ref()
             .ok_or(Error::Codec(craft_codec::Error::InvalidMetadata))?;
         while self.written < buffer.len() {
-            let remaining = buffer.get(self.written..)
+            let remaining = buffer
+                .get(self.written..)
                 .ok_or(Error::Codec(craft_codec::Error::Overflow))?;
             let count = std::task::ready!(Pin::new(&mut self.file).poll_write(cx, remaining))
                 .map_err(Error::Io)?;
@@ -66,7 +69,9 @@ impl OpenedFile {
                     "backend reported more written bytes than supplied",
                 ))));
             }
-            self.written = self.written.checked_add(count)
+            self.written = self
+                .written
+                .checked_add(count)
                 .ok_or(Error::Codec(craft_codec::Error::Overflow))?;
         }
 
@@ -121,7 +126,9 @@ impl WriteFile {
         let profile = codec_config(config, [0; 32])?;
         let frame_capacity = capacity_for_limit(&profile, config.max_file_size)?;
         if frame_capacity == 0 {
-            return Err(Error::FileTooSmall { limit: config.max_file_size });
+            return Err(Error::FileTooSmall {
+                limit: config.max_file_size,
+            });
         }
         Ok(Self {
             file_registry,
@@ -223,10 +230,7 @@ impl carbon_io::WriteFile<Vec<u8>> for WriteFile {
 
     /// Finishes the upload, registers the file, then persists and returns its stream part ID.
     /// Pending polls retain the same finalization future. Errors permit a fresh open attempt.
-    fn poll_close(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<Self::Output, Error>> {
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<Self::Output, Error>> {
         let this = self.get_mut();
         if matches!(&this.state, State::Opened(_)) {
             let State::Opened(opened) = std::mem::replace(&mut this.state, State::Closed) else {
@@ -240,10 +244,18 @@ impl carbon_io::WriteFile<Vec<u8>> for WriteFile {
             // ponytail: finish also closes the backend; keep one owned future across polls.
             this.state = State::Closing(Box::pin(async move {
                 let access_path = opened.file.finish().await.map_err(Error::Backend)?;
-                let file = FileAccess { id: opened.file_id, access_path };
-                file_registry.store(&[file]).await.map_err(Error::FileRegistry)?;
-                stream_registry.insert(opened.file_id, opened.metadata)
-                    .await.map_err(Error::StreamRegistry)
+                let file = FileAccess {
+                    id: opened.file_id,
+                    access_path,
+                };
+                file_registry
+                    .store(&[file])
+                    .await
+                    .map_err(Error::FileRegistry)?;
+                stream_registry
+                    .insert(opened.file_id, opened.metadata)
+                    .await
+                    .map_err(Error::StreamRegistry)
             }));
         }
 
@@ -323,19 +335,24 @@ mod tests {
     fn capacity_respects_codec_overhead() -> Result<(), Box<dyn std::error::Error>> {
         for encryption in [Encryption::None, Encryption::Aes256] {
             for compression in [Compression::None, Compression::Lz4] {
-                let config = codec_config(StreamWriterConfig {
-                    encryption,
-                    compression,
-                    frame_size: 4096,
-                    max_file_size: 8224,
-                }, [0; 32])?;
+                let config = codec_config(
+                    StreamWriterConfig {
+                        encryption,
+                        compression,
+                        frame_size: 4096,
+                        max_file_size: 8224,
+                    },
+                    [0; 32],
+                )?;
                 let limits = match encryption {
                     Encryption::None => [(4095, 0), (4096, 1), (8191, 1), (8192, 2)],
                     Encryption::Aes256 => [(4111, 0), (4112, 1), (8223, 1), (8224, 2)],
                 };
                 for (limit, expected) in limits {
                     if capacity_for_limit(&config, limit)? != expected {
-                        return Err("capacity ignored codec overhead or partial frame allowance".into());
+                        return Err(
+                            "capacity ignored codec overhead or partial frame allowance".into()
+                        );
                     }
                 }
             }
@@ -355,12 +372,15 @@ mod tests {
                 };
                 let (mut metadata, mut encoder) = new_codec(settings)?;
                 let expected_encryption = match encryption {
-                    Encryption::None => matches!(metadata.config().encryption(), CodecEncryption::None),
-                    Encryption::Aes256 => matches!(metadata.config().encryption(), CodecEncryption::Aes256Gcm { .. }),
+                    Encryption::None => {
+                        matches!(metadata.config().encryption(), CodecEncryption::None)
+                    }
+                    Encryption::Aes256 => matches!(
+                        metadata.config().encryption(),
+                        CodecEncryption::Aes256Gcm { .. }
+                    ),
                 };
-                if metadata.config().compression() != compression
-                    || !expected_encryption
-                {
+                if metadata.config().compression() != compression || !expected_encryption {
                     return Err("metadata does not match requested codec options".into());
                 }
                 let original = vec![42; 4096];
@@ -369,7 +389,9 @@ mod tests {
                 if u64::try_from(encoded.len())? > settings.max_file_size {
                     return Err("encoded frame exceeded the configured file size".into());
                 }
-                let spec = metadata.frame(0).ok_or("encoded frame missing from metadata")?;
+                let spec = metadata
+                    .frame(0)
+                    .ok_or("encoded frame missing from metadata")?;
                 Decoder::try_from(&metadata)?.decode_frame(spec, &mut encoded)?;
                 if encoded != original {
                     return Err("configured codec failed its roundtrip".into());
@@ -399,19 +421,32 @@ mod tests {
         {
             return Err("unexpected initial codec profile".into());
         }
-        if !matches!(first.config().encryption(), CodecEncryption::Aes256Gcm { .. }) {
+        if !matches!(
+            first.config().encryption(),
+            CodecEncryption::Aes256Gcm { .. }
+        ) {
             return Err("AES encryption was not initialized".into());
         }
 
         let original = vec![42; 4096];
         let (mut encoded, sizes) = encoder.encode_frame_alloc(0, &original)?;
         first.push(sizes)?;
-        let spec = first.frame(0).ok_or("encoded frame missing from metadata")?;
+        let spec = first
+            .frame(0)
+            .ok_or("encoded frame missing from metadata")?;
         Decoder::try_from(&first)?.decode_frame(spec, &mut encoded)?;
         if encoded != original {
             return Err("encoder does not match the generated metadata".into());
         }
-        if codec_config(StreamWriterConfig { frame_size: 0, ..settings }, [0; 32]).is_ok() {
+        if codec_config(
+            StreamWriterConfig {
+                frame_size: 0,
+                ..settings
+            },
+            [0; 32],
+        )
+        .is_ok()
+        {
             return Err("zero frame size was accepted".into());
         }
         Ok(())

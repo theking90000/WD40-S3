@@ -33,14 +33,17 @@ struct CurrentStream {
 impl CurrentStream {
     fn select_part(&mut self, length: u64) -> Result<Option<Range<u64>>, Error> {
         let position = self.position_in_stream;
-        let next = position.checked_add(length)
+        let next = position
+            .checked_add(length)
             .ok_or(Error::Codec(craft_codec::Error::Overflow))?;
         let start = self.start.max(position);
         let end = self.end.unwrap_or(next).min(next);
         let selection = if start < end {
-            let local_start = start.checked_sub(position)
+            let local_start = start
+                .checked_sub(position)
                 .ok_or(Error::Codec(craft_codec::Error::Overflow))?;
-            let local_end = end.checked_sub(position)
+            let local_end = end
+                .checked_sub(position)
                 .ok_or(Error::Codec(craft_codec::Error::Overflow))?;
             Some(local_start..local_end)
         } else {
@@ -102,8 +105,11 @@ impl<'a> ReadStream<'a> {
         carbon_config: &'a mut SchedulerConfig,
     ) -> Result<Self, Error> {
         let carbon = ReadScheduler::new(
-            ReadFrame::default as fn() -> ReadFrame, budget, carbon_config,
-        ).map_err(Error::Carbon)?;
+            ReadFrame::default as fn() -> ReadFrame,
+            budget,
+            carbon_config,
+        )
+        .map_err(Error::Carbon)?;
         Ok(Self {
             file_registry,
             stream_registry,
@@ -119,7 +125,12 @@ impl<'a> ReadStream<'a> {
     /// None reads through its logical EOF. Registry lookup starts on polling.
     /// Bounds beyond EOF are detected during resolution, possibly after output.
     /// Explicitly poll after pushing; this mutation does not wake a task.
-    pub fn push_stream(&mut self, stream_id: StreamId, start: u64, end: Option<u64>) -> Result<(), Error> {
+    pub fn push_stream(
+        &mut self,
+        stream_id: StreamId,
+        start: u64,
+        end: Option<u64>,
+    ) -> Result<(), Error> {
         if self.input_closed {
             return Err(Error::Carbon(carbon_io::ContractError::InputClosed));
         }
@@ -135,7 +146,10 @@ impl<'a> ReadStream<'a> {
             start,
             end,
             resolution: Resolution::Opening(Box::pin(async move {
-                registry.retrieve_parts(&[stream_id]).await.map_err(Error::StreamRegistry)
+                registry
+                    .retrieve_parts(&[stream_id])
+                    .await
+                    .map_err(Error::StreamRegistry)
             })),
             position_in_stream: 0,
             frames_remaining: 0,
@@ -201,14 +215,18 @@ impl<'a> ReadStream<'a> {
         };
         match carbon.poll_read(cx, output) {
             Poll::Ready(Ok(Some(()))) => {
-                let remaining = self.current.as_ref()
+                let remaining = self
+                    .current
+                    .as_ref()
                     .and_then(|current| current.frames_remaining.checked_sub(1));
                 if let (Some(current), Some(remaining)) = (&mut self.current, remaining) {
                     current.frames_remaining = remaining;
                     self.finish_current();
                 } else {
                     // A swapped frame is acknowledged before reporting a later error.
-                    self.fail(Error::Carbon(carbon_io::ContractError::InvalidFramePosition));
+                    self.fail(Error::Carbon(
+                        carbon_io::ContractError::InvalidFramePosition,
+                    ));
                 }
                 Poll::Ready(Ok(Some(())))
             }
@@ -247,7 +265,8 @@ impl<'a> ReadStream<'a> {
         poll_fn(|cx| {
             self.poll_progress(cx);
             Poll::<()>::Pending
-        }).await
+        })
+        .await
     }
 
     fn resolve_current(&mut self, cx: &mut Context<'_>) -> Result<(), Error> {
@@ -258,7 +277,9 @@ impl<'a> ReadStream<'a> {
         for _ in 0..32 {
             if let Some(file) = current.next_file.take() {
                 let count = u64::from(carbon_io::ReadFile::frame_count(&file));
-                let remaining = current.frames_remaining.checked_add(count)
+                let remaining = current
+                    .frames_remaining
+                    .checked_add(count)
                     .ok_or(Error::Codec(craft_codec::Error::Overflow))?;
                 match carbon.push_file(file) {
                     Ok(()) => current.frames_remaining = remaining,
@@ -286,8 +307,12 @@ impl<'a> ReadStream<'a> {
                     };
                     if let Some(range) = current.select_part(part.metadata.logical_len())? {
                         current.next_file = Some(ReadFile::new(
-                            self.file_registry.clone(), self.backend.clone(),
-                            part.file_id, part.metadata, range.start, Some(range.end),
+                            self.file_registry.clone(),
+                            self.backend.clone(),
+                            part.file_id,
+                            part.metadata,
+                            range.start,
+                            Some(range.end),
                         )?);
                     }
                 }
@@ -302,7 +327,10 @@ impl<'a> ReadStream<'a> {
         if self.current.as_ref().is_some_and(CurrentStream::consumed) {
             self.current = None;
         }
-        let files_admitted = self.current.as_ref().is_none_or(CurrentStream::files_admitted);
+        let files_admitted = self
+            .current
+            .as_ref()
+            .is_none_or(CurrentStream::files_admitted);
         if self.input_closed && files_admitted {
             if let Some(carbon) = &mut self.carbon {
                 carbon.close_files();
@@ -340,7 +368,8 @@ mod tests {
     }
 
     #[test]
-    fn ranges_cross_parts_and_completion_waits_for_consumption() -> Result<(), Box<dyn std::error::Error>> {
+    fn ranges_cross_parts_and_completion_waits_for_consumption()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut request = current(5, Some(10));
         for (length, expected) in [(3, None), (4, Some(2..4)), (5, Some(0..3))] {
             if request.select_part(length)? != expected {

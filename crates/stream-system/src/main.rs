@@ -11,8 +11,8 @@ use backends::{DiscordFile, DiscordRegistry, RegistryBackend};
 use clap::{Parser, ValueEnum};
 use futures_util::io::AsyncWriteExt;
 use stream_system::{
-    BytesFrameAllocator, Compression, Encryption, FileBackend, FileRegistry,
-    FrameBudget, SchedulerConfig, StreamRegistry, StreamWriterConfig, Window, WriteStream,
+    BytesFrameAllocator, Compression, Encryption, FileBackend, FileRegistry, FrameBudget,
+    SchedulerConfig, StreamRegistry, StreamWriterConfig, Window, WriteStream,
 };
 use tokio::io::AsyncReadExt;
 use tokio_tcp_pool::{Endpoint, Pool, PoolConfig, Route, rustls};
@@ -37,21 +37,38 @@ struct Args {
     input: PathBuf,
 
     /// Persistent file registry database directory.
-    #[arg(long, env = "WD40_FILE_REGISTRY_PATH", default_value = "./data/file-registry")]
+    #[arg(
+        long,
+        env = "WD40_FILE_REGISTRY_PATH",
+        default_value = "./data/file-registry"
+    )]
     file_registry_path: PathBuf,
 
     /// Persistent stream registry database directory.
-    #[arg(long, env = "WD40_STREAM_REGISTRY_PATH", default_value = "./data/stream-registry")]
+    #[arg(
+        long,
+        env = "WD40_STREAM_REGISTRY_PATH",
+        default_value = "./data/stream-registry"
+    )]
     stream_registry_path: PathBuf,
 
     /// Discord webhook URL. Repeat the option or use comma-separated environment values.
-    #[arg(long = "webhook", env = "WD40_DISCORD_WEBHOOK_URLS", required = true,
-        value_delimiter = ',', hide_env_values = true)]
+    #[arg(
+        long = "webhook",
+        env = "WD40_DISCORD_WEBHOOK_URLS",
+        required = true,
+        value_delimiter = ',',
+        hide_env_values = true
+    )]
     webhooks: Vec<String>,
 
     /// Optional bot token for URL renewal. Repeat the option or use comma-separated values.
-    #[arg(long = "bot-token", env = "WD40_DISCORD_BOT_TOKENS",
-        value_delimiter = ',', hide_env_values = true)]
+    #[arg(
+        long = "bot-token",
+        env = "WD40_DISCORD_BOT_TOKENS",
+        value_delimiter = ',',
+        hide_env_values = true
+    )]
     bot_tokens: Vec<String>,
 
     /// AES-256 uses a fresh system-generated key for each file attempt.
@@ -129,9 +146,9 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
     };
 
     let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    let mut tls = rustls::ClientConfig::builder_with_provider(
-        Arc::new(rustls::crypto::ring::default_provider()),
-    )
+    let mut tls = rustls::ClientConfig::builder_with_provider(Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
     .with_safe_default_protocol_versions()?
     .with_root_certificates(roots)
     .with_no_client_auth();
@@ -144,23 +161,28 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
         max_lifetime: args.pool_max_lifetime_ms.map(Duration::from_millis),
     };
     let pool = |host| -> Result<Pool, Box<dyn Error>> {
-        Ok(Pool::builder(Route::Direct { target: Endpoint::new(host, 443)? })
-            .config(pool_config.clone())
-            .tls(Arc::clone(&tls))
-            .build()?)
+        Ok(Pool::builder(Route::Direct {
+            target: Endpoint::new(host, 443)?,
+        })
+        .config(pool_config.clone())
+        .tls(Arc::clone(&tls))
+        .build()?)
     };
     let write_pool = pool("discord.com")?;
     let read_pool = pool("cdn.discordapp.com")?;
     let backend = FileBackend::Discord(DiscordFile::new(read_pool, write_pool.clone()));
     let registry_backend = RegistryBackend::Discord(DiscordRegistry::new(
-        write_pool, args.webhooks, args.bot_tokens,
+        write_pool,
+        args.webhooks,
+        args.bot_tokens,
     ));
     let file_registry = FileRegistry::Local(file_registry::LocalRegistry::new(
-        sled::open(&args.file_registry_path)?, registry_backend,
+        sled::open(&args.file_registry_path)?,
+        registry_backend,
     )?);
-    let stream_registry = StreamRegistry::Local(stream_registry::LocalRegistry::new(
-        sled::open(&args.stream_registry_path)?,
-    )?);
+    let stream_registry = StreamRegistry::Local(stream_registry::LocalRegistry::new(sled::open(
+        &args.stream_registry_path,
+    )?)?);
 
     let config = StreamWriterConfig {
         encryption: match args.encryption {
@@ -176,12 +198,22 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
     };
     let mut allocator = BytesFrameAllocator::new(args.frame_size.get())?;
     let budget = FrameBudget::new(args.frame_budget.get());
-    let mut carbon_config = SchedulerConfig::new(Window::new(
-        args.target_frames.get(), args.open_ahead_frames, args.max_active_files.get(),
-    )?, args.max_retries);
+    let mut carbon_config = SchedulerConfig::new(
+        Window::new(
+            args.target_frames.get(),
+            args.open_ahead_frames,
+            args.max_active_files.get(),
+        )?,
+        args.max_retries,
+    );
     let mut stream = WriteStream::new(
-        file_registry, stream_registry, backend, config,
-        &mut allocator, &budget, &mut carbon_config,
+        file_registry,
+        stream_registry,
+        backend,
+        config,
+        &mut allocator,
+        &budget,
+        &mut carbon_config,
     )?;
     let mut buffer = vec![0; args.input_buffer_size.get()];
     loop {
@@ -196,12 +228,14 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
         if count == 0 {
             break;
         }
-        let bytes = buffer.get(..count)
-            .ok_or_else(|| io::Error::other("input reported more bytes than the buffer can hold"))?;
+        let bytes = buffer.get(..count).ok_or_else(|| {
+            io::Error::other("input reported more bytes than the buffer can hold")
+        })?;
         stream.write_all(bytes).await?;
     }
     stream.close().await?;
-    let id = stream.stream_id()
+    let id = stream
+        .stream_id()
         .ok_or_else(|| io::Error::other("closed stream has no persisted manifest ID"))?;
     writeln!(io::stdout(), "{id}")?;
     Ok(())

@@ -1,4 +1,8 @@
-use std::{io, pin::Pin, task::{Context, Poll, ready}};
+use std::{
+    io,
+    pin::Pin,
+    task::{Context, Poll, ready},
+};
 
 use futures_io::AsyncRead;
 
@@ -17,7 +21,11 @@ pub struct AsyncReadAdapter<'a> {
 
 impl<'a> AsyncReadAdapter<'a> {
     pub fn new(stream: ReadStream<'a>) -> Self {
-        Self { stream, frame: ReadFrame::default(), position: 0 }
+        Self {
+            stream,
+            frame: ReadFrame::default(),
+            position: 0,
+        }
     }
 
     /// Accesses the reader to push streams, close input or drive progress.
@@ -48,7 +56,10 @@ impl AsyncRead for AsyncReadAdapter<'_> {
                 return Poll::Ready(Err(invalid_frame()));
             }
         }
-        let remaining = this.frame.buffer.get(this.position..this.frame.selected.end)
+        let remaining = this
+            .frame
+            .buffer
+            .get(this.position..this.frame.selected.end)
             .ok_or_else(invalid_frame)?;
         let count = destination.len().min(remaining.len());
         let source = remaining.get(..count).ok_or_else(invalid_frame)?;
@@ -61,5 +72,8 @@ impl AsyncRead for AsyncReadAdapter<'_> {
 }
 
 fn invalid_frame() -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, "invalid decoded frame selection")
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        "invalid decoded frame selection",
+    )
 }

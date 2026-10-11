@@ -19,7 +19,10 @@ type OpenFuture = Pin<Box<dyn Future<Output = Result<(backends::ReadFile, Decode
 enum State {
     Closed,
     Opening(OpenFuture),
-    Opened { file: backends::ReadFile, decoder: Decoder },
+    Opened {
+        file: backends::ReadFile,
+        decoder: Decoder,
+    },
     Failed,
 }
 
@@ -52,43 +55,64 @@ impl OwnedFrameIter {
             if count == 0 {
                 return Err(Error::Carbon(carbon_io::ContractError::ZeroFrameCount));
             }
-            let first = frames.next().ok_or(Error::Codec(craft_codec::Error::InvalidMetadata))?;
+            let first = frames
+                .next()
+                .ok_or(Error::Codec(craft_codec::Error::InvalidMetadata))?;
             let selected_start = u64::try_from(first.selected.start)
                 .map_err(|_| Error::Codec(craft_codec::Error::Overflow))?;
-            let logical_position = start.checked_sub(selected_start)
+            let logical_position = start
+                .checked_sub(selected_start)
                 .ok_or(Error::Codec(craft_codec::Error::InvalidRange))?;
             (physical, count, first.spec.index(), logical_position)
         };
-        Ok((physical, Self {
-            metadata,
-            next_index,
-            remaining: count,
-            logical_position,
-            selection: start..logical_end,
-        }))
+        Ok((
+            physical,
+            Self {
+                metadata,
+                next_index,
+                remaining: count,
+                logical_position,
+                selection: start..logical_end,
+            },
+        ))
     }
 
     fn next(&mut self) -> Result<Option<FrameRead>, Error> {
         if self.remaining == 0 {
             return Ok(None);
         }
-        let spec = self.metadata.frame(self.next_index)
+        let spec = self
+            .metadata
+            .frame(self.next_index)
             .ok_or(Error::Codec(craft_codec::Error::InvalidMetadata))?;
         let raw_len = u64::try_from(spec.raw_len())
             .map_err(|_| Error::Codec(craft_codec::Error::Overflow))?;
-        let logical_end = self.logical_position.checked_add(raw_len)
+        let logical_end = self
+            .logical_position
+            .checked_add(raw_len)
             .ok_or(Error::Codec(craft_codec::Error::Overflow))?;
-        let start = self.selection.start.max(self.logical_position)
+        let start = self
+            .selection
+            .start
+            .max(self.logical_position)
             .checked_sub(self.logical_position)
             .ok_or(Error::Codec(craft_codec::Error::InvalidRange))?;
-        let end = self.selection.end.min(logical_end).checked_sub(self.logical_position)
+        let end = self
+            .selection
+            .end
+            .min(logical_end)
+            .checked_sub(self.logical_position)
             .ok_or(Error::Codec(craft_codec::Error::InvalidRange))?;
         let selected = usize::try_from(start)
             .map_err(|_| Error::Codec(craft_codec::Error::Overflow))?
             ..usize::try_from(end).map_err(|_| Error::Codec(craft_codec::Error::Overflow))?;
-        let next_index = self.next_index.checked_add(1)
+        let next_index = self
+            .next_index
+            .checked_add(1)
             .ok_or(Error::Codec(craft_codec::Error::Overflow))?;
-        let remaining = self.remaining.checked_sub(1)
+        let remaining = self
+            .remaining
+            .checked_sub(1)
             .ok_or(Error::Codec(craft_codec::Error::InvalidMetadata))?;
         self.next_index = next_index;
         self.remaining = remaining;
@@ -183,8 +207,10 @@ impl carbon_io::ReadFile<ReadFrame> for ReadFile {
                     // ponytail: one owned future is polled directly, without a task.
                     this.state = State::Opening(Box::pin(async move {
                         let path = retrieve_path(&registry, id).await?;
-                        let file = backend.read(&path.access_path, start, end)
-                            .await.map_err(Error::Backend)?;
+                        let file = backend
+                            .read(&path.access_path, start, end)
+                            .await
+                            .map_err(Error::Backend)?;
                         Ok((file, decoder))
                     }));
                 }
@@ -226,18 +252,21 @@ impl carbon_io::ReadFile<ReadFrame> for ReadFile {
                 }
                 frame.buffer.clear();
                 frame.selected = 0..0;
-                frame.buffer.try_reserve(length)
+                frame
+                    .buffer
+                    .try_reserve(length)
                     .map_err(|_| Error::Codec(craft_codec::Error::Allocation))?;
                 frame.buffer.resize(length, 0);
                 this.current = Some(descriptor);
                 this.read = 0;
             }
 
-            let remaining = frame.buffer.get_mut(this.read..)
+            let remaining = frame
+                .buffer
+                .get_mut(this.read..)
                 .ok_or(Error::Codec(craft_codec::Error::InvalidStoredLength))?;
             let available = remaining.len();
-            let count = ready!(Pin::new(&mut *file).poll_read(cx, remaining))
-                .map_err(Error::Io)?;
+            let count = ready!(Pin::new(&mut *file).poll_read(cx, remaining)).map_err(Error::Io)?;
             if count == 0 {
                 return Poll::Ready(Err(Error::Io(io::Error::new(
                     io::ErrorKind::UnexpectedEof,
@@ -250,7 +279,9 @@ impl carbon_io::ReadFile<ReadFrame> for ReadFile {
                     "backend reported more read bytes than the buffer can hold",
                 ))));
             }
-            this.read = this.read.checked_add(count)
+            this.read = this
+                .read
+                .checked_add(count)
                 .ok_or(Error::Codec(craft_codec::Error::Overflow))?;
             if this.read < frame.buffer.len() {
                 // ponytail: yield after one backend read so other files can advance.
@@ -258,9 +289,12 @@ impl carbon_io::ReadFile<ReadFrame> for ReadFile {
                 return Poll::Pending;
             }
 
-            let descriptor = this.current.take()
+            let descriptor = this
+                .current
+                .take()
                 .ok_or(Error::Codec(craft_codec::Error::InvalidMetadata))?;
-            decoder.decode_frame(descriptor.spec, &mut frame.buffer)
+            decoder
+                .decode_frame(descriptor.spec, &mut frame.buffer)
                 .map_err(Error::Codec)?;
             frame.selected = descriptor.selected;
             this.read = 0;
@@ -284,31 +318,39 @@ fn prepare_range(
 ) -> Result<(usize, Option<usize>, u32, OwnedFrameIter), Error> {
     let stored_len = metadata.stored_len();
     let (physical, frames) = OwnedFrameIter::new(metadata, start, end)?;
-    let count = u32::try_from(frames.remaining)
-        .map_err(|_| Error::Codec(craft_codec::Error::Overflow))?;
+    let count =
+        u32::try_from(frames.remaining).map_err(|_| Error::Codec(craft_codec::Error::Overflow))?;
     if count == 0 {
         return Err(Error::Carbon(carbon_io::ContractError::ZeroFrameCount));
     }
-    let physical_start = usize::try_from(physical.start)
-        .map_err(|_| Error::Codec(craft_codec::Error::Overflow))?;
+    let physical_start =
+        usize::try_from(physical.start).map_err(|_| Error::Codec(craft_codec::Error::Overflow))?;
     // The current backend uses an inclusive end. A selection reaching file EOF
     // uses its existing open-ended range instead.
     let physical_end = if physical.end == stored_len {
         None
     } else {
-        let last = physical.end.checked_sub(1)
+        let last = physical
+            .end
+            .checked_sub(1)
             .ok_or(Error::Codec(craft_codec::Error::InvalidRange))?;
-        Some(usize::try_from(last)
-            .map_err(|_| Error::Codec(craft_codec::Error::Overflow))?)
+        Some(usize::try_from(last).map_err(|_| Error::Codec(craft_codec::Error::Overflow))?)
     };
     Ok((physical_start, physical_end, count, frames))
 }
 
 async fn retrieve_path(registry: &FileRegistry, id: FileId) -> Result<ReadAccessPath, Error> {
-    let paths = registry.retrieve(&[id]).await.map_err(Error::FileRegistry)?;
+    let paths = registry
+        .retrieve(&[id])
+        .await
+        .map_err(Error::FileRegistry)?;
     let mut paths = std::pin::pin!(paths);
-    paths.next().await
-        .ok_or(Error::FileRegistry(file_registry::Error::MissingReadAccessPath(id)))?
+    paths
+        .next()
+        .await
+        .ok_or(Error::FileRegistry(
+            file_registry::Error::MissingReadAccessPath(id),
+        ))?
         .map_err(Error::FileRegistry)
 }
 
@@ -322,16 +364,22 @@ mod tests {
         for compression in [Compression::None, Compression::Lz4] {
             for encryption in [Encryption::None, Encryption::Aes256Gcm { key: [0; 32] }] {
                 let tag = encryption.tag_len();
-                let payload = if compression == Compression::None { 4 } else { 2 };
-                let mut metadata = Metadata::new(Config::new(
-                    Framing::Fixed(4), compression, encryption,
-                )?);
+                let payload = if compression == Compression::None {
+                    4
+                } else {
+                    2
+                };
+                let mut metadata =
+                    Metadata::new(Config::new(Framing::Fixed(4), compression, encryption)?);
                 for _ in 0..3 {
                     metadata.push(FrameSizes::new(4, payload)?)?;
                 }
-                let stride = usize::try_from(payload)?.checked_add(tag)
+                let stride = usize::try_from(payload)?
+                    .checked_add(tag)
                     .ok_or("stored frame size overflow")?;
-                let second_end = stride.checked_mul(2).and_then(|end| end.checked_sub(1))
+                let second_end = stride
+                    .checked_mul(2)
+                    .and_then(|end| end.checked_sub(1))
                     .ok_or("stored range overflow")?;
                 for (start, end, expected, selected) in [
                     (5, Some(6), (stride, Some(second_end), 1), 1..2),
@@ -344,7 +392,9 @@ mod tests {
                     if (physical_start, physical_end, count) != expected
                         || frames.remaining != u64::from(count)
                     {
-                        return Err("logical offsets did not select the expected stored frames".into());
+                        return Err(
+                            "logical offsets did not select the expected stored frames".into()
+                        );
                     }
                     let first = frames.next()?.ok_or("selected frame iterator was lost")?;
                     if first.spec.index() != 1 || first.selected != selected {
@@ -363,13 +413,16 @@ mod tests {
                         return Err("owned cursor emitted extra frames".into());
                     }
                 }
-                if !matches!(prepare_range(metadata.clone(), 6, Some(6)),
-                    Err(Error::Carbon(carbon_io::ContractError::ZeroFrameCount)))
-                    || !matches!(prepare_range(metadata.clone(), 5, Some(4)),
-                        Err(Error::Codec(craft_codec::Error::InvalidRange)))
-                    || !matches!(prepare_range(metadata.clone(), 13, None),
-                        Err(Error::Codec(craft_codec::Error::InvalidRange)))
-                {
+                if !matches!(
+                    prepare_range(metadata.clone(), 6, Some(6)),
+                    Err(Error::Carbon(carbon_io::ContractError::ZeroFrameCount))
+                ) || !matches!(
+                    prepare_range(metadata.clone(), 5, Some(4)),
+                    Err(Error::Codec(craft_codec::Error::InvalidRange))
+                ) || !matches!(
+                    prepare_range(metadata.clone(), 13, None),
+                    Err(Error::Codec(craft_codec::Error::InvalidRange))
+                ) {
                     return Err("empty or invalid selections were not rejected".into());
                 }
             }
@@ -378,9 +431,11 @@ mod tests {
     }
 
     #[test]
-    fn owned_cursor_matches_craft_for_variable_frame_ranges() -> Result<(), Box<dyn std::error::Error>> {
+    fn owned_cursor_matches_craft_for_variable_frame_ranges()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut metadata = Metadata::new(Config::new(
-            Framing::Variable(8), Compression::Lz4,
+            Framing::Variable(8),
+            Compression::Lz4,
             Encryption::Aes256Gcm { key: [0; 32] },
         )?);
         for length in [3, 5, 2] {
@@ -390,7 +445,8 @@ mod tests {
             let first_end = start.checked_add(1).ok_or("range overflow")?;
             for end in first_end..=metadata.logical_len() {
                 let (expected_physical, expected) = metadata.range(start, Some(end))?;
-                let (physical, mut owned) = OwnedFrameIter::new(metadata.clone(), start, Some(end))?;
+                let (physical, mut owned) =
+                    OwnedFrameIter::new(metadata.clone(), start, Some(end))?;
                 if physical != expected_physical || owned.remaining != expected.remaining() {
                     return Err("owned cursor changed the mapped range".into());
                 }

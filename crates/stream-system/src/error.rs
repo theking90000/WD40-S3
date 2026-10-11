@@ -22,16 +22,23 @@ impl fmt::Display for Error {
         match self {
             Self::Random(error) => write!(f, "stream key generation failed: {error}"),
             Self::Codec(error) => write!(f, "stream codec failed: {error}"),
-            Self::FileRegistry(error) => write!(f, "stream file registry operation failed: {error}"),
+            Self::FileRegistry(error) => {
+                write!(f, "stream file registry operation failed: {error}")
+            }
             Self::StreamRegistry(error) => write!(f, "stream registry operation failed: {error}"),
             Self::Backend(error) => write!(f, "stream backend operation failed: {error}"),
             Self::Carbon(error) => write!(f, "CARBON scheduler contract failed: {error}"),
             Self::Io(error) => write!(f, "stream file I/O failed: {error}"),
             Self::FileNotOpen => f.write_str("stream file is not open"),
-            Self::FrameWritePending => f.write_str("cannot close a stream file with a pending frame write"),
+            Self::FrameWritePending => {
+                f.write_str("cannot close a stream file with a pending frame write")
+            }
             Self::FrameCapacityExceeded => f.write_str("stream file frame capacity exceeded"),
             Self::FileTooSmall { limit } => {
-                write!(f, "maximum file size of {limit} bytes cannot fit one configured frame")
+                write!(
+                    f,
+                    "maximum file size of {limit} bytes cannot fit one configured frame"
+                )
             }
             Self::ReadStreamPending(id) => write!(f, "stream {id} has not been fully consumed"),
         }
@@ -48,8 +55,11 @@ impl StdError for Error {
             Self::Backend(error) => Some(error),
             Self::Carbon(error) => Some(error),
             Self::Io(error) => Some(error),
-            Self::FileNotOpen | Self::FrameWritePending | Self::FrameCapacityExceeded | Self::FileTooSmall { .. }
-                | Self::ReadStreamPending(_) => None,
+            Self::FileNotOpen
+            | Self::FrameWritePending
+            | Self::FrameCapacityExceeded
+            | Self::FileTooSmall { .. }
+            | Self::ReadStreamPending(_) => None,
         }
     }
 }

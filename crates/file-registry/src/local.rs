@@ -128,7 +128,10 @@ impl FileRegistry for LocalRegistry {
         let mut batch = Batch::default();
         let mut access_paths = Box::pin(self.registry.write(count, max_file_size));
         for _ in 0..count {
-            let access_path = access_paths.next().await.ok_or(Error::MissingWriteAccessPath)?;
+            let access_path = access_paths
+                .next()
+                .await
+                .ok_or(Error::MissingWriteAccessPath)?;
             let id = FileId::from(self.database.generate_id()?);
             batch.insert(id.to_be_bytes().to_vec(), data.clone());
             paths.push(WriteAccessPath { id, access_path });

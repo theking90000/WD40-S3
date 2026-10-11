@@ -16,7 +16,9 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Database(error) => write!(f, "stream registry database operation failed: {error}"),
+            Self::Database(error) => {
+                write!(f, "stream registry database operation failed: {error}")
+            }
             Self::Serialization(error) => {
                 write!(f, "stream registry serialization failed: {error}")
             }
