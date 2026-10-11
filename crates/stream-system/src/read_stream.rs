@@ -15,6 +15,7 @@ use crate::{Error, FileBackend, FileRegistry, ReadFile, ReadFrame, StreamId, Str
 
 type Parts = <StreamRegistry as stream_registry::traits::StreamRegistry>::StreamPartStream;
 type OpenParts = Pin<Box<dyn Future<Output = Result<Parts, Error>>>>;
+type Scheduler<'a> = ReadScheduler<'a, ReadFrame, ReadFile, fn() -> ReadFrame>;
 
 enum Resolution {
     Opening(OpenParts),
@@ -100,7 +101,7 @@ pub struct ReadStream<'a> {
     file_registry: FileRegistry,
     stream_registry: StreamRegistry,
     backend: FileBackend,
-    carbon: Option<ReadScheduler<'a, ReadFrame, ReadFile, fn() -> ReadFrame>>,
+    carbon: Option<Scheduler<'a>>,
     current: Option<CurrentStream>,
     input_closed: bool,
     error: Option<Error>,
@@ -414,10 +415,10 @@ impl<'a> ReadStream<'a> {
             .current
             .as_ref()
             .is_none_or(CurrentStream::files_admitted);
-        if self.input_closed && files_admitted {
-            if let Some(carbon) = &mut self.carbon {
-                carbon.close_files();
-            }
+        if self.input_closed && files_admitted
+            && let Some(carbon) = &mut self.carbon
+        {
+            carbon.close_files();
         }
     }
 

@@ -21,6 +21,10 @@ use crate::{Error, FileBackend, FileRegistry, StreamRegistry};
 type OpenFuture = Pin<Box<dyn Future<Output = Result<OpenedFile, Error>>>>;
 type CloseFuture = Pin<Box<dyn Future<Output = Result<StreamPartId, Error>>>>;
 
+#[allow(
+    clippy::large_enum_variant,
+    reason = "Keep the opened file inline without an additional allocation per attempt"
+)]
 enum State {
     Closed,
     Opening(OpenFuture),

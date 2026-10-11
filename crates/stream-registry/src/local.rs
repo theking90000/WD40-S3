@@ -117,11 +117,9 @@ impl StreamRegistry for LocalRegistry {
     }
 
     async fn retrieve_parts(&self, ids: &[StreamId]) -> Result<Self::StreamPartStream, Error> {
-        let state = Some((
-            self.clone(),
-            ids.to_vec().into_iter(),
-            Vec::new().into_iter(),
-        ));
+        // The returned stream owns its IDs and outlives the input slice.
+        let ids = ids.to_vec();
+        let state = Some((self.clone(), ids.into_iter(), Vec::new().into_iter()));
         Ok(Box::pin(
             stream::unfold(state, |state| async move {
                 let (registry, mut ids, mut parts) = state?;

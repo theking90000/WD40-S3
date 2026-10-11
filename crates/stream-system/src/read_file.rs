@@ -18,6 +18,10 @@ use crate::{Error, FileBackend, FileRegistry};
 
 type OpenFuture = Pin<Box<dyn Future<Output = Result<(backends::ReadFile, Decoder), Error>>>>;
 
+#[allow(
+    clippy::large_enum_variant,
+    reason = "Keep the decoder inline without an additional allocation per file"
+)]
 enum State {
     Closed,
     Opening(OpenFuture),
@@ -455,7 +459,7 @@ mod tests {
                     if expected.next().as_ref() != Some(&first) {
                         return Err("owned cursor changed the first CRAFT descriptor".into());
                     }
-                    while let Some(expected) = expected.next() {
+                    for expected in expected {
                         if frames.next()? != Some(expected) {
                             return Err("owned cursor changed a CRAFT descriptor".into());
                         }
