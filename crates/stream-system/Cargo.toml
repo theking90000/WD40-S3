@@ -3,6 +3,22 @@ name = "stream-system"
 version.workspace = true
 edition.workspace = true
 
+[features]
+default = []
+cli = [
+    "dep:clap",
+    "dep:sled",
+    "dep:tokio",
+    "dep:tokio-tcp-pool",
+    "dep:webpki-roots",
+    "futures-util/io",
+]
+
+[[bin]]
+name = "stream-system"
+path = "src/main.rs"
+required-features = ["cli"]
+
 [dependencies]
 backends = { path = "../backends" }
 file-registry = { path = "../file-registry" }
@@ -12,6 +28,11 @@ carbon-io = "0.4.1"
 futures-io = "0.3"
 futures-util = { version = "0.3", default-features = false, features = ["std", "async-await"] }
 getrandom = "0.4.3"
+clap = { version = "4", features = ["derive", "env"], optional = true }
+sled = { version = "0.34.7", optional = true }
+tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "net", "rt", "time"], optional = true }
+tokio-tcp-pool = { version = "0.1.3", optional = true }
+webpki-roots = { version = "1", optional = true }
 
 [lints.rust]
 unsafe_code = "forbid"
