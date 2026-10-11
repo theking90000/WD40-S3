@@ -123,6 +123,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
+name = "blob-registry"
+version = "0.1.0"
+dependencies = [
+ "futures-core",
+ "futures-executor",
+ "futures-util",
+ "postcard",
+ "serde",
+ "sled",
+ "stream-registry",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

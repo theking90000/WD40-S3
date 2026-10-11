@@ -415,7 +415,8 @@ impl<'a> ReadStream<'a> {
             .current
             .as_ref()
             .is_none_or(CurrentStream::files_admitted);
-        if self.input_closed && files_admitted
+        if self.input_closed
+            && files_admitted
             && let Some(carbon) = &mut self.carbon
         {
             carbon.close_files();
