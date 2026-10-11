@@ -136,6 +136,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "blob-system"
+version = "0.1.0"
+dependencies = [
+ "blob-registry",
+ "futures-core",
+ "futures-io",
+ "futures-util",
+ "stream-system",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
