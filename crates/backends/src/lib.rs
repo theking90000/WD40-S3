@@ -6,7 +6,7 @@ use std::{
 
 use futures_core::Stream;
 use futures_io::{AsyncRead, AsyncWrite};
-use futures_util::{StreamExt, stream};
+use futures_util::{StreamExt, TryStreamExt, stream};
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "discord")]
@@ -250,20 +250,36 @@ impl traits::RegistryBackend for RegistryBackend {
         &'stream self,
         access_paths: &'stream [Self::AccessPath],
     ) -> impl Stream<Item = Result<Self::ReadAccessPath, Error>> + Send + 'stream {
-        stream::iter(access_paths).flat_map(
-            move |path| -> Pin<
+        let paths = stream::iter((!access_paths.is_empty()).then_some(self));
+        paths.flat_map(
+            move |backend| -> Pin<
                 Box<dyn Stream<Item = Result<Self::ReadAccessPath, Error>> + Send + 'stream>,
             > {
-                #[allow(unreachable_patterns)]
-                match (self, path) {
+                match *backend {
                     #[cfg(feature = "discord")]
-                    (Self::Discord(registry), AccessPath::Discord(path)) => Box::pin(
-                        traits::RegistryBackend::read(registry, std::slice::from_ref(path))
-                            .map(|result| result.map(ReadAccessPath::Discord)),
+                    Self::Discord(ref registry) => Box::pin(
+                        stream::iter(access_paths.chunks(discord::DISCORD_RENEW_BATCH_SIZE))
+                            .then(move |paths| async move {
+                                let paths = paths
+                                    .iter()
+                                    .map(|path| {
+                                        #[allow(unreachable_patterns)]
+                                        match path {
+                                            AccessPath::Discord(path) => Ok(path.clone()),
+                                            _ => Err(Error::BackendMismatch),
+                                        }
+                                    })
+                                    .collect::<Result<Vec<_>, _>>()?;
+                                let results = traits::RegistryBackend::read(registry, &paths)
+                                    .map_ok(ReadAccessPath::Discord)
+                                    .try_collect::<Vec<_>>()
+                                    .await?;
+                                Ok::<_, Error>(stream::iter(results.into_iter().map(Ok)))
+                            })
+                            .try_flatten(),
                     ),
                     #[cfg(feature = "telegram")]
-                    (Self::Telegram, _) => unimplemented!("Telegram registry backend"),
-                    _ => Box::pin(stream::iter([Err(Error::BackendMismatch)])),
+                    Self::Telegram => unimplemented!("Telegram registry backend"),
                 }
             },
         )

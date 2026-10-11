@@ -4,7 +4,7 @@ use discord_webhook_storage::{
     BotCredentials, DiscordFile as StoredDiscordFile, WebhookCredentials, WriteConfig, renew_urls,
 };
 use futures_core::Stream;
-use futures_util::{StreamExt, stream};
+use futures_util::{StreamExt, TryStreamExt, stream};
 use serde::{Deserialize, Serialize};
 use tokio_tcp_pool::{Connection, Pool};
 
@@ -22,6 +22,7 @@ pub struct DiscordWriteAccessPath(Arc<str>);
 // Mirrors the documented WriteConfig::default limit in discord-webhook-storage
 // 0.1.0. This limit excludes multipart framing.
 const DISCORD_MAX_FILE_SIZE: u64 = 20_000_000;
+pub(crate) const DISCORD_RENEW_BATCH_SIZE: usize = 50;
 
 pub type DiscordReadFile = discord_webhook_storage::ReadFile<Connection>;
 pub type DiscordUploadFile = discord_webhook_storage::WriteFile<Connection>;
@@ -128,27 +129,35 @@ impl RegistryBackend for DiscordRegistry {
         stream::iter((0..count).map_while(|_| self.webhook_credentials.get().cloned()))
     }
 
+    /// Renews expired URLs in batches, yielding one error if a batch fails.
     fn read<'stream>(
         &'stream self,
         access_paths: &'stream [Self::AccessPath],
     ) -> impl Stream<Item = Result<Self::ReadAccessPath, Error>> + Send + 'stream {
-        stream::iter(access_paths).then(move |access_path| async move {
-            let mut url = access_path.0.url.clone();
-            if !access_path.is_expired() {
-                return Ok(url);
-            }
+        stream::iter(access_paths.chunks(DISCORD_RENEW_BATCH_SIZE))
+            .then(move |paths| async move {
+                let mut urls: Vec<_> = paths.iter().map(|path| path.0.url.clone()).collect();
+                if paths.iter().any(Expired::is_expired) {
+                    let credentials = self
+                        .bot_credentials
+                        .get()
+                        .ok_or(Error::MissingBotCredentials)?;
+                    let credentials = BotCredentials { token: credentials };
+                    let mut connection = self.pool.acquire().await?;
+                    renew_urls(
+                        &mut connection,
+                        &credentials,
+                        urls.iter_mut().zip(paths).filter_map(|(url, path)| {
+                            path.is_expired().then_some(url)
+                        }),
+                    )
+                    .await?;
+                    connection.release();
+                }
 
-            let credentials = self
-                .bot_credentials
-                .get()
-                .ok_or(Error::MissingBotCredentials)?;
-            let credentials = BotCredentials { token: credentials };
-            let mut connection = self.pool.acquire().await?;
-            renew_urls(&mut connection, &credentials, std::iter::once(&mut url)).await?;
-            connection.release();
-
-            Ok(url)
-        })
+                Ok::<_, Error>(stream::iter(urls.into_iter().map(Ok)))
+            })
+            .try_flatten()
     }
 }
 
