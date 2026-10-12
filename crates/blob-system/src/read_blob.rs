@@ -158,8 +158,7 @@ impl<'a> ReadBlob<'a> {
             self.resolution = Resolution::Reading(slices);
         }
         let slice = match &mut self.resolution {
-            Resolution::Reading(slices) => ready!(slices.poll_next_unpin(cx))
-                .transpose()?,
+            Resolution::Reading(slices) => ready!(slices.poll_next_unpin(cx)).transpose()?,
             Resolution::Opening(_) | Resolution::Finished => None,
         };
         match slice {
@@ -168,8 +167,7 @@ impl<'a> ReadBlob<'a> {
                     .skip
                     .checked_add(slice.length)
                     .ok_or(Error::LengthOverflow)?;
-                reader
-                    .push_stream(slice.stream_id, slice.skip, Some(end))?;
+                reader.push_stream(slice.stream_id, slice.skip, Some(end))?;
                 reader.poll_progress(cx);
             }
             None => {

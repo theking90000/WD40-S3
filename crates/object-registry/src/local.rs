@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sled::{
     Db, Tree,
     transaction::{
-        ConflictableTransactionError::Abort, ConflictableTransactionResult,
-        Transactional, TransactionalTree,
+        ConflictableTransactionError::Abort, ConflictableTransactionResult, Transactional,
+        TransactionalTree,
     },
 };
 
@@ -102,8 +102,8 @@ impl LocalRegistry {
     }
 
     fn append(&self, key: &str, content: &VersionContent) -> Result<VersionId, Error> {
-        Ok((&self.active, &self.versions)
-            .transaction(|(active, versions)| {
+        Ok(
+            (&self.active, &self.versions).transaction(|(active, versions)| {
                 let previous_version_id = current_id(versions, key)?;
                 if let Some(previous) = previous_version_id
                     && read_version(versions, key, previous)?.deleted
@@ -128,7 +128,8 @@ impl LocalRegistry {
                 versions.insert(version_key, encode(&entry)?)?;
                 set_current(active, versions, key, Some((id, content)))?;
                 Ok(id)
-            })?)
+            })?,
+        )
     }
 }
 
@@ -402,41 +403,40 @@ impl ObjectRegistry for LocalRegistry {
         let version_id = match version_id {
             None => self.append(key, &VersionContent::DeleteMarker)?,
             Some(id) => {
-                (&self.active, &self.versions)
-                    .transaction(|(active, versions)| {
-                        let stored_key = version_key(key, id);
-                        let Some(bytes) = versions.get(&stored_key)? else {
-                            return Ok(());
-                        };
-                        let mut entry: VersionEntry = decode(&bytes)?;
-                        check_link(id, entry.previous_version_id)?;
-                        if entry.deleted {
-                            return Ok(());
-                        }
-                        if current_id(versions, key)? == Some(id) {
-                            let mut previous = entry.previous_version_id;
-                            let mut replacement = None;
-                            while let Some(previous_id) = previous {
-                                let candidate = read_version(versions, key, previous_id)?;
-                                if !candidate.deleted {
-                                    replacement = Some((previous_id, candidate));
-                                    break;
-                                }
-                                previous = candidate.previous_version_id;
+                (&self.active, &self.versions).transaction(|(active, versions)| {
+                    let stored_key = version_key(key, id);
+                    let Some(bytes) = versions.get(&stored_key)? else {
+                        return Ok(());
+                    };
+                    let mut entry: VersionEntry = decode(&bytes)?;
+                    check_link(id, entry.previous_version_id)?;
+                    if entry.deleted {
+                        return Ok(());
+                    }
+                    if current_id(versions, key)? == Some(id) {
+                        let mut previous = entry.previous_version_id;
+                        let mut replacement = None;
+                        while let Some(previous_id) = previous {
+                            let candidate = read_version(versions, key, previous_id)?;
+                            if !candidate.deleted {
+                                replacement = Some((previous_id, candidate));
+                                break;
                             }
-                            set_current(
-                                active,
-                                versions,
-                                key,
-                                replacement
-                                    .as_ref()
-                                    .map(|(id, entry)| (*id, &entry.content)),
-                            )?;
+                            previous = candidate.previous_version_id;
                         }
-                        entry.deleted = true;
-                        versions.insert(stored_key, encode(&entry)?)?;
-                        Ok(())
-                    })?;
+                        set_current(
+                            active,
+                            versions,
+                            key,
+                            replacement
+                                .as_ref()
+                                .map(|(id, entry)| (*id, &entry.content)),
+                        )?;
+                    }
+                    entry.deleted = true;
+                    versions.insert(stored_key, encode(&entry)?)?;
+                    Ok(())
+                })?;
                 id
             }
         };

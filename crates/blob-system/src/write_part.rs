@@ -116,15 +116,11 @@ impl<'a> WriteBlobPart<'a> {
             return Poll::Ready(Err(Error::InputClosed.into()));
         }
         // Validate before accepting bytes so a length error consumes no input.
-        let input_length =
-            u64::try_from(input.len()).map_err(|_| Error::LengthOverflow)?;
+        let input_length = u64::try_from(input.len()).map_err(|_| Error::LengthOverflow)?;
         self.length
             .checked_add(input_length)
             .ok_or(Error::LengthOverflow)?;
-        let stream = self
-            .stream
-            .as_mut()
-            .ok_or(Error::InputClosed)?;
+        let stream = self.stream.as_mut().ok_or(Error::InputClosed)?;
         let count = ready!(Pin::new(stream).poll_write(cx, input))?;
         let accepted = u64::try_from(count).map_err(|_| Error::LengthOverflow)?;
         self.length = self
@@ -141,21 +137,18 @@ impl<'a> WriteBlobPart<'a> {
         loop {
             match &mut self.state {
                 State::Closing => {
-                    let stream = self
-                        .stream
-                        .as_mut()
-                        .ok_or(Error::InputClosed)?;
+                    let stream = self.stream.as_mut().ok_or(Error::InputClosed)?;
                     ready!(Pin::new(&mut *stream).poll_close(cx))?;
-                    let stream_id = stream
-                        .stream_id()
-                        .ok_or(Error::MissingStreamId)?;
+                    let stream_id = stream.stream_id().ok_or(Error::MissingStreamId)?;
                     let registry = self.registry.clone();
                     let blob_id = self.blob_id;
                     let part_id = self.part_id;
                     let length = self.length;
                     self.stream = None;
                     self.state = State::Saving(Box::pin(async move {
-                        registry.save_part(blob_id, stream_id, length, part_id).await?;
+                        registry
+                            .save_part(blob_id, stream_id, length, part_id)
+                            .await?;
                         Ok(())
                     }));
                 }

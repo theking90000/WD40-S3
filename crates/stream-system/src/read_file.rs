@@ -71,9 +71,7 @@ impl OwnedFrameIter {
             if count == 0 {
                 return Err(Error::Carbon(carbon_io::ContractError::ZeroFrameCount));
             }
-            let first = frames
-                .next()
-                .ok_or(craft_codec::Error::InvalidMetadata)?;
+            let first = frames.next().ok_or(craft_codec::Error::InvalidMetadata)?;
             let selected_start = u64::try_from(first.selected.start)?;
             let logical_position = start
                 .checked_sub(selected_start)
@@ -241,9 +239,7 @@ impl carbon_io::ReadFile<ReadFrame> for ReadFile {
                     // ponytail: one owned future is polled directly, without a task.
                     this.state = State::Opening(Box::pin(async move {
                         let path = retrieve_path(&registry, id).await?;
-                        let file = backend
-                            .read(&path.access_path, start, end)
-                            .await?;
+                        let file = backend.read(&path.access_path, start, end).await?;
                         Ok((file, decoder))
                     }));
                 }
@@ -302,9 +298,7 @@ impl carbon_io::ReadFile<ReadFrame> for ReadFile {
                 }
                 frame.buffer.clear();
                 frame.selected = 0..0;
-                frame
-                    .buffer
-                    .try_reserve(length)?;
+                frame.buffer.try_reserve(length)?;
                 frame.buffer.resize(length, 0);
                 this.current = Some(descriptor);
                 this.read = 0;
@@ -342,8 +336,7 @@ impl carbon_io::ReadFile<ReadFrame> for ReadFile {
                 .current
                 .take()
                 .ok_or(craft_codec::Error::InvalidMetadata)?;
-            decoder
-                .decode_frame(descriptor.spec, &mut frame.buffer)?;
+            decoder.decode_frame(descriptor.spec, &mut frame.buffer)?;
             frame.selected = descriptor.selected;
             this.read = 0;
             Poll::Ready(Ok(Some(())))

@@ -8,10 +8,7 @@ use backends::{AccessPath, Expired, RegistryBackend, traits::RegistryBackend as 
 use futures_core::Stream;
 use futures_util::{StreamExt, lock::Mutex, stream};
 use serde::{Deserialize, Serialize};
-use sled::{
-    Batch, Db, Tree,
-    transaction::Transactional,
-};
+use sled::{Batch, Db, Tree, transaction::Transactional};
 
 use crate::{Error, FileAccess, FileId, ReadAccessPath, WriteAccessPath, traits::FileRegistry};
 
@@ -172,12 +169,11 @@ impl FileRegistry for LocalRegistry {
             guards.push(lock.mutex.lock().await);
         }
 
-        (&*self.database, &self.read_cache)
-            .transaction(|(database, cache)| {
-                database.apply_batch(&batch)?;
-                cache.apply_batch(&cache_batch)?;
-                Ok::<(), sled::transaction::ConflictableTransactionError<sled::Error>>(())
-            })?;
+        (&*self.database, &self.read_cache).transaction(|(database, cache)| {
+            database.apply_batch(&batch)?;
+            cache.apply_batch(&cache_batch)?;
+            Ok::<(), sled::transaction::ConflictableTransactionError<sled::Error>>(())
+        })?;
         self.database.flush_async().await?;
         Ok(())
     }

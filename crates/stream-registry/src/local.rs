@@ -2,10 +2,7 @@ use std::pin::Pin;
 
 use futures_core::Stream;
 use futures_util::{StreamExt, stream};
-use sled::{
-    Db, Tree,
-    transaction::Transactional,
-};
+use sled::{Db, Tree, transaction::Transactional};
 
 use crate::{
     Error, FileId, Metadata, StreamId, StreamManifest, StreamPart, StreamPartId,
@@ -57,14 +54,13 @@ impl StreamRegistry for LocalRegistry {
         let id = StreamPartId::from(self.database.generate_id()?);
         let key = id.to_be_bytes();
         let data = postcard::to_allocvec(&StreamPart { file_id, metadata })?;
-        self.parts
-            .transaction(|parts| {
-                if parts.get(key)?.is_some() {
-                    return Err(Error::StreamPartAlreadyExists(id).into());
-                }
-                parts.insert(key.as_slice(), data.as_slice())?;
-                Ok(())
-            })?;
+        self.parts.transaction(|parts| {
+            if parts.get(key)?.is_some() {
+                return Err(Error::StreamPartAlreadyExists(id).into());
+            }
+            parts.insert(key.as_slice(), data.as_slice())?;
+            Ok(())
+        })?;
         self.database.flush_async().await?;
         Ok(id)
     }
@@ -72,29 +68,28 @@ impl StreamRegistry for LocalRegistry {
     async fn store(&self, parts: Vec<StreamPartId>) -> Result<StreamId, Error> {
         let id = StreamId::from(self.database.generate_id()?);
         let key = id.to_be_bytes();
-        (&self.parts, &self.manifests)
-            .transaction(|(part_tree, manifests)| {
-                if manifests.get(key)?.is_some() {
-                    return Err(Error::StreamAlreadyExists(id).into());
-                }
-                let mut length = 0_u64;
-                for &part_id in &parts {
-                    let data = part_tree
-                        .get(part_id.to_be_bytes())?
-                        .ok_or(Error::StreamPartNotFound(part_id))?;
-                    let part: StreamPart = postcard::from_bytes(&data).map_err(Error::from)?;
-                    length = length
-                        .checked_add(part.metadata.logical_len())
-                        .ok_or(Error::LengthOverflow)?;
-                }
-                let data = postcard::to_allocvec(&StreamManifest {
-                    parts: parts.clone(),
-                    length,
-                })
-                .map_err(Error::from)?;
-                manifests.insert(key.as_slice(), data.as_slice())?;
-                Ok(())
-            })?;
+        (&self.parts, &self.manifests).transaction(|(part_tree, manifests)| {
+            if manifests.get(key)?.is_some() {
+                return Err(Error::StreamAlreadyExists(id).into());
+            }
+            let mut length = 0_u64;
+            for &part_id in &parts {
+                let data = part_tree
+                    .get(part_id.to_be_bytes())?
+                    .ok_or(Error::StreamPartNotFound(part_id))?;
+                let part: StreamPart = postcard::from_bytes(&data).map_err(Error::from)?;
+                length = length
+                    .checked_add(part.metadata.logical_len())
+                    .ok_or(Error::LengthOverflow)?;
+            }
+            let data = postcard::to_allocvec(&StreamManifest {
+                parts: parts.clone(),
+                length,
+            })
+            .map_err(Error::from)?;
+            manifests.insert(key.as_slice(), data.as_slice())?;
+            Ok(())
+        })?;
         self.database.flush_async().await?;
         Ok(id)
     }

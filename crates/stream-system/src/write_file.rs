@@ -212,9 +212,7 @@ impl carbon_io::WriteFile<Vec<u8>> for WriteFile {
                     this.state = State::Opening(Box::pin(async move {
                         let path = allocate_path(&file_registry, config.max_file_size).await?;
                         let (metadata, encoder) = new_codec(config)?;
-                        let file = file_backend
-                            .write(&path.access_path)
-                            .await?;
+                        let file = file_backend.write(&path.access_path).await?;
                         Ok(OpenedFile {
                             file_id: path.id,
                             metadata,
@@ -313,7 +311,9 @@ impl carbon_io::WriteFile<Vec<u8>> for WriteFile {
                     access_path,
                 };
                 file_registry.store(&[file]).await?;
-                Ok(stream_registry.insert(opened.file_id, opened.metadata).await?)
+                Ok(stream_registry
+                    .insert(opened.file_id, opened.metadata)
+                    .await?)
             }));
         }
 
