@@ -1,6 +1,6 @@
 <!-- # WD40 -->
 
-<img src=".github/assets/banner.wepb"
+<img src=".github/assets/banner.webp"
      alt="WD40-S3 - Discord-backed object storage"
      width="100%">
 
