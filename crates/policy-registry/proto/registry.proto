@@ -1,0 +1,47 @@
+syntax = "proto3";
+package wd40.policy_registry.v1;
+
+service PolicyRegistry {
+  rpc GetPolicy(PolicyRequest) returns (GetPolicyResponse);
+  rpc PutPolicy(PutPolicyRequest) returns (RevisionResponse);
+  rpc DeletePolicy(PolicyRequest) returns (RevisionResponse);
+  rpc Attach(BindingRequest) returns (RevisionResponse);
+  rpc Detach(BindingRequest) returns (RevisionResponse);
+  rpc LoadPolicies(LoadPoliciesRequest) returns (PolicySnapshot);
+}
+
+message Empty {}
+message PrincipalSelector {
+  oneof selector {
+    Empty everyone = 1;
+    Empty authenticated = 2;
+    bytes specific = 3;
+  }
+}
+enum Effect { EFFECT_UNSPECIFIED = 0; ALLOW = 1; DENY = 2; }
+enum Action { ACTION_UNSPECIFIED = 0; READ = 1; WRITE = 2; DELETE = 3; LIST = 4; }
+message ResourcePattern {
+  oneof pattern {
+    string exact = 1;
+    string prefix = 2;
+  }
+}
+message Statement {
+  Effect effect = 1;
+  repeated Action actions = 2;
+  ResourcePattern resource = 3;
+}
+message Policy { repeated Statement statements = 1; }
+message PolicyRequest { bytes id = 1; }
+message GetPolicyResponse { Policy policy = 1; }
+message PutPolicyRequest { bytes id = 1; Policy policy = 2; }
+message RevisionResponse { uint64 revision = 1; }
+message BindingRequest { PrincipalSelector selector = 1; bytes policy_id = 2; }
+message LoadPoliciesRequest { repeated PrincipalSelector selectors = 1; }
+message PolicyEntry { bytes id = 1; Policy policy = 2; }
+message PolicySnapshot { uint64 revision = 1; repeated PolicyEntry policies = 2; }
+message RegistryError {
+  enum Kind { UNKNOWN = 0; POLICY_NOT_FOUND = 1; REVISION_OVERFLOW = 2; }
+  Kind kind = 1;
+  bytes policy_id = 2;
+}
