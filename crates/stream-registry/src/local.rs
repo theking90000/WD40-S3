@@ -4,7 +4,7 @@ use futures_core::Stream;
 use futures_util::{StreamExt, stream};
 use sled::{
     Db, Tree,
-    transaction::{ConflictableTransactionError, TransactionError, Transactional},
+    transaction::Transactional,
 };
 
 use crate::{
@@ -50,13 +50,6 @@ impl LocalRegistry {
     }
 }
 
-fn transaction_error(error: TransactionError<Error>) -> Error {
-    match error {
-        TransactionError::Abort(error) => error,
-        TransactionError::Storage(error) => Error::Database(error),
-    }
-}
-
 impl StreamRegistry for LocalRegistry {
     type StreamPartStream = Pin<Box<dyn Stream<Item = Result<StreamPart, Error>> + Send>>;
 
@@ -67,14 +60,11 @@ impl StreamRegistry for LocalRegistry {
         self.parts
             .transaction(|parts| {
                 if parts.get(key)?.is_some() {
-                    return Err(ConflictableTransactionError::Abort(
-                        Error::StreamPartAlreadyExists(id),
-                    ));
+                    return Err(Error::StreamPartAlreadyExists(id).into());
                 }
                 parts.insert(key.as_slice(), data.as_slice())?;
                 Ok(())
-            })
-            .map_err(transaction_error)?;
+            })?;
         self.database.flush_async().await?;
         Ok(id)
     }
@@ -85,33 +75,26 @@ impl StreamRegistry for LocalRegistry {
         (&self.parts, &self.manifests)
             .transaction(|(part_tree, manifests)| {
                 if manifests.get(key)?.is_some() {
-                    return Err(ConflictableTransactionError::Abort(
-                        Error::StreamAlreadyExists(id),
-                    ));
+                    return Err(Error::StreamAlreadyExists(id).into());
                 }
                 let mut length = 0_u64;
                 for &part_id in &parts {
-                    let data = part_tree.get(part_id.to_be_bytes())?.ok_or(
-                        ConflictableTransactionError::Abort(Error::StreamPartNotFound(part_id)),
-                    )?;
-                    let part: StreamPart = postcard::from_bytes(&data).map_err(|error| {
-                        ConflictableTransactionError::Abort(Error::Serialization(error))
-                    })?;
+                    let data = part_tree
+                        .get(part_id.to_be_bytes())?
+                        .ok_or(Error::StreamPartNotFound(part_id))?;
+                    let part: StreamPart = postcard::from_bytes(&data).map_err(Error::from)?;
                     length = length
                         .checked_add(part.metadata.logical_len())
-                        .ok_or(ConflictableTransactionError::Abort(Error::LengthOverflow))?;
+                        .ok_or(Error::LengthOverflow)?;
                 }
                 let data = postcard::to_allocvec(&StreamManifest {
                     parts: parts.clone(),
                     length,
                 })
-                .map_err(|error| {
-                    ConflictableTransactionError::Abort(Error::Serialization(error))
-                })?;
+                .map_err(Error::from)?;
                 manifests.insert(key.as_slice(), data.as_slice())?;
                 Ok(())
-            })
-            .map_err(transaction_error)?;
+            })?;
         self.database.flush_async().await?;
         Ok(id)
     }
