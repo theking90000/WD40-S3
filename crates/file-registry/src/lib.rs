@@ -1,5 +1,7 @@
 //! File registry library for WD40-S3.
 
+#[cfg(feature = "cli")]
+pub mod cli;
 pub mod error;
 pub mod local;
 pub mod traits;

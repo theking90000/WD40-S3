@@ -3,7 +3,12 @@ name = "stream-registry"
 version.workspace = true
 edition.workspace = true
 
+[features]
+default = []
+cli = ["dep:clap"]
+
 [dependencies]
+clap = { version = "4", features = ["derive", "env"], optional = true }
 craft-codec = { version = "0.2.2", default-features = false, features = ["serde"] }
 file-registry = { path = "../file-registry" }
 futures-core = "0.3"

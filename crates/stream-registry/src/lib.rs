@@ -4,6 +4,8 @@
 //! list of part IDs as a stream. The registry does not open files or check their
 //! existence in the file registry. Parts may be shared and repeated in manifests.
 
+#[cfg(feature = "cli")]
+pub mod cli;
 pub mod error;
 pub mod local;
 pub mod traits;

@@ -4,6 +4,8 @@
 //! finalize an ordered selection of parts. The registry stores metadata only;
 //! stream validation and content I/O belong to the caller.
 
+#[cfg(feature = "cli")]
+pub mod cli;
 pub mod error;
 pub mod local;
 pub mod traits;
