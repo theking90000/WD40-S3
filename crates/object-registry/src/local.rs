@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sled::{
     Db, Tree,
     transaction::{
-        ConflictableTransactionError::Abort, ConflictableTransactionResult, TransactionError,
+        ConflictableTransactionError::Abort, ConflictableTransactionResult,
         Transactional, TransactionalTree,
     },
 };
@@ -97,12 +97,12 @@ impl LocalRegistry {
                 let _ = sender.send(database.flush());
             })
             .map_err(Error::FlushWorker)?;
-        receiver.await.map_err(Error::FlushCanceled)??;
+        receiver.await??;
         Ok(())
     }
 
     fn append(&self, key: &str, content: &VersionContent) -> Result<VersionId, Error> {
-        (&self.active, &self.versions)
+        Ok((&self.active, &self.versions)
             .transaction(|(active, versions)| {
                 let previous_version_id = current_id(versions, key)?;
                 if let Some(previous) = previous_version_id
@@ -112,7 +112,7 @@ impl LocalRegistry {
                 }
                 // IDs are generated again on retries, after reading the current pointer.
                 let id = versions.generate_id()?;
-                check_link(id, previous_version_id).map_err(Abort)?;
+                check_link(id, previous_version_id)?;
                 let version_key = version_key(key, id);
                 if versions.get(&version_key)?.is_some() {
                     return Err(Abort(Error::CorruptState(
@@ -125,11 +125,10 @@ impl LocalRegistry {
                     deleted: false,
                     content,
                 };
-                versions.insert(version_key, encode(&entry).map_err(Abort)?)?;
+                versions.insert(version_key, encode(&entry)?)?;
                 set_current(active, versions, key, Some((id, content)))?;
                 Ok(id)
-            })
-            .map_err(transaction_error)
+            })?)
     }
 }
 
@@ -167,8 +166,7 @@ fn version_key(key: &str, id: VersionId) -> Vec<u8> {
 }
 
 fn parse_object_key(bytes: &[u8]) -> Result<&str, Error> {
-    let key =
-        std::str::from_utf8(bytes).map_err(|_| Error::CorruptState("object key is not UTF-8"))?;
+    let key = std::str::from_utf8(bytes)?;
     validate_key(key).map_err(|_| Error::CorruptState("invalid stored object key"))?;
     Ok(key)
 }
@@ -211,19 +209,12 @@ fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, Error> {
     Ok(postcard::from_bytes(bytes)?)
 }
 
-fn transaction_error(error: TransactionError<Error>) -> Error {
-    match error {
-        TransactionError::Abort(error) => error,
-        TransactionError::Storage(error) => Error::Database(error),
-    }
-}
-
 fn current_id(
     versions: &TransactionalTree,
     key: &str,
 ) -> ConflictableTransactionResult<Option<VersionId>, Error> {
     match versions.get(head_key(key))? {
-        Some(bytes) => Ok(Some(decode(&bytes).map_err(Abort)?)),
+        Some(bytes) => Ok(Some(decode(&bytes)?)),
         None => Ok(None),
     }
 }
@@ -235,9 +226,9 @@ fn read_version(
 ) -> ConflictableTransactionResult<VersionEntry, Error> {
     let bytes = versions
         .get(version_key(key, id))?
-        .ok_or(Abort(Error::CorruptState("referenced version is missing")))?;
-    let entry: VersionEntry = decode(&bytes).map_err(Abort)?;
-    check_link(id, entry.previous_version_id).map_err(Abort)?;
+        .ok_or(Error::CorruptState("referenced version is missing"))?;
+    let entry: VersionEntry = decode(&bytes)?;
+    check_link(id, entry.previous_version_id)?;
     Ok(entry)
 }
 
@@ -249,7 +240,7 @@ fn set_current(
 ) -> ConflictableTransactionResult<(), Error> {
     match current {
         Some((id, content)) => {
-            versions.insert(head_key(key), encode(&id).map_err(Abort)?)?;
+            versions.insert(head_key(key), encode(&id)?)?;
             match content {
                 VersionContent::Object { blob_id, metadata } => {
                     let entry = ActiveEntry {
@@ -257,7 +248,7 @@ fn set_current(
                         blob_id: *blob_id,
                         metadata,
                     };
-                    active.insert(key.as_bytes(), encode(&entry).map_err(Abort)?)?;
+                    active.insert(key.as_bytes(), encode(&entry)?)?;
                 }
                 VersionContent::DeleteMarker => {
                     active.remove(key.as_bytes())?;
@@ -417,8 +408,8 @@ impl ObjectRegistry for LocalRegistry {
                         let Some(bytes) = versions.get(&stored_key)? else {
                             return Ok(());
                         };
-                        let mut entry: VersionEntry = decode(&bytes).map_err(Abort)?;
-                        check_link(id, entry.previous_version_id).map_err(Abort)?;
+                        let mut entry: VersionEntry = decode(&bytes)?;
+                        check_link(id, entry.previous_version_id)?;
                         if entry.deleted {
                             return Ok(());
                         }
@@ -443,10 +434,9 @@ impl ObjectRegistry for LocalRegistry {
                             )?;
                         }
                         entry.deleted = true;
-                        versions.insert(stored_key, encode(&entry).map_err(Abort)?)?;
+                        versions.insert(stored_key, encode(&entry)?)?;
                         Ok(())
-                    })
-                    .map_err(transaction_error)?;
+                    })?;
                 id
             }
         };
