@@ -38,9 +38,7 @@ impl AsyncRead for AsyncReadAdapter<'_> {
         }
         let this = self.get_mut();
         if this.position == this.frame.selected.end {
-            match ready!(this.blob.poll_read_frame(cx, &mut this.frame))
-                .map_err(io::Error::other)?
-            {
+            match ready!(this.blob.poll_read_frame(cx, &mut this.frame))? {
                 Some(()) => this.position = this.frame.selected.start,
                 None => return Poll::Ready(Ok(0)),
             }

@@ -51,8 +51,7 @@ impl<'a> ReadBlob<'a> {
             system.backend.clone(),
             budget,
             carbon_config,
-        )
-        .map_err(Error::Stream)?;
+        )?;
         let registry = system.blob_registry.clone();
         Ok(Self {
             reader: Some(reader),
@@ -152,16 +151,15 @@ impl<'a> ReadBlob<'a> {
         }
         match reader.poll_can_push_stream(cx) {
             Poll::Pending => return Poll::Ready(Ok(())),
-            Poll::Ready(result) => result.map_err(Error::Stream)?,
+            Poll::Ready(result) => result?,
         }
         if let Resolution::Opening(future) = &mut self.resolution {
-            let slices = ready!(future.as_mut().poll(cx)).map_err(Error::BlobRegistry)?;
+            let slices = ready!(future.as_mut().poll(cx))?;
             self.resolution = Resolution::Reading(slices);
         }
         let slice = match &mut self.resolution {
             Resolution::Reading(slices) => ready!(slices.poll_next_unpin(cx))
-                .transpose()
-                .map_err(Error::BlobRegistry)?,
+                .transpose()?,
             Resolution::Opening(_) | Resolution::Finished => None,
         };
         match slice {
@@ -171,8 +169,7 @@ impl<'a> ReadBlob<'a> {
                     .checked_add(slice.length)
                     .ok_or(Error::LengthOverflow)?;
                 reader
-                    .push_stream(slice.stream_id, slice.skip, Some(end))
-                    .map_err(Error::Stream)?;
+                    .push_stream(slice.stream_id, slice.skip, Some(end))?;
                 reader.poll_progress(cx);
             }
             None => {

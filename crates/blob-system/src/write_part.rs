@@ -14,7 +14,7 @@ use crate::{
     PartId, SchedulerConfig,
 };
 
-type SaveFuture = Pin<Box<dyn Future<Output = Result<(), blob_registry::Error>>>>;
+type SaveFuture = Pin<Box<dyn Future<Output = Result<(), Error>>>>;
 
 enum State {
     Writing,
@@ -60,8 +60,7 @@ impl<'a> WriteBlobPart<'a> {
             allocator,
             budget,
             carbon_config,
-        )
-        .map_err(Error::Stream)?;
+        )?;
         Ok(Self {
             stream: Some(stream),
             registry: system.blob_registry.clone(),
@@ -95,11 +94,11 @@ impl<'a> WriteBlobPart<'a> {
     /// future preserves ongoing operations. It does not close the part.
     pub async fn progress(&mut self) -> io::Result<()> {
         if !matches!(self.state, State::Writing) {
-            return Err(io::Error::other(Error::InputClosed));
+            return Err(Error::InputClosed.into());
         }
         let result = match &mut self.stream {
             Some(stream) => stream.progress().await,
-            None => Err(io::Error::other(Error::InputClosed)),
+            None => Err(Error::InputClosed.into()),
         };
         if result.is_err() {
             self.fail();
@@ -114,24 +113,24 @@ impl<'a> WriteBlobPart<'a> {
 
     fn poll_input(&mut self, cx: &mut Context<'_>, input: &[u8]) -> Poll<io::Result<usize>> {
         if !matches!(self.state, State::Writing) {
-            return Poll::Ready(Err(io::Error::other(Error::InputClosed)));
+            return Poll::Ready(Err(Error::InputClosed.into()));
         }
         // Validate before accepting bytes so a length error consumes no input.
         let input_length =
-            u64::try_from(input.len()).map_err(|_| io::Error::other(Error::LengthOverflow))?;
+            u64::try_from(input.len()).map_err(|_| Error::LengthOverflow)?;
         self.length
             .checked_add(input_length)
-            .ok_or_else(|| io::Error::other(Error::LengthOverflow))?;
+            .ok_or(Error::LengthOverflow)?;
         let stream = self
             .stream
             .as_mut()
-            .ok_or_else(|| io::Error::other(Error::InputClosed))?;
+            .ok_or(Error::InputClosed)?;
         let count = ready!(Pin::new(stream).poll_write(cx, input))?;
-        let accepted = u64::try_from(count).map_err(|_| io::Error::other(Error::LengthOverflow))?;
+        let accepted = u64::try_from(count).map_err(|_| Error::LengthOverflow)?;
         self.length = self
             .length
             .checked_add(accepted)
-            .ok_or_else(|| io::Error::other(Error::LengthOverflow))?;
+            .ok_or(Error::LengthOverflow)?;
         Poll::Ready(Ok(count))
     }
 
@@ -145,31 +144,29 @@ impl<'a> WriteBlobPart<'a> {
                     let stream = self
                         .stream
                         .as_mut()
-                        .ok_or_else(|| io::Error::other(Error::InputClosed))?;
+                        .ok_or(Error::InputClosed)?;
                     ready!(Pin::new(&mut *stream).poll_close(cx))?;
                     let stream_id = stream
                         .stream_id()
-                        .ok_or_else(|| io::Error::other(Error::MissingStreamId))?;
+                        .ok_or(Error::MissingStreamId)?;
                     let registry = self.registry.clone();
                     let blob_id = self.blob_id;
                     let part_id = self.part_id;
                     let length = self.length;
                     self.stream = None;
                     self.state = State::Saving(Box::pin(async move {
-                        registry
-                            .save_part(blob_id, stream_id, length, part_id)
-                            .await
+                        registry.save_part(blob_id, stream_id, length, part_id).await?;
+                        Ok(())
                     }));
                 }
                 State::Saving(future) => {
-                    ready!(future.as_mut().poll(cx))
-                        .map_err(|error| io::Error::other(Error::BlobRegistry(error)))?;
+                    ready!(future.as_mut().poll(cx))?;
                     self.state = State::Closed;
                     return Poll::Ready(Ok(()));
                 }
                 State::Closed => return Poll::Ready(Ok(())),
                 State::Writing | State::Failed => {
-                    return Poll::Ready(Err(io::Error::other(Error::InputClosed)));
+                    return Poll::Ready(Err(Error::InputClosed.into()));
                 }
             }
         }

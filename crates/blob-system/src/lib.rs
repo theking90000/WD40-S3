@@ -59,19 +59,14 @@ impl BlobSystem {
 
     /// Durably creates an empty, open blob with a new ID.
     pub async fn create(&self) -> Result<BlobId, Error> {
-        self.blob_registry
-            .create()
-            .await
-            .map_err(Error::BlobRegistry)
+        Ok(self.blob_registry.create().await?)
     }
 
     /// Rejects a missing/finalized blob or an existing part before allocation.
     /// This check reserves nothing; the writer checks again before registration.
     pub async fn can_save(&self, blob_id: BlobId, part_id: PartId) -> Result<(), Error> {
-        self.blob_registry
-            .can_save(blob_id, part_id)
-            .await
-            .map_err(Error::BlobRegistry)
+        self.blob_registry.can_save(blob_id, part_id).await?;
+        Ok(())
     }
 
     /// Checks admission and creates a part writer using caller-owned resources.
@@ -101,10 +96,7 @@ impl BlobSystem {
     /// Every selected part must already have a successfully closed writer.
     /// Repetitions and empty selections follow the blob-registry contract.
     pub async fn finalize(&self, blob_id: BlobId, parts: Vec<PartId>) -> Result<u64, Error> {
-        self.blob_registry
-            .finalize(blob_id, parts)
-            .await
-            .map_err(Error::BlobRegistry)
+        Ok(self.blob_registry.finalize(blob_id, parts).await?)
     }
 
     /// Creates a lazy reader of an exclusive-end plaintext byte range.

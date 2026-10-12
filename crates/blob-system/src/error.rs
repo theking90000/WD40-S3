@@ -31,3 +31,21 @@ impl StdError for Error {
         }
     }
 }
+
+impl From<blob_registry::Error> for Error {
+    fn from(error: blob_registry::Error) -> Self {
+        Self::BlobRegistry(error)
+    }
+}
+
+impl From<stream_system::Error> for Error {
+    fn from(error: stream_system::Error) -> Self {
+        Self::Stream(error)
+    }
+}
+
+impl From<Error> for std::io::Error {
+    fn from(error: Error) -> Self {
+        Self::other(error)
+    }
+}
