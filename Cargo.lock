@@ -659,6 +659,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "object-registry"
+version = "0.1.0"
+dependencies = [
+ "blob-registry",
+ "futures-channel",
+ "futures-executor",
+ "postcard",
+ "serde",
+ "sled",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
