@@ -1,5 +1,7 @@
 use std::{error::Error as StdError, fmt};
 
+use sled::transaction::{ConflictableTransactionError, TransactionError};
+
 use crate::{BlobId, PartId};
 
 #[derive(Debug)]
@@ -61,5 +63,20 @@ impl From<sled::Error> for Error {
 impl From<postcard::Error> for Error {
     fn from(error: postcard::Error) -> Self {
         Self::Serialization(error)
+    }
+}
+
+impl From<TransactionError<Error>> for Error {
+    fn from(error: TransactionError<Error>) -> Self {
+        match error {
+            TransactionError::Abort(error) => error,
+            TransactionError::Storage(error) => Self::Database(error),
+        }
+    }
+}
+
+impl From<Error> for ConflictableTransactionError<Error> {
+    fn from(error: Error) -> Self {
+        Self::Abort(error)
     }
 }
