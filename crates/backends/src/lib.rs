@@ -9,6 +9,8 @@ use futures_io::{AsyncRead, AsyncWrite};
 use futures_util::{StreamExt, TryStreamExt, stream};
 use serde::{Deserialize, Serialize};
 
+#[cfg(all(feature = "cli", feature = "discord"))]
+pub mod cli;
 #[cfg(feature = "discord")]
 pub mod discord;
 

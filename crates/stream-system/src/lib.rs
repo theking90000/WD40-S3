@@ -55,6 +55,10 @@
 //! `futures-util` with its `io` feature. The I/O traits are from `futures-io`,
 //! rather than Tokio's separate I/O traits.
 
+/// Command-line codec and CARBON settings.
+#[cfg(feature = "cli")]
+pub mod cli;
+
 /// Byte-oriented adaptation of decoded frames.
 mod async_read;
 /// Failures from registries, codecs, backends and stream lifecycle contracts.

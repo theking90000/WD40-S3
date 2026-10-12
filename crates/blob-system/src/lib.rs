@@ -9,6 +9,9 @@
 //! caller-owned. Constructors start no tasks. Writes, reads, closing and
 //! progression futures advance operations only when polled.
 
+#[cfg(feature = "cli")]
+pub mod cli;
+
 mod async_read;
 mod error;
 mod read_blob;

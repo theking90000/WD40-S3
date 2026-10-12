@@ -3,6 +3,10 @@ name = "blob-system"
 version.workspace = true
 edition.workspace = true
 
+[features]
+default = []
+cli = ["stream-system/cli"]
+
 [dependencies]
 blob-registry = { path = "../blob-registry" }
 futures-core = "0.3"

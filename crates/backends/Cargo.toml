@@ -7,8 +7,10 @@ edition.workspace = true
 default = ["discord"]
 discord = []
 telegram = []
+cli = ["dep:clap"]
 
 [dependencies]
+clap = { version = "4", features = ["derive", "env"], optional = true }
 serde = { version = "1", features = ["derive", "rc"] }
 futures-core = "0.3"
 futures-io = "0.3"

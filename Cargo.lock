@@ -102,6 +102,7 @@ dependencies = [
 name = "backends"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "discord-webhook-storage",
  "futures-core",
  "futures-io",
@@ -126,6 +127,7 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 name = "blob-registry"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "futures-core",
  "futures-executor",
  "futures-util",
@@ -384,6 +386,7 @@ name = "file-registry"
 version = "0.1.0"
 dependencies = [
  "backends",
+ "clap",
  "futures-core",
  "futures-util",
  "postcard",
@@ -948,6 +951,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 name = "stream-registry"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "craft-codec",
  "file-registry",
  "futures-core",
@@ -970,7 +974,6 @@ dependencies = [
  "futures-io",
  "futures-util",
  "getrandom 0.4.3",
- "sled",
  "stream-registry",
  "tokio",
  "tokio-tcp-pool",

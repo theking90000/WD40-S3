@@ -7,28 +7,18 @@ use std::{
     time::Duration,
 };
 
-use backends::{DiscordFile, DiscordRegistry, RegistryBackend};
-use clap::{Parser, Subcommand, ValueEnum};
+use backends::cli::DiscordBackendConfig;
+use clap::{Parser, Subcommand};
+use file_registry::cli::FileRegistryConfig;
 use futures_util::io::AsyncWriteExt;
+use stream_registry::cli::StreamRegistryConfig;
 use stream_system::{
-    BytesFrameAllocator, Compression, Encryption, FileBackend, FileRegistry, FrameBudget,
-    ReadFrame, ReadStream, SchedulerConfig, StreamId, StreamRegistry, StreamWriterConfig, Window,
-    WriteStream,
+    BytesFrameAllocator, FileBackend, FileRegistry, FrameBudget, ReadFrame, ReadStream,
+    SchedulerConfig, StreamId, StreamRegistry, WriteStream,
+    cli::{StreamSchedulerConfig, StreamWriteConfig},
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt as _};
 use tokio_tcp_pool::{Endpoint, Pool, PoolConfig, Route, rustls};
-
-#[derive(Clone, Copy, ValueEnum)]
-enum EncryptionMode {
-    None,
-    Aes256,
-}
-
-#[derive(Clone, Copy, ValueEnum)]
-enum CompressionMode {
-    None,
-    Lz4,
-}
 
 #[derive(Parser)]
 #[command(
@@ -57,22 +47,8 @@ struct UploadArgs {
     #[arg(short, long, env = "WD40_INPUT", default_value = "-")]
     input: PathBuf,
 
-    /// AES-256 uses a fresh system-generated key for each file attempt.
-    #[arg(long, env = "WD40_ENCRYPTION", value_enum, default_value = "none")]
-    encryption: EncryptionMode,
-
-    /// Compression applied independently to each frame.
-    #[arg(long, env = "WD40_COMPRESSION", value_enum, default_value = "none")]
-    compression: CompressionMode,
-
-    /// Raw frame size in bytes.
-    #[arg(long, env = "WD40_FRAME_SIZE", default_value = "65536")]
-    frame_size: NonZeroUsize,
-
-    /// Maximum encoded file size in bytes, including authentication tags.
-    #[arg(long, env = "WD40_MAX_FILE_SIZE", default_value = "20000000",
-        value_parser = clap::value_parser!(u64).range(1..=20_000_000))]
-    max_file_size: u64,
+    #[command(flatten)]
+    writer: StreamWriteConfig,
 
     /// Size of the reusable input buffer in bytes.
     #[arg(long, env = "WD40_INPUT_BUFFER_SIZE", default_value = "65536")]
@@ -100,73 +76,17 @@ struct DownloadArgs {
 
 #[derive(clap::Args)]
 struct CommonArgs {
-    /// Persistent file registry database directory.
-    #[arg(
-        long,
-        global = true,
-        env = "WD40_FILE_REGISTRY_PATH",
-        default_value = "./data/file-registry"
-    )]
-    file_registry_path: PathBuf,
+    #[command(flatten)]
+    file_registry: FileRegistryConfig,
 
-    /// Persistent stream registry database directory.
-    #[arg(
-        long,
-        global = true,
-        env = "WD40_STREAM_REGISTRY_PATH",
-        default_value = "./data/stream-registry"
-    )]
-    stream_registry_path: PathBuf,
+    #[command(flatten)]
+    stream_registry: StreamRegistryConfig,
 
-    /// Discord webhook URL, required for upload. Repeat or use comma-separated values.
-    #[arg(
-        long = "webhook",
-        global = true,
-        env = "WD40_DISCORD_WEBHOOK_URLS",
-        value_delimiter = ',',
-        hide_env_values = true
-    )]
-    webhooks: Vec<String>,
+    #[command(flatten)]
+    backend: DiscordBackendConfig,
 
-    /// Optional bot token for URL renewal. Repeat the option or use comma-separated values.
-    #[arg(
-        long = "bot-token",
-        global = true,
-        env = "WD40_DISCORD_BOT_TOKENS",
-        value_delimiter = ',',
-        hide_env_values = true
-    )]
-    bot_tokens: Vec<String>,
-
-    /// Desired number of frames retained by CARBON.
-    #[arg(long, global = true, env = "WD40_TARGET_FRAMES", default_value = "256")]
-    target_frames: NonZeroUsize,
-
-    /// CARBON discovery horizon, used by reading rather than writing.
-    #[arg(
-        long,
-        global = true,
-        env = "WD40_OPEN_AHEAD_FRAMES",
-        default_value = "1024"
-    )]
-    open_ahead_frames: usize,
-
-    /// Maximum number of active backend files.
-    #[arg(
-        long,
-        global = true,
-        env = "WD40_MAX_ACTIVE_FILES",
-        default_value = "16"
-    )]
-    max_active_files: NonZeroUsize,
-
-    /// Retries per file. A nonzero value requires a budget that fits a whole file.
-    #[arg(long, global = true, env = "WD40_MAX_RETRIES", default_value = "0")]
-    max_retries: u32,
-
-    /// Total shared frame budget for this run.
-    #[arg(long, global = true, env = "WD40_FRAME_BUDGET", default_value = "256")]
-    frame_budget: NonZeroUsize,
+    #[command(flatten)]
+    scheduler: StreamSchedulerConfig,
 
     /// Maximum number of connections in each Discord pool.
     #[arg(long, global = true, env = "WD40_POOL_MAX_OPEN", default_value = "16")]
@@ -209,7 +129,7 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
         command,
         common: args,
     } = args;
-    if matches!(&command, Command::Upload(_)) && args.webhooks.is_empty() {
+    if matches!(&command, Command::Upload(_)) && args.backend.webhooks.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "upload requires --webhook or WD40_DISCORD_WEBHOOK_URLS",
@@ -242,29 +162,12 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
     };
     let write_pool = pool("discord.com")?;
     let read_pool = pool("cdn.discordapp.com")?;
-    let backend = FileBackend::Discord(DiscordFile::new(read_pool, write_pool.clone()));
-    let registry_backend = RegistryBackend::Discord(DiscordRegistry::new(
-        write_pool,
-        args.webhooks,
-        args.bot_tokens,
-    ));
-    let file_registry = FileRegistry::Local(file_registry::LocalRegistry::new(
-        sled::open(&args.file_registry_path)?,
-        registry_backend,
-    )?);
-    let stream_registry = StreamRegistry::Local(stream_registry::LocalRegistry::new(sled::open(
-        &args.stream_registry_path,
-    )?)?);
+    let (backend, registry_backend) = args.backend.build(read_pool, write_pool);
+    let file_registry = args.file_registry.open(registry_backend)?;
+    let stream_registry = args.stream_registry.open()?;
 
-    let budget = FrameBudget::new(args.frame_budget.get());
-    let mut carbon_config = SchedulerConfig::new(
-        Window::new(
-            args.target_frames.get(),
-            args.open_ahead_frames,
-            args.max_active_files.get(),
-        )?,
-        args.max_retries,
-    );
+    let budget = args.scheduler.frame_budget();
+    let mut carbon_config = args.scheduler.scheduler_config()?;
     match command {
         Command::Upload(args) => {
             upload(
@@ -304,19 +207,8 @@ async fn upload(
     } else {
         Box::new(tokio::fs::File::open(&args.input).await?)
     };
-    let config = StreamWriterConfig {
-        encryption: match args.encryption {
-            EncryptionMode::None => Encryption::None,
-            EncryptionMode::Aes256 => Encryption::Aes256,
-        },
-        compression: match args.compression {
-            CompressionMode::None => Compression::None,
-            CompressionMode::Lz4 => Compression::Lz4,
-        },
-        frame_size: u64::try_from(args.frame_size.get())?,
-        max_file_size: args.max_file_size,
-    };
-    let mut allocator = BytesFrameAllocator::new(args.frame_size.get())?;
+    let config = args.writer.writer_config()?;
+    let mut allocator = BytesFrameAllocator::new(args.writer.frame_size.get())?;
     let mut stream = WriteStream::new(
         file_registry,
         stream_registry,
@@ -394,9 +286,47 @@ mod tests {
 
     #[test]
     fn parses_upload_and_download_range() -> Result<(), Box<dyn Error>> {
-        let upload = Args::try_parse_from(["stream-system", "upload", "--input", "input.bin"])?;
+        let upload = Args::try_parse_from([
+            "stream-system",
+            "upload",
+            "--input",
+            "input.bin",
+            "--frame-size",
+            "4096",
+            "--encryption",
+            "aes256",
+            "--compression",
+            "lz4",
+            "--max-file-size",
+            "1000000",
+            "--webhook",
+            "https://example.invalid/webhook",
+            "--file-registry-path",
+            "files.db",
+            "--stream-registry-path",
+            "streams.db",
+            "--pool-max-open",
+            "4",
+        ])?;
+        assert_eq!(
+            upload.common.backend.webhooks,
+            ["https://example.invalid/webhook"]
+        );
+        assert_eq!(upload.common.pool_max_open.get(), 4);
+        assert_eq!(
+            upload.common.file_registry.file_registry_path,
+            Path::new("files.db")
+        );
+        assert_eq!(
+            upload.common.stream_registry.stream_registry_path,
+            Path::new("streams.db")
+        );
         assert!(matches!(upload.command,
-            Command::Upload(args) if args.input == Path::new("input.bin")));
+            Command::Upload(args) if args.input == Path::new("input.bin")
+                && matches!(args.writer.encryption, stream_system::cli::EncryptionMode::Aes256)
+                && matches!(args.writer.compression, stream_system::cli::CompressionMode::Lz4)
+                && args.writer.frame_size.get() == 4096
+                && args.writer.max_file_size == 1_000_000));
         let download = Args::try_parse_from([
             "stream-system",
             "download",
@@ -410,7 +340,7 @@ mod tests {
             "--frame-budget",
             "8",
         ])?;
-        assert_eq!(download.common.frame_budget.get(), 8);
+        assert_eq!(download.common.scheduler.frame_budget.get(), 8);
         assert!(matches!(download.command, Command::Download(args)
             if args.stream_id == 123 && args.start == 100 && args.end == Some(200)
                 && args.output == Path::new("range.bin")));
