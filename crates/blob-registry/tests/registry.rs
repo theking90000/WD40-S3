@@ -1,8 +1,8 @@
 use std::{
     collections::BTreeMap,
     error::Error as StdError,
-    sync::{Arc, Barrier},
-    time::{SystemTime, UNIX_EPOCH},
+    sync::{Arc, Barrier, mpsc},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use blob_registry::{
@@ -26,6 +26,48 @@ fn temporary_database() -> TestResult<sled::Db> {
 }
 
 fn require_send<T: Send>(_: &T) {}
+
+#[test]
+fn parallel_mutations_across_independent_databases_complete() -> TestResult {
+    let mut registries = Vec::new();
+    for _ in 0..16 {
+        let database = sled::Config::new()
+            .temporary(true)
+            .flush_every_ms(None)
+            .open()?;
+        registries.push(LocalRegistry::new(database)?);
+    }
+    let barrier = Arc::new(Barrier::new(registries.len()));
+    let (sender, receiver) = mpsc::channel();
+    for registry in registries {
+        let barrier = barrier.clone();
+        let sender = sender.clone();
+        std::thread::Builder::new().spawn(move || {
+            barrier.wait();
+            let result: Result<Vec<u64>, Error> = block_on(async {
+                let mut lengths = Vec::new();
+                for _ in 0..8 {
+                    let blob = registry.create().await?;
+                    registry.save_part(blob, 41, 3, 1).await?;
+                    lengths.push(registry.finalize(blob, vec![1]).await?);
+                }
+                Ok(lengths)
+            });
+            let _ = sender.send(result);
+        })?;
+    }
+    drop(sender);
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    for _ in 0..16 {
+        let lengths = receiver
+            .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))??;
+        check(
+            lengths == vec![3; 8],
+            "parallel mutations changed blob lengths",
+        )?;
+    }
+    Ok(())
+}
 
 #[test]
 fn can_save_checks_state_without_reserving_a_part() -> TestResult {

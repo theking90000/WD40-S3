@@ -84,6 +84,11 @@ registry. Domain errors retain their variants and IDs through structured gRPC
 status details; unrecognized errors remain `Error::Rpc`. Successful writes retain
 the local durable-flush guarantee. Failures can occur after a write took effect.
 
+Local flushes run `Db::flush` on separate threads and await their results through
+oneshot channels. Sled 0.34.7's `flush_async` can starve the log writes queued on
+its own I/O pool. This path keeps those workers and Tokio workers free. It costs
+one thread per flush; thread creation and worker failures remain errors.
+
 The architecture assumes one namespace and 4 MiB messages. All endpoints and
 relays must address the same logical storage. A response lost
 after a write does not imply rollback. Connections may reconnect for subsequent
@@ -100,10 +105,13 @@ before returning its infallible item stream. No other registry is changed here.
 ## Checks
 
 ```sh
-cargo test -p stream-registry
-cargo test -p stream-registry --features grpc-client,grpc-server,cli
-cargo test -p stream-registry --all-features
+cargo test -p stream-registry -- --test-threads=16
+cargo test -p stream-registry --features grpc-client,grpc-server,cli -- --test-threads=16
+cargo test --workspace --all-features -- --test-threads=16
 ```
 
 Integration tests use ephemeral servers and static TLS fixtures. The included
 server key is exclusively a test key, never a deployment credential.
+Concurrency is required: the suite must pass with more than one test thread.
+A regression test runs 64 concurrent clients on a 16-worker Tokio runtime,
+covering both independent databases and a shared server with bounded deadlines.

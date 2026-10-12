@@ -209,6 +209,7 @@ name = "blob-registry"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "futures-channel",
  "futures-core",
  "futures-executor",
  "futures-util",
@@ -512,11 +513,15 @@ version = "0.1.0"
 dependencies = [
  "backends",
  "clap",
+ "discord-webhook-storage",
+ "futures-channel",
  "futures-core",
+ "futures-executor",
  "futures-util",
  "postcard",
  "serde",
  "sled",
+ "tokio-tcp-pool",
 ]
 
 [[package]]
@@ -1504,6 +1509,7 @@ dependencies = [
  "clap",
  "craft-codec",
  "file-registry",
+ "futures-channel",
  "futures-core",
  "futures-executor",
  "futures-util",

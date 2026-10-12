@@ -46,7 +46,11 @@ transactions coordinate `save_part` and `finalize` across registry clones. After
 finalization, saving parts fails. Finalizing with the same list returns the
 original length; a different list fails.
 
-Every successful mutation awaits `flush_async`. A storage/flush error or a
+Every successful mutation awaits a durable `Db::flush` on a separate thread.
+This avoids sled 0.34.7's shared-pool deadlock when flush workers wait for log
+writes queued on that same pool, without blocking the async executor. The cost
+is one thread per flush; thread creation and worker failures are returned.
+A storage/flush error or a
 cancelled future can occur after transaction commit; an error does not imply
 rollback. Retrying finalization with the same list also flushes the database.
 After an uncertain part save, a retry may report `PartAlreadyExists`. An uncertain

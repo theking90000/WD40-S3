@@ -8,6 +8,8 @@ use crate::FileId;
 pub enum Error {
     Database(sled::Error),
     Serialization(postcard::Error),
+    FlushWorker(std::io::Error),
+    FlushCanceled(futures_channel::oneshot::Canceled),
     Backend(backends::Error),
     FileNotFound(FileId),
     FilePending(FileId),
@@ -20,6 +22,10 @@ impl fmt::Display for Error {
         match self {
             Self::Database(error) => write!(f, "registry database operation failed: {error}"),
             Self::Serialization(error) => write!(f, "registry serialization failed: {error}"),
+            Self::FlushWorker(error) => {
+                write!(f, "file registry flush worker could not start: {error}")
+            }
+            Self::FlushCanceled(error) => write!(f, "file registry flush worker stopped: {error}"),
             Self::Backend(error) => write!(f, "registry backend operation failed: {error}"),
             Self::FileNotFound(id) => write!(f, "file {id} was not found"),
             Self::FilePending(id) => write!(f, "file {id} is still pending"),
@@ -37,6 +43,8 @@ impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
             Self::Database(error) => Some(error),
+            Self::FlushWorker(error) => Some(error),
+            Self::FlushCanceled(error) => Some(error),
             Self::Backend(error) => Some(error),
             Self::Serialization(_)
             | Self::FileNotFound(_)
@@ -50,6 +58,12 @@ impl StdError for Error {
 impl From<sled::Error> for Error {
     fn from(error: sled::Error) -> Self {
         Self::Database(error)
+    }
+}
+
+impl From<futures_channel::oneshot::Canceled> for Error {
+    fn from(error: futures_channel::oneshot::Canceled) -> Self {
+        Self::FlushCanceled(error)
     }
 }
 

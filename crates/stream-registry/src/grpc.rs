@@ -46,7 +46,10 @@ pub(crate) fn into_status(error: Error) -> Status {
         Error::Rpc(status) => return status,
         #[cfg(feature = "grpc-client")]
         Error::Transport(_) => return Status::unavailable("upstream registry transport failed"),
-        Error::Database(_) | Error::Serialization(_) => {
+        Error::Database(_)
+        | Error::Serialization(_)
+        | Error::FlushWorker(_)
+        | Error::FlushCanceled(_) => {
             return Status::internal("stream registry storage or serialization failed");
         }
     };

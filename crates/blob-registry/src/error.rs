@@ -8,6 +8,8 @@ use crate::{BlobId, PartId};
 pub enum Error {
     Database(sled::Error),
     Serialization(postcard::Error),
+    FlushWorker(std::io::Error),
+    FlushCanceled(futures_channel::oneshot::Canceled),
     BlobNotFound(BlobId),
     BlobAlreadyExists(BlobId),
     BlobNotFinalized(BlobId),
@@ -23,6 +25,10 @@ impl fmt::Display for Error {
         match self {
             Self::Database(error) => write!(f, "blob registry database operation failed: {error}"),
             Self::Serialization(error) => write!(f, "blob registry serialization failed: {error}"),
+            Self::FlushWorker(error) => {
+                write!(f, "blob registry flush worker could not start: {error}")
+            }
+            Self::FlushCanceled(error) => write!(f, "blob registry flush worker stopped: {error}"),
             Self::BlobNotFound(id) => write!(f, "blob {id} was not found"),
             Self::BlobAlreadyExists(id) => write!(f, "blob {id} already exists"),
             Self::BlobNotFinalized(id) => write!(f, "blob {id} is not finalized"),
@@ -48,6 +54,8 @@ impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
             Self::Database(error) => Some(error),
+            Self::FlushWorker(error) => Some(error),
+            Self::FlushCanceled(error) => Some(error),
             Self::Serialization(error) => Some(error),
             _ => None,
         }
@@ -57,6 +65,12 @@ impl StdError for Error {
 impl From<sled::Error> for Error {
     fn from(error: sled::Error) -> Self {
         Self::Database(error)
+    }
+}
+
+impl From<futures_channel::oneshot::Canceled> for Error {
+    fn from(error: futures_channel::oneshot::Canceled) -> Self {
+        Self::FlushCanceled(error)
     }
 }
 

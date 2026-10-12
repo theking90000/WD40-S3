@@ -40,6 +40,21 @@ impl LocalRegistry {
         })
     }
 
+    async fn flush(&self) -> Result<(), Error> {
+        let database = self.database.clone();
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        // Sled's flush_async waits for log writes queued on the same I/O pool.
+        // ponytail: one thread per flush; no Tokio worker or sled I/O worker waits here.
+        std::thread::Builder::new()
+            .name("blob-registry-flush".to_owned())
+            .spawn(move || {
+                let _ = sender.send(database.flush());
+            })
+            .map_err(Error::FlushWorker)?;
+        receiver.await??;
+        Ok(())
+    }
+
     fn get_part(&self, blob_id: BlobId, part_id: PartId) -> Result<BlobPart, Error> {
         let data = self
             .parts
@@ -106,7 +121,7 @@ impl BlobRegistry for LocalRegistry {
             blobs.insert(key.as_slice(), data.as_slice())?;
             Ok(())
         })?;
-        self.database.flush_async().await?;
+        self.flush().await?;
         Ok(id)
     }
 
@@ -130,7 +145,7 @@ impl BlobRegistry for LocalRegistry {
             parts.insert(key.as_slice(), data.as_slice())?;
             Ok(())
         })?;
-        self.database.flush_async().await?;
+        self.flush().await?;
         Ok(())
     }
 
@@ -164,7 +179,7 @@ impl BlobRegistry for LocalRegistry {
             blobs.insert(key.as_slice(), data.as_slice())?;
             Ok(length)
         })?;
-        self.database.flush_async().await?;
+        self.flush().await?;
         Ok(length)
     }
 

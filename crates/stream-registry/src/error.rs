@@ -8,6 +8,8 @@ use crate::{StreamId, StreamPartId};
 pub enum Error {
     Database(sled::Error),
     Serialization(postcard::Error),
+    FlushWorker(std::io::Error),
+    FlushCanceled(futures_channel::oneshot::Canceled),
     StreamNotFound(StreamId),
     StreamPartNotFound(StreamPartId),
     StreamAlreadyExists(StreamId),
@@ -28,6 +30,12 @@ impl fmt::Display for Error {
             Self::Serialization(error) => {
                 write!(f, "stream registry serialization failed: {error}")
             }
+            Self::FlushWorker(error) => {
+                write!(f, "stream registry flush worker could not start: {error}")
+            }
+            Self::FlushCanceled(error) => {
+                write!(f, "stream registry flush worker stopped: {error}")
+            }
             Self::StreamNotFound(id) => write!(f, "stream {id} was not found"),
             Self::StreamPartNotFound(id) => write!(f, "stream part {id} was not found"),
             Self::StreamAlreadyExists(id) => write!(f, "stream {id} already exists"),
@@ -45,6 +53,8 @@ impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
             Self::Database(error) => Some(error),
+            Self::FlushWorker(error) => Some(error),
+            Self::FlushCanceled(error) => Some(error),
             Self::Serialization(error) => Some(error),
             #[cfg(feature = "grpc-client")]
             Self::Transport(error) => Some(error),
@@ -62,6 +72,12 @@ impl StdError for Error {
 impl From<sled::Error> for Error {
     fn from(error: sled::Error) -> Self {
         Self::Database(error)
+    }
+}
+
+impl From<futures_channel::oneshot::Canceled> for Error {
+    fn from(error: futures_channel::oneshot::Canceled) -> Self {
+        Self::FlushCanceled(error)
     }
 }
 

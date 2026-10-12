@@ -57,6 +57,21 @@ impl LocalRegistry {
         })
     }
 
+    async fn flush(&self) -> Result<(), Error> {
+        let database = self.database.clone();
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        // Sled's flush_async waits for log writes queued on the same I/O pool.
+        // ponytail: one thread per flush; no Tokio worker or sled I/O worker waits here.
+        std::thread::Builder::new()
+            .name("file-registry-flush".to_owned())
+            .spawn(move || {
+                let _ = sender.send(database.flush());
+            })
+            .map_err(Error::FlushWorker)?;
+        receiver.await??;
+        Ok(())
+    }
+
     fn file_lock(&self, id: FileId) -> FileLock {
         let mut locks = match self.file_locks.lock() {
             Ok(locks) => locks,
@@ -135,7 +150,7 @@ impl FileRegistry for LocalRegistry {
         }
 
         self.database.apply_batch(batch)?;
-        self.database.flush_async().await?;
+        self.flush().await?;
         Ok(stream::iter(paths))
     }
 
@@ -174,7 +189,7 @@ impl FileRegistry for LocalRegistry {
             cache.apply_batch(&cache_batch)?;
             Ok::<(), sled::transaction::ConflictableTransactionError<sled::Error>>(())
         })?;
-        self.database.flush_async().await?;
+        self.flush().await?;
         Ok(())
     }
 }

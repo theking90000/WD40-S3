@@ -81,6 +81,77 @@ impl Drop for TestServer {
     }
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 16)]
+async fn concurrent_writes_on_sixteen_tokio_workers_complete() -> TestResult {
+    use std::sync::Arc;
+    use tokio::{sync::Barrier, task::JoinSet};
+
+    let mut servers = Vec::new();
+    let mut clients = Vec::new();
+    for _ in 0..16 {
+        let db = sled::Config::new()
+            .temporary(true)
+            .flush_every_ms(None)
+            .open()?;
+        let server = TestServer::start(local(&db)?, Server::builder()).await?;
+        clients.push(
+            RemoteRegistry::connect(server.endpoint.clone().timeout(Duration::from_secs(10)))
+                .await?,
+        );
+        servers.push(server);
+    }
+    let metadata = metadata(3)?;
+    // First saturate independent databases, then one shared database/server.
+    for shared in [false, true] {
+        let barrier = Arc::new(Barrier::new(65));
+        let mut tasks = JoinSet::new();
+        let selected: Vec<_> = if shared {
+            vec![clients.first().ok_or("missing client")?.clone()]
+        } else {
+            clients.clone()
+        };
+        for (number, registry) in selected.into_iter().cycle().take(64).enumerate() {
+            let barrier = barrier.clone();
+            let metadata = metadata.clone();
+            tasks.spawn(async move {
+                barrier.wait().await;
+                for _ in 0..4 {
+                    let file_id = number as u128;
+                    let part = registry.insert(file_id, metadata.clone()).await?;
+                    let stream = registry.store(vec![part, part]).await?;
+                    let parts = registry
+                        .retrieve_parts(&[stream])
+                        .await?
+                        .try_collect::<Vec<_>>()
+                        .await?;
+                    let expected = StreamPart {
+                        file_id,
+                        metadata: metadata.clone(),
+                    };
+                    if parts != vec![expected.clone(), expected] {
+                        return Err("parallel gRPC calls changed metadata or repetitions".into());
+                    }
+                }
+                Ok::<_, Box<dyn StdError + Send + Sync>>(())
+            });
+        }
+        barrier.wait().await;
+        tokio::time::timeout(Duration::from_secs(20), async {
+            while let Some(result) = tasks.join_next().await {
+                result??;
+            }
+            Ok::<_, Box<dyn StdError + Send + Sync>>(())
+        })
+        .await?
+        .map_err(|error| -> Box<dyn StdError> { error })?;
+    }
+    drop(clients);
+    for mut server in servers {
+        server.stop().await?;
+    }
+    Ok(())
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn roundtrip_and_relay_preserve_order_repetitions_and_empty_streams() -> TestResult {
     let db = sled::Config::new().temporary(true).open()?;
