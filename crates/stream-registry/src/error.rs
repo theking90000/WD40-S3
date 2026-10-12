@@ -13,6 +13,10 @@ pub enum Error {
     StreamAlreadyExists(StreamId),
     StreamPartAlreadyExists(StreamPartId),
     LengthOverflow,
+    #[cfg(feature = "grpc-client")]
+    Transport(tonic::transport::Error),
+    #[cfg(any(feature = "grpc-client", feature = "grpc-server"))]
+    Rpc(tonic::Status),
 }
 
 impl fmt::Display for Error {
@@ -29,6 +33,10 @@ impl fmt::Display for Error {
             Self::StreamAlreadyExists(id) => write!(f, "stream {id} already exists"),
             Self::StreamPartAlreadyExists(id) => write!(f, "stream part {id} already exists"),
             Self::LengthOverflow => write!(f, "stream logical length exceeds u64"),
+            #[cfg(feature = "grpc-client")]
+            Self::Transport(error) => write!(f, "stream registry transport failed: {error}"),
+            #[cfg(any(feature = "grpc-client", feature = "grpc-server"))]
+            Self::Rpc(error) => write!(f, "stream registry RPC failed: {error}"),
         }
     }
 }
@@ -38,6 +46,10 @@ impl StdError for Error {
         match self {
             Self::Database(error) => Some(error),
             Self::Serialization(error) => Some(error),
+            #[cfg(feature = "grpc-client")]
+            Self::Transport(error) => Some(error),
+            #[cfg(any(feature = "grpc-client", feature = "grpc-server"))]
+            Self::Rpc(error) => Some(error),
             Self::StreamNotFound(_)
             | Self::StreamPartNotFound(_)
             | Self::StreamAlreadyExists(_)

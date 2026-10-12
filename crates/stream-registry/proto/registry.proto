@@ -1,0 +1,37 @@
+syntax = "proto3";
+package wd40.stream_registry.v1;
+
+// IDs are exactly 16 big-endian bytes. Metadata is CRAFT 0.2.2 Postcard;
+// its serialized layout is part of this v1 protocol and contains secret keys.
+service StreamRegistry {
+  rpc Insert(InsertRequest) returns (InsertResponse);
+  rpc Store(StoreRequest) returns (StoreResponse);
+  rpc RetrieveParts(RetrievePartsRequest) returns (stream StreamPart);
+}
+
+message InsertRequest {
+  bytes file_id = 1;
+  bytes metadata = 2;
+}
+message InsertResponse { bytes part_id = 1; }
+message StoreRequest { repeated bytes part_ids = 1; }
+message StoreResponse { bytes stream_id = 1; }
+message RetrievePartsRequest { repeated bytes stream_ids = 1; }
+message StreamPart {
+  bytes file_id = 1;
+  bytes metadata = 2;
+}
+
+// Encoded into grpc-status-details-bin for domain errors only.
+message RegistryError {
+  enum Kind {
+    UNKNOWN = 0;
+    STREAM_NOT_FOUND = 1;
+    STREAM_PART_NOT_FOUND = 2;
+    STREAM_ALREADY_EXISTS = 3;
+    STREAM_PART_ALREADY_EXISTS = 4;
+    LENGTH_OVERFLOW = 5;
+  }
+  Kind kind = 1;
+  bytes id = 2;
+}

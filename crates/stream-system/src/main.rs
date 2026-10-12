@@ -164,7 +164,7 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
     let read_pool = pool("cdn.discordapp.com")?;
     let (backend, registry_backend) = args.backend.build(read_pool, write_pool);
     let file_registry = args.file_registry.open(registry_backend)?;
-    let stream_registry = args.stream_registry.open()?;
+    let stream_registry = args.stream_registry.open().await?;
 
     let budget = args.scheduler.frame_budget();
     let mut carbon_config = args.scheduler.scheduler_config()?;
