@@ -1,5 +1,7 @@
 use std::{error::Error as StdError, fmt};
 
+use sled::transaction::TransactionError;
+
 use crate::FileId;
 
 #[derive(Debug)]
@@ -60,5 +62,15 @@ impl From<postcard::Error> for Error {
 impl From<backends::Error> for Error {
     fn from(error: backends::Error) -> Self {
         Self::Backend(error)
+    }
+}
+
+impl From<TransactionError<sled::Error>> for Error {
+    fn from(error: TransactionError<sled::Error>) -> Self {
+        match error {
+            TransactionError::Abort(error) | TransactionError::Storage(error) => {
+                Self::Database(error)
+            }
+        }
     }
 }

@@ -10,7 +10,7 @@ use futures_util::{StreamExt, lock::Mutex, stream};
 use serde::{Deserialize, Serialize};
 use sled::{
     Batch, Db, Tree,
-    transaction::{TransactionError, Transactional},
+    transaction::Transactional,
 };
 
 use crate::{Error, FileAccess, FileId, ReadAccessPath, WriteAccessPath, traits::FileRegistry};
@@ -177,11 +177,6 @@ impl FileRegistry for LocalRegistry {
                 database.apply_batch(&batch)?;
                 cache.apply_batch(&cache_batch)?;
                 Ok::<(), sled::transaction::ConflictableTransactionError<sled::Error>>(())
-            })
-            .map_err(|error| match error {
-                TransactionError::Abort(error) | TransactionError::Storage(error) => {
-                    Error::Database(error)
-                }
             })?;
         self.database.flush_async().await?;
         Ok(())
