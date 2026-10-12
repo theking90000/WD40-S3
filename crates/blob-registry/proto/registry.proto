@@ -1,0 +1,22 @@
+syntax = "proto3";
+package wd40.blob_registry.v1;
+service BlobRegistry {
+  rpc Create(Empty) returns (CreateResponse);
+  rpc CanSave(CanSaveRequest) returns (Empty);
+  rpc SavePart(SavePartRequest) returns (Empty);
+  rpc Finalize(FinalizeRequest) returns (FinalizeResponse);
+  rpc Read(ReadRequest) returns (stream StreamSlice);
+}
+message Empty {}
+message CreateResponse { bytes blob_id = 1; }
+message CanSaveRequest { bytes blob_id = 1; bytes part_id = 2; }
+message SavePartRequest { bytes blob_id = 1; bytes stream_id = 2; uint64 length = 3; bytes part_id = 4; }
+message FinalizeRequest { bytes blob_id = 1; repeated bytes part_ids = 2; }
+message FinalizeResponse { uint64 length = 1; }
+message ReadRequest { bytes blob_id = 1; uint64 start = 2; uint64 end = 3; }
+message StreamSlice { bytes stream_id = 1; uint64 skip = 2; uint64 length = 3; }
+message RegistryError {
+  enum Kind { UNKNOWN = 0; BLOB_NOT_FOUND = 1; BLOB_ALREADY_EXISTS = 2; BLOB_NOT_FINALIZED = 3; BLOB_FINALIZED = 4; PART_NOT_FOUND = 5; PART_ALREADY_EXISTS = 6; INVALID_RANGE = 7; LENGTH_OVERFLOW = 8; }
+  Kind kind = 1; bytes blob_id = 2; bytes part_id = 3;
+  uint64 start = 4; uint64 end = 5; uint64 length = 6;
+}

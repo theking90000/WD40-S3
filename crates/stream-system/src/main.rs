@@ -129,14 +129,8 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
         command,
         common: args,
     } = args;
-    if matches!(&command, Command::Upload(_)) && args.backend.webhooks.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "upload requires --webhook or WD40_DISCORD_WEBHOOK_URLS",
-        )
-        .into());
-    }
-
+    // The selected registry supplies upload paths. Remote paths already carry
+    // the server's credentials; Local reports missing paths during allocation.
     let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     let mut tls = rustls::ClientConfig::builder_with_provider(Arc::new(
         rustls::crypto::ring::default_provider(),
@@ -163,7 +157,7 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
     let write_pool = pool("discord.com")?;
     let read_pool = pool("cdn.discordapp.com")?;
     let (backend, registry_backend) = args.backend.build(read_pool, write_pool);
-    let file_registry = args.file_registry.open(registry_backend)?;
+    let file_registry = args.file_registry.open(registry_backend).await?;
     let stream_registry = args.stream_registry.open().await?;
 
     let budget = args.scheduler.frame_budget();

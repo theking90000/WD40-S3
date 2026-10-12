@@ -6,6 +6,10 @@ use crate::VersionId;
 
 #[derive(Debug)]
 pub enum Error {
+    #[cfg(feature = "grpc-client")]
+    Transport(tonic::transport::Error),
+    #[cfg(any(feature = "grpc-client", feature = "grpc-server"))]
+    Rpc(tonic::Status),
     Database(sled::Error),
     Serialization(postcard::Error),
     FlushWorker(std::io::Error),
@@ -15,13 +19,20 @@ pub enum Error {
     InvalidLimit,
     InvalidCursor,
     ObjectNotFound(String),
-    VersionNotFound { key: String, version_id: VersionId },
+    VersionNotFound {
+        key: String,
+        version_id: VersionId,
+    },
     CorruptState(&'static str),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            #[cfg(feature = "grpc-client")]
+            Self::Transport(error) => write!(f, "registry transport failed: {error}"),
+            #[cfg(any(feature = "grpc-client", feature = "grpc-server"))]
+            Self::Rpc(error) => write!(f, "registry RPC failed: {error}"),
             Self::Database(error) => {
                 write!(f, "object registry database operation failed: {error}")
             }
@@ -50,6 +61,10 @@ impl fmt::Display for Error {
 impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
+            #[cfg(feature = "grpc-client")]
+            Self::Transport(error) => Some(error),
+            #[cfg(any(feature = "grpc-client", feature = "grpc-server"))]
+            Self::Rpc(error) => Some(error),
             Self::Database(error) => Some(error),
             Self::Serialization(error) => Some(error),
             Self::FlushWorker(error) => Some(error),

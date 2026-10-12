@@ -1,0 +1,19 @@
+syntax = "proto3";
+package wd40.object_registry.v1;
+service ObjectRegistry {
+  rpc Store(StoreRequest) returns (VersionResponse);
+  rpc Head(HeadRequest) returns (RecordMetadata);
+  rpc List(ListRequest) returns (PageResult);
+  rpc Delete(HeadRequest) returns (VersionResponse);
+}
+message StoreRequest { string key = 1; bytes blob_id = 2; map<string, string> metadata = 3; }
+message VersionResponse { uint64 version_id = 1; }
+message HeadRequest { string key = 1; optional uint64 version_id = 2; }
+// Cursor bytes use the v1 Postcard layout of the opaque Rust Cursor.
+message ListRequest { string prefix = 1; optional bytes cursor = 2; optional uint64 limit = 3; bool include_versions = 4; }
+message RecordMetadata { string key = 1; uint64 version_id = 2; optional bytes blob_id = 3; map<string, string> metadata = 4; bool is_delete_marker = 5; }
+message PageResult { repeated RecordMetadata records = 1; optional bytes next_cursor = 2; }
+message RegistryError {
+  enum Kind { UNKNOWN = 0; INVALID_KEY = 1; INVALID_PREFIX = 2; INVALID_LIMIT = 3; INVALID_CURSOR = 4; OBJECT_NOT_FOUND = 5; VERSION_NOT_FOUND = 6; }
+  Kind kind = 1; string key = 2; uint64 version_id = 3;
+}

@@ -1,0 +1,21 @@
+syntax = "proto3";
+package wd40.file_registry.v1;
+service FileRegistry {
+  rpc Create(CreateRequest) returns (CreateResponse);
+  rpc Retrieve(RetrieveRequest) returns (stream ReadAccessPath);
+  rpc Store(StoreRequest) returns (Empty);
+}
+message Empty {}
+message CreateRequest { uint64 count = 1; uint64 max_file_size = 2; }
+// Entire response is received before exposing the infallible item stream.
+message CreateResponse { repeated WriteAccessPath paths = 1; }
+// Only backend paths use Postcard. Their enum layout is part of protocol v1.
+message WriteAccessPath { bytes id = 1; bytes access_path = 2; }
+message ReadAccessPath { bytes id = 1; bytes access_path = 2; }
+message FileAccess { bytes id = 1; bytes access_path = 2; }
+message RetrieveRequest { repeated bytes ids = 1; }
+message StoreRequest { repeated FileAccess files = 1; }
+message RegistryError {
+  enum Kind { UNKNOWN = 0; FILE_NOT_FOUND = 1; FILE_PENDING = 2; MISSING_READ_ACCESS_PATH = 3; MISSING_WRITE_ACCESS_PATH = 4; }
+  Kind kind = 1; bytes id = 2;
+}

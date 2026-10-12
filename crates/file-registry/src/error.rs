@@ -6,6 +6,10 @@ use crate::FileId;
 
 #[derive(Debug)]
 pub enum Error {
+    #[cfg(feature = "grpc-client")]
+    Transport(tonic::transport::Error),
+    #[cfg(any(feature = "grpc-client", feature = "grpc-server"))]
+    Rpc(tonic::Status),
     Database(sled::Error),
     Serialization(postcard::Error),
     FlushWorker(std::io::Error),
@@ -20,6 +24,10 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            #[cfg(feature = "grpc-client")]
+            Self::Transport(error) => write!(f, "registry transport failed: {error}"),
+            #[cfg(any(feature = "grpc-client", feature = "grpc-server"))]
+            Self::Rpc(error) => write!(f, "registry RPC failed: {error}"),
             Self::Database(error) => write!(f, "registry database operation failed: {error}"),
             Self::Serialization(error) => write!(f, "registry serialization failed: {error}"),
             Self::FlushWorker(error) => {
@@ -42,6 +50,10 @@ impl fmt::Display for Error {
 impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
+            #[cfg(feature = "grpc-client")]
+            Self::Transport(error) => Some(error),
+            #[cfg(any(feature = "grpc-client", feature = "grpc-server"))]
+            Self::Rpc(error) => Some(error),
             Self::Database(error) => Some(error),
             Self::FlushWorker(error) => Some(error),
             Self::FlushCanceled(error) => Some(error),

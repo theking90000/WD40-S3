@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use crate::{BlobRegistry, Error, LocalRegistry};
 
-/// Command-line configuration for the local blob registry.
+/// Command-line configuration selecting a local database or remote registry.
 #[derive(clap::Args)]
 pub struct BlobRegistryConfig {
     /// Persistent blob registry database directory.
@@ -15,11 +15,59 @@ pub struct BlobRegistryConfig {
         default_value = "./data/blob-registry"
     )]
     pub blob_registry_path: PathBuf,
+
+    /// gRPC endpoint. When set, the local database is not opened.
+    #[cfg(feature = "grpc-client")]
+    #[arg(long, global = true, env = "WD40_BLOB_REGISTRY_ENDPOINT")]
+    pub blob_registry_endpoint: Option<String>,
+
+    /// Additional PEM CA trusted for the remote HTTPS endpoint.
+    #[cfg(all(feature = "grpc-client", feature = "grpc-tls"))]
+    #[arg(
+        long,
+        global = true,
+        env = "WD40_BLOB_REGISTRY_CA",
+        requires = "blob_registry_endpoint"
+    )]
+    pub blob_registry_ca: Option<PathBuf>,
 }
 
 impl BlobRegistryConfig {
-    /// Opens the configured database.
-    pub fn open(&self) -> Result<BlobRegistry, Error> {
+    /// Opens the database or connects to the endpoint without opening sled.
+    /// Remote connections require a Tokio runtime and failures are returned.
+    pub async fn open(&self) -> Result<BlobRegistry, Error> {
+        #[cfg(feature = "grpc-client")]
+        if let Some(uri) = &self.blob_registry_endpoint {
+            let endpoint = tonic::transport::Endpoint::from_shared(uri.clone()).map_err(|_| {
+                Error::Rpc(tonic::Status::invalid_argument(
+                    "invalid registry endpoint URI",
+                ))
+            })?;
+            #[cfg(feature = "grpc-tls")]
+            let endpoint = {
+                if endpoint.uri().scheme_str() == Some("https") {
+                    let mut tls = tonic::transport::ClientTlsConfig::new().with_native_roots();
+                    if let Some(path) = &self.blob_registry_ca {
+                        let pem = std::fs::read(path).map_err(|error| {
+                            Error::Rpc(tonic::Status::internal(format!(
+                                "cannot read registry CA: {error}"
+                            )))
+                        })?;
+                        tls = tls.ca_certificate(tonic::transport::Certificate::from_pem(pem));
+                    }
+                    endpoint.tls_config(tls).map_err(Error::Transport)?
+                } else if self.blob_registry_ca.is_some() {
+                    return Err(Error::Rpc(tonic::Status::invalid_argument(
+                        "registry CA requires HTTPS",
+                    )));
+                } else {
+                    endpoint
+                }
+            };
+            return Ok(BlobRegistry::Remote(
+                crate::RemoteRegistry::connect(endpoint).await?,
+            ));
+        }
         Ok(BlobRegistry::Local(LocalRegistry::new(sled::open(
             &self.blob_registry_path,
         )?)?))

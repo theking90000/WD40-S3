@@ -214,9 +214,15 @@ dependencies = [
  "futures-executor",
  "futures-util",
  "postcard",
+ "prost",
  "serde",
  "sled",
  "stream-registry",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
 ]
 
 [[package]]
@@ -519,9 +525,16 @@ dependencies = [
  "futures-executor",
  "futures-util",
  "postcard",
+ "prost",
  "serde",
  "sled",
+ "tokio",
+ "tokio-stream",
  "tokio-tcp-pool",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "webpki-roots",
 ]
 
 [[package]]
@@ -983,11 +996,18 @@ name = "object-registry"
 version = "0.1.0"
 dependencies = [
  "blob-registry",
+ "clap",
  "futures-channel",
  "futures-executor",
  "postcard",
+ "prost",
  "serde",
  "sled",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
 ]
 
 [[package]]

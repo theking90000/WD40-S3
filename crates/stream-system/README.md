@@ -89,6 +89,19 @@ or pass `--webhook` for upload:
 cargo run -p stream-system --features cli -- upload --input input.bin
 ```
 
+With a Remote file registry, the webhook and renewal credentials belong to its
+server. The client does not need local registry credentials:
+
+```sh
+cargo run -p stream-system --features cli,file-registry/grpc-client,stream-registry/grpc-client -- \
+  --file-registry-endpoint http://files:50054 \
+  --stream-registry-endpoint http://streams:50051 upload --input input.bin
+```
+
+The same APIs are used for Local and Remote. File content still goes directly
+through FileBackend; gRPC only allocates and resolves access paths. A Local file
+registry without configured upload paths returns its allocation error.
+
 Download using the same persistent registries. A webhook is unnecessary for
 download; `--bot-token` or `WD40_DISCORD_BOT_TOKENS` can renew expired URLs.
 The codec settings are recovered from stored metadata.

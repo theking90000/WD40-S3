@@ -120,3 +120,58 @@ Run them separately when validation is requested:
 ```sh
 cargo test -p object-registry
 ```
+
+## Optional gRPC
+
+`ObjectRegistry` always supports Local. `grpc-client` adds `RemoteRegistry` and the
+Remote enum variant; `grpc-server` adds `GrpcService::new(registry).into_server()`.
+The service delegates to the supplied enum, including Remote for relays.
+`grpc-tls` extends enabled transports without enabling a client or server itself.
+`cli` remains independent. No gRPC dependency or `protoc` is required for local
+builds; gRPC builds require `protoc` in `PATH` or the `PROTOC` environment variable.
+
+```sh
+cargo run -p object-registry --features cli,grpc-server -- \
+  --listen 0.0.0.0:50053 --object-registry-path ./data/object-registry
+```
+
+The default address is `127.0.0.1:50053`. Ctrl-C waits for graceful shutdown.
+With `grpc-client`, `--object-registry-endpoint` or
+`WD40_OBJECT_REGISTRY_ENDPOINT` selects Remote without opening sled.
+`--object-registry-path` and `WD40_OBJECT_REGISTRY_PATH` keep the local defaults.
+`ObjectRegistryConfig::open` is async; library clients use
+`RemoteRegistry::connect(tonic::transport::Endpoint)` inside a Tokio runtime.
+Clones share the channel without an application mutex.
+
+TLS is optional on the secured private network. With `grpc-tls`, paired
+`--tls-cert` and `--tls-key` PEM files enable incoming TLS. Clients use HTTPS with
+verified certificates and hostnames; `--object-registry-ca` or
+`WD40_OBJECT_REGISTRY_CA` adds a PEM CA to system trust roots. HTTPS is rejected
+without the feature. There is no mTLS or additional authentication.
+
+All IDs are 16 big-endian bytes, except native u64 version IDs. The protocol is
+`wd40.object_registry.v1`. Both encoding and decoding are limited to 4 MiB per
+message. Structured status details preserve domain error variants and fields;
+storage/backend and unrecognized errors remain `Error::Rpc`. Relays preserve
+unknown statuses. Failed calls are not replayed and never fall back to Local.
+Endpoints must address the same logical namespace and relay chains must not cycle.
+Successful writes retain the durable-flush guarantee; an error or cancellation
+does not imply rollback.
+
+Store, Head, List and Delete are unary RPCs. Metadata maps and records use
+Protobuf; cursors use the opaque v1 Postcard layout, including prefix and listing
+mode. Optional version IDs and limits retain presence, including explicit zero.
+Pages preserve the existing order and pagination semantics and are not snapshots.
+Changing the cursor layout requires compatible versioning.
+
+Concurrency is a required acceptance gate:
+
+```sh
+cargo test -p object-registry --all-features -- --test-threads=16
+cargo test --workspace --all-features -- --test-threads=64
+```
+
+Tests cover Remote and relay parity, domain errors, malformed/oversized requests,
+TLS verification, CLI selection, and 32 concurrent clients on a Tokio runtime
+with 16 workers using independent databases and a shared server. Local flushes
+retain their separate-thread implementation to avoid sled I/O-pool starvation.
