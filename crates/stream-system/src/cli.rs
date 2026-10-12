@@ -101,8 +101,7 @@ impl StreamSchedulerConfig {
                 self.target_frames.get(),
                 self.open_ahead_frames,
                 self.max_active_files.get(),
-            )
-            .map_err(Error::Carbon)?,
+            )?,
             self.max_retries,
         ))
     }

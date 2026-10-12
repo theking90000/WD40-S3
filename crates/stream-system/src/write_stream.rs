@@ -73,8 +73,7 @@ impl<'a> WriteStream<'a> {
         budget: &'a FrameBudget,
         carbon_config: &'a mut SchedulerConfig,
     ) -> Result<Self, Error> {
-        let mut scheduler =
-            WriteScheduler::new(allocator, budget, carbon_config).map_err(Error::Carbon)?;
+        let mut scheduler = WriteScheduler::new(allocator, budget, carbon_config)?;
         // Populate the window before writing; later replacements use pop_swap.
         while scheduler.accept_file() {
             let file = WriteFile::new(
@@ -83,7 +82,7 @@ impl<'a> WriteStream<'a> {
                 backend.clone(),
                 config,
             )?;
-            scheduler.push_file(file).map_err(Error::from)?;
+            scheduler.push_file(file)?;
         }
         Ok(Self {
             scheduler,
@@ -152,13 +151,12 @@ impl<'a> WriteStream<'a> {
             let (_, part_id) = match self.state {
                 State::Writing => {
                     let replacement = self.new_file()?;
-                    self.scheduler.pop_swap(replacement).map_err(Error::from)?
+                    self.scheduler.pop_swap(replacement)?
                 }
                 State::Closing => self
                     .scheduler
-                    .pop_file()
-                    .map_err(Error::from)?
-                    .ok_or(Error::Carbon(carbon_io::ContractError::AdmissionNotReady))?,
+                    .pop_file()?
+                    .ok_or(carbon_io::ContractError::AdmissionNotReady)?,
                 _ => return Err(Error::Carbon(carbon_io::ContractError::InputClosed)),
             };
             self.parts.push(part_id);
@@ -173,8 +171,7 @@ impl<'a> WriteStream<'a> {
         }
         loop {
             self.collect_parts()?;
-            let status =
-                ready!(Pin::new(&mut self.scheduler).poll_write(cx, input)).map_err(Error::from)?;
+            let status = ready!(Pin::new(&mut self.scheduler).poll_write(cx, input))?;
             self.completed_files = status.completed_files;
             if let Some(count) = status.output {
                 // Acknowledge consumed bytes before any more fallible work.
@@ -190,15 +187,14 @@ impl<'a> WriteStream<'a> {
         loop {
             match &mut self.state {
                 State::Closing => {
-                    let count = ready!(Pin::new(&mut self.scheduler).poll_close(cx))
-                        .map_err(Error::from)?;
+                    let count = ready!(Pin::new(&mut self.scheduler).poll_close(cx))?;
                     self.completed_files = count;
                     self.collect_parts()?;
                     if count == 0 {
                         let parts = std::mem::take(&mut self.parts);
                         let registry = self.stream_registry.clone();
                         self.state = State::StoringManifest(Box::pin(async move {
-                            registry.store(parts).await.map_err(Error::StreamRegistry)
+                            Ok(registry.store(parts).await?)
                         }));
                     }
                 }

@@ -47,8 +47,7 @@ impl OpenedFile {
             // ponytail: CRAFT owns allocation and encoding; pending polls retain its result.
             self.buffer = Some(
                 self.encoder
-                    .encode_frame_alloc(self.metadata.frame_count(), frame)
-                    .map_err(Error::Codec)?,
+                    .encode_frame_alloc(self.metadata.frame_count(), frame)?,
             );
             self.written = 0;
         }
@@ -56,13 +55,12 @@ impl OpenedFile {
         let (buffer, sizes) = self
             .buffer
             .as_ref()
-            .ok_or(Error::Codec(craft_codec::Error::InvalidMetadata))?;
+            .ok_or(craft_codec::Error::InvalidMetadata)?;
         while self.written < buffer.len() {
             let remaining = buffer
                 .get(self.written..)
-                .ok_or(Error::Codec(craft_codec::Error::Overflow))?;
-            let count = std::task::ready!(Pin::new(&mut self.file).poll_write(cx, remaining))
-                .map_err(Error::Io)?;
+                .ok_or(craft_codec::Error::Overflow)?;
+            let count = std::task::ready!(Pin::new(&mut self.file).poll_write(cx, remaining))?;
             if count == 0 {
                 return Poll::Ready(Err(Error::Io(io::Error::new(
                     io::ErrorKind::WriteZero,
@@ -78,10 +76,10 @@ impl OpenedFile {
             self.written = self
                 .written
                 .checked_add(count)
-                .ok_or(Error::Codec(craft_codec::Error::Overflow))?;
+                .ok_or(craft_codec::Error::Overflow)?;
         }
 
-        self.metadata.push(*sizes).map_err(Error::Codec)?;
+        self.metadata.push(*sizes)?;
         self.buffer = None;
         self.written = 0;
         Poll::Ready(Ok(()))
@@ -216,8 +214,7 @@ impl carbon_io::WriteFile<Vec<u8>> for WriteFile {
                         let (metadata, encoder) = new_codec(config)?;
                         let file = file_backend
                             .write(&path.access_path)
-                            .await
-                            .map_err(Error::Backend)?;
+                            .await?;
                         Ok(OpenedFile {
                             file_id: path.id,
                             metadata,
@@ -310,19 +307,13 @@ impl carbon_io::WriteFile<Vec<u8>> for WriteFile {
             let stream_registry = this.stream_registry.clone();
             // ponytail: finish also closes the backend; keep one owned future across polls.
             this.state = State::Closing(Box::pin(async move {
-                let access_path = opened.file.finish().await.map_err(Error::Backend)?;
+                let access_path = opened.file.finish().await?;
                 let file = FileAccess {
                     id: opened.file_id,
                     access_path,
                 };
-                file_registry
-                    .store(&[file])
-                    .await
-                    .map_err(Error::FileRegistry)?;
-                stream_registry
-                    .insert(opened.file_id, opened.metadata)
-                    .await
-                    .map_err(Error::StreamRegistry)
+                file_registry.store(&[file]).await?;
+                Ok(stream_registry.insert(opened.file_id, opened.metadata).await?)
             }));
         }
 
@@ -344,52 +335,47 @@ async fn allocate_path(
     file_registry: &FileRegistry,
     max_file_size: u64,
 ) -> Result<WriteAccessPath, Error> {
-    let paths = file_registry
-        .create(1, max_file_size)
-        .await
-        .map_err(Error::FileRegistry)?;
+    let paths = file_registry.create(1, max_file_size).await?;
     let mut paths = std::pin::pin!(paths);
-    paths
+    Ok(paths
         .next()
         .await
-        .ok_or(file_registry::Error::MissingWriteAccessPath)
-        .map_err(Error::FileRegistry)
+        .ok_or(file_registry::Error::MissingWriteAccessPath)?)
 }
 
 fn capacity_for_limit(config: &Config, limit: u64) -> Result<u32, Error> {
     let frame_bytes = config
         .max_frame_len()
         .checked_add(config.encryption().tag_len() as u64)
-        .ok_or(Error::Codec(craft_codec::Error::Overflow))?;
+        .ok_or(craft_codec::Error::Overflow)?;
     let frames = limit
         .checked_div(frame_bytes)
-        .ok_or(Error::Codec(craft_codec::Error::InvalidFrameSize))?
+        .ok_or(craft_codec::Error::InvalidFrameSize)?
         .min(config.max_frames())
         .min(u64::from(u32::MAX));
-    u32::try_from(frames).map_err(|_| Error::Codec(craft_codec::Error::Overflow))
+    Ok(u32::try_from(frames)?)
 }
 
 fn codec_config(settings: StreamWriterConfig, key: [u8; 32]) -> Result<Config, Error> {
-    Config::new(
+    Ok(Config::new(
         Framing::Fixed(settings.frame_size),
         settings.compression,
         match settings.encryption {
             Encryption::None => CodecEncryption::None,
             Encryption::Aes256 => CodecEncryption::Aes256Gcm { key },
         },
-    )
-    .map_err(Error::Codec)
+    )?)
 }
 
 fn new_codec(settings: StreamWriterConfig) -> Result<(Metadata, Encoder), Error> {
     let mut key = [0; 32];
     match settings.encryption {
         Encryption::None => {}
-        Encryption::Aes256 => getrandom::fill(&mut key).map_err(Error::Random)?,
+        Encryption::Aes256 => getrandom::fill(&mut key)?,
     }
     let config = codec_config(settings, key)?;
     let metadata = Metadata::new(config);
-    let encoder = Encoder::try_from(&metadata).map_err(Error::Codec)?;
+    let encoder = Encoder::try_from(&metadata)?;
     Ok((metadata, encoder))
 }
 

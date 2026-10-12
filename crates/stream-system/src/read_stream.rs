@@ -38,16 +38,16 @@ impl CurrentStream {
         let position = self.position_in_stream;
         let next = position
             .checked_add(length)
-            .ok_or(Error::Codec(craft_codec::Error::Overflow))?;
+            .ok_or(craft_codec::Error::Overflow)?;
         let start = self.start.max(position);
         let end = self.end.unwrap_or(next).min(next);
         let selection = if start < end {
             let local_start = start
                 .checked_sub(position)
-                .ok_or(Error::Codec(craft_codec::Error::Overflow))?;
+                .ok_or(craft_codec::Error::Overflow)?;
             let local_end = end
                 .checked_sub(position)
-                .ok_or(Error::Codec(craft_codec::Error::Overflow))?;
+                .ok_or(craft_codec::Error::Overflow)?;
             Some(local_start..local_end)
         } else {
             None
@@ -129,8 +129,7 @@ impl<'a> ReadStream<'a> {
             ReadFrame::default as fn() -> ReadFrame,
             budget,
             carbon_config,
-        )
-        .map_err(Error::Carbon)?;
+        )?;
         Ok(Self {
             file_registry,
             stream_registry,
@@ -179,10 +178,7 @@ impl<'a> ReadStream<'a> {
             start,
             end,
             resolution: Resolution::Opening(Box::pin(async move {
-                registry
-                    .retrieve_parts(&[stream_id])
-                    .await
-                    .map_err(Error::StreamRegistry)
+                Ok(registry.retrieve_parts(&[stream_id]).await?)
             })),
             position_in_stream: 0,
             frames_remaining: 0,
@@ -302,7 +298,8 @@ impl<'a> ReadStream<'a> {
                 self.abort();
                 Poll::Ready(Err(Error::from(error)))
             }
-            result => result.map(|result| result.map_err(Error::from)),
+            Poll::Ready(Ok(None)) => Poll::Ready(Ok(None)),
+            Poll::Pending => Poll::Pending,
         }
     }
 
@@ -364,7 +361,7 @@ impl<'a> ReadStream<'a> {
                 let remaining = current
                     .frames_remaining
                     .checked_add(count)
-                    .ok_or(Error::Codec(craft_codec::Error::Overflow))?;
+                    .ok_or(craft_codec::Error::Overflow)?;
                 match carbon.push_file(file) {
                     Ok(()) => current.frames_remaining = remaining,
                     Err((PushError::Full | PushError::Closed, file)) => {
@@ -383,7 +380,7 @@ impl<'a> ReadStream<'a> {
                 Resolution::ReadingParts(parts) => {
                     let part = match parts.poll_next_unpin(cx) {
                         Poll::Pending => return Ok(()),
-                        Poll::Ready(Some(part)) => part.map_err(Error::StreamRegistry)?,
+                        Poll::Ready(Some(part)) => part?,
                         Poll::Ready(None) => {
                             current.finish_resolution()?;
                             return Ok(());

@@ -99,3 +99,63 @@ impl From<carbon_io::WriteError<Infallible, Error>> for Error {
         }
     }
 }
+
+impl From<getrandom::Error> for Error {
+    fn from(error: getrandom::Error) -> Self {
+        Self::Random(error)
+    }
+}
+
+impl From<craft_codec::Error> for Error {
+    fn from(error: craft_codec::Error) -> Self {
+        Self::Codec(error)
+    }
+}
+
+impl From<file_registry::Error> for Error {
+    fn from(error: file_registry::Error) -> Self {
+        Self::FileRegistry(error)
+    }
+}
+
+impl From<stream_registry::Error> for Error {
+    fn from(error: stream_registry::Error) -> Self {
+        Self::StreamRegistry(error)
+    }
+}
+
+impl From<backends::Error> for Error {
+    fn from(error: backends::Error) -> Self {
+        Self::Backend(error)
+    }
+}
+
+impl From<carbon_io::ContractError> for Error {
+    fn from(error: carbon_io::ContractError) -> Self {
+        Self::Carbon(error)
+    }
+}
+
+impl From<io::Error> for Error {
+    fn from(error: io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+
+impl From<std::num::TryFromIntError> for Error {
+    fn from(_: std::num::TryFromIntError) -> Self {
+        Self::Codec(craft_codec::Error::Overflow)
+    }
+}
+
+impl From<std::collections::TryReserveError> for Error {
+    fn from(_: std::collections::TryReserveError) -> Self {
+        Self::Codec(craft_codec::Error::Allocation)
+    }
+}
+
+impl From<Error> for io::Error {
+    fn from(error: Error) -> Self {
+        Self::other(error)
+    }
+}
