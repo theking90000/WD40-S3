@@ -1,4 +1,4 @@
-## WD40
+# WD40
 
 Store your files on Discord using object storage APIs.
 
@@ -27,3 +27,12 @@ WD40-S3 addresses these limitations:
 - **Data privacy:** on-the-fly block encryption allows random access.
 - **Reliability:** centralized management handles credentials, rate limits, API constraints, and URL expiration.
 - **Interoperability:** a complete storage system is exposed through unified APIs, including S3 support.
+
+## Project Origin
+
+This project is part of a series of Discord storage projects:
+
+- [theking90000/discord-s3](https://github.com/theking90000/discord-s3) (2021): the first attempt at a rudimentary storage server, written in TypeScript, with AES-256 encryption and a React web interface.
+- [UwUDev/discord-us](https://github.com/UwUDev/discord-us) (2023): a Rust system with multithreaded uploads, fast seeking, AES-256 encryption, and custom APIs that weren't designed for interoperability. Killed by Discord's introduction of signed URLs.
+- discord-uss / wd40 (2024, private): Rust and Java, a master/worker architecture, a proprietary file system, and signed URL support on top of discord-us.
+- [theking90000/rust-storage-streamer](https://github.com/theking90000/rust-storage-streamer) (2026): an async rewrite of discord-us in Rust, with download improvements and S3 support.
