@@ -1,0 +1,26 @@
+syntax = "proto3";
+package wd40.s3_credentials_registry.v1;
+
+service S3CredentialRegistry {
+  rpc RegisterKey(RegisterKeyRequest) returns (Empty);
+  rpc GetKey(KeyRequest) returns (GetKeyResponse);
+  rpc RevokeKey(KeyRequest) returns (Empty);
+}
+
+message Empty {}
+message KeyRequest { string id = 1; }
+message RegisterKeyRequest {
+  string id = 1;
+  string secret = 2;
+  bytes principal_id = 3;
+}
+message Credential {
+  bytes principal_id = 1;
+  string secret = 2;
+}
+message GetKeyResponse { Credential credential = 1; }
+message RegistryError {
+  enum Kind { UNKNOWN = 0; KEY_ALREADY_EXISTS = 1; }
+  Kind kind = 1;
+  string key_id = 2;
+}

@@ -1440,6 +1440,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "s3-credentials-registry"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "futures-channel",
+ "futures-executor",
+ "postcard",
+ "prost",
+ "serde",
+ "sled",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+]
+
+[[package]]
 name = "schannel"
 version = "0.1.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
