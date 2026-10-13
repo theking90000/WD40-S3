@@ -1,11 +1,18 @@
-use std::future::Future;
+use std::{
+    fmt,
+    future::Future,
+    ops::{BitOr, BitOrAssign},
+};
 
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize, Deserializer, Serialize, Serializer,
+    de::{SeqAccess, Visitor},
+    ser::SerializeSeq,
+};
 
 use crate::Error;
 
 pub type PolicyId = u128;
-pub type Actions = Vec<Action>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Action {
@@ -13,6 +20,104 @@ pub enum Action {
     Write,
     Delete,
     List,
+}
+
+/// An action set stored as a bitmask. Serde retains the action-list format.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct Actions(u8);
+
+impl Actions {
+    pub const EMPTY: Self = Self(0);
+    pub const READ: Self = Self(0b0001);
+    pub const WRITE: Self = Self(0b0010);
+    pub const DELETE: Self = Self(0b0100);
+    pub const LIST: Self = Self(0b1000);
+    pub const ALL: Self = Self(0b1111);
+
+    const fn action_bits(action: Action) -> u8 {
+        match action {
+            Action::Read => Self::READ.0,
+            Action::Write => Self::WRITE.0,
+            Action::Delete => Self::DELETE.0,
+            Action::List => Self::LIST.0,
+        }
+    }
+
+    pub const fn contains(self, action: Action) -> bool {
+        self.0 & Self::action_bits(action) != 0
+    }
+
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+
+    /// Iterates once per action, in Read, Write, Delete, List order.
+    pub fn iter(self) -> impl Iterator<Item = Action> {
+        [Action::Read, Action::Write, Action::Delete, Action::List]
+            .into_iter()
+            .filter(move |&action| self.contains(action))
+    }
+}
+
+impl From<Action> for Actions {
+    fn from(action: Action) -> Self {
+        Self(Self::action_bits(action))
+    }
+}
+
+impl FromIterator<Action> for Actions {
+    fn from_iter<T: IntoIterator<Item = Action>>(iter: T) -> Self {
+        iter.into_iter()
+            .fold(Self::EMPTY, |actions, action| actions | Self::from(action))
+    }
+}
+
+impl BitOr for Actions {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl BitOrAssign for Actions {
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0;
+    }
+}
+
+impl Serialize for Actions {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut sequence = serializer.serialize_seq(Some(self.iter().count()))?;
+        for action in self.iter() {
+            sequence.serialize_element(&action)?;
+        }
+        sequence.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for Actions {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct ActionsVisitor;
+
+        impl<'de> Visitor<'de> for ActionsVisitor {
+            type Value = Actions;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a sequence of policy actions")
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, mut sequence: A) -> Result<Actions, A::Error> {
+                let mut actions = Actions::EMPTY;
+                while let Some(action) = sequence.next_element::<Action>()? {
+                    actions |= Actions::from(action);
+                }
+                Ok(actions)
+            }
+        }
+
+        deserializer.deserialize_seq(ActionsVisitor)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

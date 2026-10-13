@@ -6,7 +6,7 @@ use std::{
 
 use futures_executor::block_on;
 use policy_registry::{
-    Action, Effect, Error, LocalRegistry, Policy, PolicyRegistry, PolicySnapshot,
+    Action, Actions, Effect, Error, LocalRegistry, Policy, PolicyRegistry, PolicySnapshot,
     PrincipalSelector, ResourcePattern, Revision, Statement, traits::PolicyRegistry as _,
 };
 
@@ -32,12 +32,12 @@ fn policy(resource: &str) -> Policy {
         statements: vec![
             Statement {
                 effect: Effect::Allow,
-                actions: vec![Action::Read, Action::Write, Action::Delete, Action::List],
+                actions: Actions::ALL,
                 resource: ResourcePattern::Prefix(resource.to_owned()),
             },
             Statement {
                 effect: Effect::Deny,
-                actions: vec![Action::Write, Action::Write],
+                actions: Actions::WRITE,
                 resource: ResourcePattern::Exact("任意\0key".to_owned()),
             },
         ],
@@ -45,6 +45,33 @@ fn policy(resource: &str) -> Policy {
 }
 
 fn require_send<T: Send>(_: &T) {}
+
+#[test]
+fn action_masks_preserve_legacy_list_serialization() -> TestResult {
+    let legacy = vec![Action::Write, Action::Read, Action::Write];
+    let bytes = postcard::to_allocvec(&legacy)?;
+    let mut actions = postcard::from_bytes::<Actions>(&bytes)?;
+    check(
+        actions == Actions::READ | Actions::WRITE,
+        "legacy action list was not normalized",
+    )?;
+    actions |= Actions::LIST;
+    check(
+        actions.contains(Action::List) && !actions.contains(Action::Delete),
+        "action mask union changed unrelated permissions",
+    )?;
+    let bytes = postcard::to_allocvec(&actions)?;
+    check(
+        postcard::from_bytes::<Vec<Action>>(&bytes)?
+            == vec![Action::Read, Action::Write, Action::List],
+        "serialized mask is not a compatible canonical action list",
+    )?;
+    let bytes = postcard::to_allocvec(&Vec::<Action>::new())?;
+    check(
+        postcard::from_bytes::<Actions>(&bytes)?.is_empty(),
+        "legacy empty list is not an empty mask",
+    )
+}
 
 #[test]
 fn lifecycle_revisions_idempotence_and_owned_snapshot() -> TestResult {
@@ -239,7 +266,7 @@ fn empty_policies_and_statements_are_retained() -> TestResult {
                 Policy {
                     statements: vec![Statement {
                         effect: Effect::Deny,
-                        actions: vec![],
+                        actions: Actions::EMPTY,
                         resource: ResourcePattern::Exact(String::new()),
                     }],
                 },

@@ -2,7 +2,9 @@
 use prost::Message;
 use tonic::{Code, Status};
 
-use crate::{Action, Effect, Error, Policy, PrincipalSelector, ResourcePattern, Statement};
+use crate::{
+    Action, Actions, Effect, Error, Policy, PrincipalSelector, ResourcePattern, Statement,
+};
 
 pub mod proto {
     tonic::include_proto!("wd40.policy_registry.v1");
@@ -29,7 +31,7 @@ pub(crate) fn encode_policy(policy: Policy) -> proto::Policy {
                 }) as i32;
                 let actions = statement
                     .actions
-                    .into_iter()
+                    .iter()
                     .map(|action| {
                         (match action {
                             Action::Read => proto::Action::Read,
@@ -77,7 +79,7 @@ pub(crate) fn decode_policy(policy: proto::Policy) -> Result<Policy, Status> {
                     Ok(proto::Action::List) => Ok(Action::List),
                     _ => Err(Status::invalid_argument("invalid policy action")),
                 })
-                .collect::<Result<Vec<_>, _>>()?;
+                .collect::<Result<Actions, _>>()?;
             let resource = match statement.resource.and_then(|resource| resource.pattern) {
                 Some(proto::resource_pattern::Pattern::Exact(value)) => {
                     ResourcePattern::Exact(value)

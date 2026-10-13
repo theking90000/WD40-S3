@@ -3,7 +3,7 @@
 use std::{error::Error as StdError, time::Duration};
 
 use policy_registry::{
-    Action, Effect, Error, GrpcService, LocalRegistry, Policy, PolicyRegistry, PrincipalSelector,
+    Actions, Effect, Error, GrpcService, LocalRegistry, Policy, PolicyRegistry, PrincipalSelector,
     RemoteRegistry, ResourcePattern, Revision, Statement,
     grpc::{MAX_MESSAGE_SIZE, proto},
     traits::PolicyRegistry as _,
@@ -85,12 +85,12 @@ fn policy(resource: &str) -> Policy {
         statements: vec![
             Statement {
                 effect: Effect::Allow,
-                actions: vec![Action::Read, Action::Write, Action::Delete, Action::List],
+                actions: Actions::ALL,
                 resource: ResourcePattern::Prefix(resource.to_owned()),
             },
             Statement {
                 effect: Effect::Deny,
-                actions: vec![Action::Write, Action::Write],
+                actions: Actions::WRITE,
                 resource: ResourcePattern::Exact("任意\0key".to_owned()),
             },
         ],

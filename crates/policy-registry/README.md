@@ -7,7 +7,7 @@ optional gRPC client/server transports, TLS and composable CLI configuration.
 
 ```rust
 use policy_registry::{
-    Action, Effect, LocalRegistry, Policy, PrincipalSelector, ResourcePattern,
+    Actions, Effect, LocalRegistry, Policy, PrincipalSelector, ResourcePattern,
     Statement, traits::PolicyRegistry as _,
 };
 
@@ -16,7 +16,7 @@ let id = 42_u128;
 let policy = Policy {
     statements: vec![Statement {
         effect: Effect::Allow,
-        actions: vec![Action::Read, Action::List],
+        actions: Actions::READ | Actions::LIST,
         resource: ResourcePattern::Prefix("photos/".to_owned()),
     }],
 };
@@ -32,9 +32,20 @@ let snapshot = registry.load_policies(&[
 ## Model and operations
 
 `PolicyId` and `PrincipalSelector::Specific` use caller-supplied `u128` IDs.
-`Actions` is `Vec<Action>`, with `Read`, `Write`, `Delete` and `List` variants.
-Policies retain their statements, action order, repetitions and resource strings
-as supplied, including empty lists and empty resource patterns.
+`Action` has `Read`, `Write`, `Delete` and `List` variants. `Actions` is a `u8`
+bitmask with `EMPTY`, `READ`, `WRITE`, `DELETE`, `LIST` and `ALL` constants.
+Combine masks with `|` or `|=`, check a single action with `contains(Action)`,
+or collect an iterator of actions into a mask. `iter()` yields each selected
+action once in Read, Write, Delete, List order, without allocating.
+Policies retain their statements and resource strings as supplied, including
+empty action sets and empty resource patterns. Action sets discard repetitions
+and insertion order, so policies differing only in action order or repetitions
+are identical for revision tracking.
+Serde and gRPC retain their existing action-list encodings. Previously persisted
+policies remain readable; their action lists are normalized into masks when
+loaded. New serialized lists use the same canonical order as `iter()`.
+Replacing a legacy policy whose stored action list is not canonical may advance
+the revision once, because replacement compares serialized records.
 The registry stores both Allow and Deny statements without interpreting them.
 Authorization, resource matching and action evaluation belong to the caller.
 
