@@ -5,6 +5,7 @@ pub mod auth;
 #[cfg(feature = "cli")]
 pub mod cli;
 
+mod body;
 mod error;
 mod metadata;
 mod request;
@@ -65,6 +66,9 @@ impl S3Adapter {
     }
 
     /// Builds a service for an application-owned Hyper or Tower server.
+    /// Nonempty GET responses currently require a Tokio runtime and create one
+    /// producer task. See the body module's TODO(s3-body-progress) for the planned
+    /// replacement of that task/channel bridge by integrated transport polling.
     pub fn into_service(self) -> s3s::service::S3Service {
         let auth = auth::RegistryAuth::new(self.credentials.clone());
         let access = access::S3Access::new(self.credentials.clone(), self.access.clone());

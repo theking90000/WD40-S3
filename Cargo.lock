@@ -1920,8 +1920,10 @@ dependencies = [
  "backends",
  "blob-registry",
  "blob-system",
+ "bytes",
  "clap",
  "file-registry",
+ "futures-util",
  "hyper",
  "hyper-util",
  "object-registry",
@@ -1929,6 +1931,7 @@ dependencies = [
  "s3-credentials-registry",
  "s3s",
  "stream-registry",
+ "sync_wrapper",
  "tokio",
  "tokio-tcp-pool",
  "webpki-roots",
@@ -2366,6 +2369,9 @@ name = "sync_wrapper"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0bf256ce5efdfa370213c1dabab5935a12e49f2c58d15e9eac2870d3b4f27263"
+dependencies = [
+ "futures-core",
+]
 
 [[package]]
 name = "synstructure"

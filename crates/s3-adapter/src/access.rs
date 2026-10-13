@@ -1,7 +1,10 @@
 use access_controller::{AccessController, Action, Decision, Principal};
 use s3_credentials_registry::S3CredentialRegistry;
 use s3s::{
-    S3Error, S3Request, S3Result, access::S3AccessContext, auth::Credentials, dto::HeadObjectInput,
+    S3Error, S3Request, S3Result,
+    access::S3AccessContext,
+    auth::Credentials,
+    dto::{GetObjectInput, HeadObjectInput},
 };
 
 use crate::{auth::get_credential, request};
@@ -50,6 +53,10 @@ impl S3Access {
 impl s3s::access::S3Access for S3Access {
     async fn check(&self, _cx: &mut S3AccessContext<'_>) -> S3Result<()> {
         Ok(())
+    }
+
+    async fn get_object(&self, req: &mut S3Request<GetObjectInput>) -> S3Result<()> {
+        request::get_object::get_object_access(self, req).await
     }
 
     async fn head_object(&self, req: &mut S3Request<HeadObjectInput>) -> S3Result<()> {

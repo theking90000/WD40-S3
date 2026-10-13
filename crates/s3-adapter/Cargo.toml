@@ -6,7 +6,7 @@ edition.workspace = true
 [features]
 default = []
 cli = ["dep:clap", "blob-system/cli"]
-standalone = ["cli", "dep:hyper", "dep:hyper-util", "dep:tokio", "dep:tokio-tcp-pool", "dep:webpki-roots", "dep:backends", "backends/cli", "dep:blob-registry", "blob-registry/cli", "dep:file-registry", "file-registry/cli", "dep:stream-registry", "stream-registry/cli", "dep:policy-registry", "policy-registry/cli", "object-registry/cli", "s3-credentials-registry/cli"]
+standalone = ["cli", "dep:hyper", "dep:hyper-util", "tokio/rt-multi-thread", "tokio/net", "tokio/signal", "dep:tokio-tcp-pool", "dep:webpki-roots", "dep:backends", "backends/cli", "dep:blob-registry", "blob-registry/cli", "dep:file-registry", "file-registry/cli", "dep:stream-registry", "stream-registry/cli", "dep:policy-registry", "policy-registry/cli", "object-registry/cli", "s3-credentials-registry/cli"]
 
 [[bin]]
 name = "s3-adapter"
@@ -15,6 +15,9 @@ required-features = ["standalone"]
 
 [dependencies]
 async-trait = "0.1"
+bytes = "1.11"
+futures-util = { version = "0.3", default-features = false, features = ["std", "async-await"] }
+sync_wrapper = { version = "1", features = ["futures"] }
 access-controller = { path = "../access-controller" }
 blob-system = { path = "../blob-system" }
 object-registry = { path = "../object-registry" }
@@ -28,7 +31,7 @@ s3s = "0.17"
 clap = { version = "4", features = ["derive", "env"], optional = true }
 hyper = { version = "1", features = ["server", "http1"], optional = true }
 hyper-util = { version = "0.1", features = ["tokio", "http1", "server-graceful"], optional = true }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"], optional = true }
+tokio = { version = "1", features = ["macros", "rt", "sync"] }
 tokio-tcp-pool = { version = "0.1.3", optional = true }
 webpki-roots = { version = "1", optional = true }
 
