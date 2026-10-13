@@ -14,6 +14,7 @@ path = "src/main.rs"
 required-features = ["standalone"]
 
 [dependencies]
+async-trait = "0.1"
 access-controller = { path = "../access-controller" }
 blob-system = { path = "../blob-system" }
 object-registry = { path = "../object-registry" }

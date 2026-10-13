@@ -1916,6 +1916,7 @@ name = "s3-adapter"
 version = "0.1.0"
 dependencies = [
  "access-controller",
+ "async-trait",
  "backends",
  "blob-registry",
  "blob-system",
