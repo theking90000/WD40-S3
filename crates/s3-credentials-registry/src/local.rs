@@ -32,6 +32,14 @@ impl LocalRegistry {
     }
 }
 
+fn decode_credential(data: &[u8]) -> Result<Credential, Error> {
+    let (credential, tail) = postcard::take_from_bytes(data)?;
+    if !tail.is_empty() {
+        return Err(Error::CorruptState("trailing serialized bytes"));
+    }
+    Ok(credential)
+}
+
 impl S3CredentialRegistry for LocalRegistry {
     async fn register_key(
         &self,
@@ -57,11 +65,24 @@ impl S3CredentialRegistry for LocalRegistry {
         let Some(data) = self.credentials.get(id.as_str().as_bytes())? else {
             return Ok(None);
         };
-        let (credential, tail) = postcard::take_from_bytes(&data)?;
-        if !tail.is_empty() {
-            return Err(Error::CorruptState("trailing serialized bytes"));
+        Ok(Some(decode_credential(&data)?))
+    }
+
+    async fn list_keys(&self, principal: PrincipalId) -> Result<Vec<KeyId>, Error> {
+        let mut keys = Vec::new();
+        // ponytail: O(total keys) scan; add a principal index if listing throughput requires it.
+        for entry in self.credentials.iter() {
+            let (id, data) = entry?;
+            if decode_credential(&data)?.principal_id == principal {
+                let id = std::str::from_utf8(&id)
+                    .map_err(|_| Error::CorruptState("invalid key ID encoding"))?;
+                keys.push(
+                    KeyId::new(id.to_owned())
+                        .map_err(|_| Error::CorruptState("invalid key ID length"))?,
+                );
+            }
         }
-        Ok(Some(credential))
+        Ok(keys)
     }
 
     async fn revoke_key(&self, id: &KeyId) -> Result<(), Error> {

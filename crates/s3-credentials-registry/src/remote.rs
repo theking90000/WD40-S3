@@ -76,6 +76,25 @@ impl S3CredentialRegistry for RemoteRegistry {
             .map_err(|error| Error::Rpc(Status::data_loss(error.message())))
     }
 
+    async fn list_keys(&self, principal: PrincipalId) -> Result<Vec<KeyId>, Error> {
+        let response = self
+            .client
+            .clone()
+            .list_keys(proto::ListKeysRequest {
+                principal_id: principal.to_be_bytes().to_vec(),
+            })
+            .await
+            .map_err(grpc::from_status)?
+            .into_inner();
+        response
+            .ids
+            .into_iter()
+            .map(|id| {
+                KeyId::new(id).map_err(|_| Error::Rpc(Status::data_loss("invalid key ID length")))
+            })
+            .collect()
+    }
+
     async fn revoke_key(&self, id: &KeyId) -> Result<(), Error> {
         self.client
             .clone()

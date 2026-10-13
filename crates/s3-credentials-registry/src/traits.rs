@@ -99,6 +99,12 @@ pub trait S3CredentialRegistry {
     fn get_key(&self, id: &KeyId)
     -> impl Future<Output = Result<Option<Credential>, Error>> + Send;
 
+    /// Lists the principal's key IDs in lexicographic order, without secrets.
+    fn list_keys(
+        &self,
+        principal: PrincipalId,
+    ) -> impl Future<Output = Result<Vec<KeyId>, Error>> + Send;
+
     /// Removes the record. Revoking an absent key succeeds.
     fn revoke_key(&self, id: &KeyId) -> impl Future<Output = Result<(), Error>> + Send;
 }

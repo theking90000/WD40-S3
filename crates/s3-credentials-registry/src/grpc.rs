@@ -117,6 +117,22 @@ impl proto::s3_credential_registry_server::S3CredentialRegistry for GrpcService 
         }))
     }
 
+    async fn list_keys(
+        &self,
+        request: tonic::Request<proto::ListKeysRequest>,
+    ) -> Result<tonic::Response<proto::ListKeysResponse>, Status> {
+        use crate::traits::S3CredentialRegistry as _;
+        let principal = decode_principal(&request.into_inner().principal_id)?;
+        let keys = self
+            .registry
+            .list_keys(principal)
+            .await
+            .map_err(into_status)?;
+        Ok(tonic::Response::new(proto::ListKeysResponse {
+            ids: keys.into_iter().map(|id| id.as_str().to_owned()).collect(),
+        }))
+    }
+
     async fn revoke_key(
         &self,
         request: tonic::Request<proto::KeyRequest>,

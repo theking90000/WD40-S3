@@ -15,6 +15,11 @@ succeeds if it is already absent. Successful mutations await a durable flush;
 a flush or transport error does not imply rollback. Secrets are stored as
 provided, without encryption at rest.
 
+`list_keys(principal)` returns the principal's `Vec<KeyId>` in lexicographic
+order, without secrets. Local listing scans the existing tree and has no
+snapshot guarantee during concurrent mutations. Remote listing uses a unary
+gRPC response subject to the 4 MiB message limit.
+
 ```rust
 use s3_credentials_registry::{KeyId, KeySecret, LocalRegistry, traits::S3CredentialRegistry as _};
 

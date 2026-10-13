@@ -4,6 +4,7 @@ package wd40.s3_credentials_registry.v1;
 service S3CredentialRegistry {
   rpc RegisterKey(RegisterKeyRequest) returns (Empty);
   rpc GetKey(KeyRequest) returns (GetKeyResponse);
+  rpc ListKeys(ListKeysRequest) returns (ListKeysResponse);
   rpc RevokeKey(KeyRequest) returns (Empty);
 }
 
@@ -19,6 +20,8 @@ message Credential {
   string secret = 2;
 }
 message GetKeyResponse { Credential credential = 1; }
+message ListKeysRequest { bytes principal_id = 1; }
+message ListKeysResponse { repeated string ids = 1; }
 message RegistryError {
   enum Kind { UNKNOWN = 0; KEY_ALREADY_EXISTS = 1; }
   Kind kind = 1;

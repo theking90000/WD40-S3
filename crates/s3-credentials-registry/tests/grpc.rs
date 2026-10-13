@@ -78,6 +78,7 @@ fn database() -> TestResult<sled::Db> {
 }
 
 async fn exercise(registry: &S3CredentialRegistry) -> TestResult {
+    exercise_list_keys(registry).await?;
     let id = KeyId::new("🔑".repeat(20))?;
     let credential = Credential {
         principal_id: u128::MAX,
@@ -123,6 +124,44 @@ async fn exercise(registry: &S3CredentialRegistry) -> TestResult {
     check(
         registry.get_key(&id).await?.is_none(),
         "revoked key was returned",
+    )
+}
+
+async fn exercise_list_keys(registry: &S3CredentialRegistry) -> TestResult {
+    let first = KeyId::new("A".repeat(20))?;
+    let second = KeyId::new("🔑".repeat(20))?;
+    let other = KeyId::new("B".repeat(20))?;
+    check(
+        registry.list_keys(u128::MAX).await?.is_empty(),
+        "missing principal had keys",
+    )?;
+    for (id, principal) in [
+        (second.clone(), u128::MAX),
+        (first.clone(), u128::MAX),
+        (other.clone(), 0),
+    ] {
+        registry
+            .register_key(id, KeySecret::new("s".repeat(40))?, principal)
+            .await?;
+    }
+    check(
+        registry.list_keys(u128::MAX).await? == vec![first.clone(), second.clone()],
+        "listing lost order or principal isolation",
+    )?;
+    check(
+        registry.list_keys(0).await? == vec![other.clone()],
+        "listing included another principal",
+    )?;
+    registry.revoke_key(&first).await?;
+    check(
+        registry.list_keys(u128::MAX).await? == vec![second.clone()],
+        "listing retained revoked key",
+    )?;
+    registry.revoke_key(&second).await?;
+    registry.revoke_key(&other).await?;
+    check(
+        registry.list_keys(u128::MAX).await?.is_empty(),
+        "listing retained revoked keys",
     )
 }
 

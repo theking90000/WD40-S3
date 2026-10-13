@@ -52,6 +52,18 @@ impl traits::S3CredentialRegistry for S3CredentialRegistry {
         }
     }
 
+    async fn list_keys(&self, principal: PrincipalId) -> Result<Vec<KeyId>, Error> {
+        match self {
+            Self::Local(registry) => {
+                traits::S3CredentialRegistry::list_keys(registry, principal).await
+            }
+            #[cfg(feature = "grpc-client")]
+            Self::Remote(registry) => {
+                traits::S3CredentialRegistry::list_keys(registry, principal).await
+            }
+        }
+    }
+
     async fn revoke_key(&self, id: &KeyId) -> Result<(), Error> {
         match self {
             Self::Local(registry) => traits::S3CredentialRegistry::revoke_key(registry, id).await,
