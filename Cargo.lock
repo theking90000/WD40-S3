@@ -1915,11 +1915,22 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 name = "s3-adapter"
 version = "0.1.0"
 dependencies = [
+ "access-controller",
+ "backends",
+ "blob-registry",
+ "blob-system",
  "clap",
+ "file-registry",
  "hyper",
  "hyper-util",
+ "object-registry",
+ "policy-registry",
+ "s3-credentials-registry",
  "s3s",
+ "stream-registry",
  "tokio",
+ "tokio-tcp-pool",
+ "webpki-roots",
 ]
 
 [[package]]
