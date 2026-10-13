@@ -10,12 +10,20 @@ not authenticate requests or contact the access controller.
 | `GET /object/<id>` | `200 OK` or `206 Partial Content`, streaming body |
 | `HEAD /object/<id>` | Full-object headers, empty body |
 
-Each POST generates a 128-bit random ID encoded as 32 lowercase hexadecimal
-characters. The object registry key is `<prefix>/<id>`. The prefix is required,
+Each POST generates a 128-bit random ID encoded as 22 case-sensitive base62
+characters (`0-9`, `A-Z`, `a-z`). Existing 32-character lowercase hexadecimal IDs
+remain readable. The object registry key is `<prefix>/<id>`. The prefix is required,
 cannot be empty or contain NUL, and has trailing slashes removed. Public URLs
 contain only the ID. New objects are published after the blob is finalized and
 the registry stores its reference, plaintext `size` and `content-type` metadata.
 Uploads without a content type use `application/octet-stream`.
+
+Send custom metadata as `X-Meta-<name>` headers. The registry stores their full
+lowercase header names and string values; GET and HEAD return them as response
+headers. Repeated values are joined with `, `. An empty metadata name or a
+non-text value returns `400` before storage. For example, `X-Meta-Yo: true`
+stores `x-meta-yo = "true"`. Other request headers are not stored as custom
+metadata. Metadata headers cannot replace the object's size or content type.
 
 ## Embed in Hyper
 
@@ -97,6 +105,7 @@ on their own. Backend environment values remain hidden in CLI help.
 
 ```sh
 curl -i --data-binary @file.bin -H 'Content-Type: application/octet-stream' \
+  -H 'X-Meta-Yo: true' \
   http://127.0.0.1:8080/object
 curl -I http://127.0.0.1:8080/object/<id>
 curl -H 'Range: bytes=0-1023' http://127.0.0.1:8080/object/<id>

@@ -95,11 +95,13 @@ impl HttpAdapter {
         if id.contains('/') {
             return Err(StatusCode::NOT_FOUND);
         }
-        if id.len() != 32
-            || !id
+        let base62 = id.len() == 22 && id.bytes().all(|byte| byte.is_ascii_alphanumeric());
+        // ponytail: existing hexadecimal keys remain readable without a migration.
+        let legacy = id.len() == 32
+            && id
                 .bytes()
-                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-        {
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
+        if !base62 && !legacy {
             return Err(StatusCode::BAD_REQUEST);
         }
         if request.method() != Method::GET && request.method() != Method::HEAD {
@@ -122,9 +124,25 @@ impl HttpAdapter {
             .transpose()
             .map_err(|_| StatusCode::BAD_REQUEST)?
             .unwrap_or_else(|| "application/octet-stream".to_owned());
+        let mut metadata = Metadata::new();
+        for (name, value) in request.headers() {
+            if let Some(key) = name.as_str().strip_prefix("x-meta-") {
+                if key.is_empty() {
+                    return Err(StatusCode::BAD_REQUEST);
+                }
+                let value = value.to_str().map_err(|_| StatusCode::BAD_REQUEST)?;
+                metadata
+                    .entry(name.as_str().to_owned())
+                    .and_modify(|stored| {
+                        stored.push_str(", ");
+                        stored.push_str(value);
+                    })
+                    .or_insert_with(|| value.to_owned());
+            }
+        }
         let mut random = [0_u8; 16];
         getrandom::fill(&mut random).map_err(internal)?;
-        let id = format!("{:032x}", u128::from_be_bytes(random));
+        let id = encode_id(u128::from_be_bytes(random)).map_err(internal)?;
         let mut body = Box::pin(request.into_body());
         // ponytail: defer blob allocation until the first nonempty frame or EOF.
         let first = loop {
@@ -182,10 +200,8 @@ impl HttpAdapter {
             .finalize(blob_id, parts)
             .await
             .map_err(internal)?;
-        let metadata = Metadata::from([
-            ("size".to_owned(), length.to_string()),
-            ("content-type".to_owned(), content_type),
-        ]);
+        metadata.insert("size".to_owned(), length.to_string());
+        metadata.insert("content-type".to_owned(), content_type);
         self.objects
             .store(&format!("{}/{}", self.config.prefix, id), blob_id, metadata)
             .await
@@ -269,6 +285,16 @@ impl HttpAdapter {
             header::CONTENT_LENGTH,
             count.to_string().parse().map_err(internal)?,
         );
+        for (name, value) in &record.metadata {
+            if name.starts_with("x-meta-") {
+                output.headers_mut().insert(
+                    hyper::header::HeaderName::from_bytes(name.as_bytes()).map_err(internal)?,
+                    value
+                        .parse::<hyper::header::HeaderValue>()
+                        .map_err(internal)?,
+                );
+            }
+        }
         if status == StatusCode::PARTIAL_CONTENT {
             let end = selected
                 .end
@@ -333,6 +359,21 @@ fn internal<T: std::fmt::Debug>(error: T) -> StatusCode {
     StatusCode::INTERNAL_SERVER_ERROR
 }
 
+const ID_ALPHABET: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+fn encode_id(mut value: u128) -> io::Result<String> {
+    let mut encoded = [b'0'; 22];
+    for digit in encoded.iter_mut().rev() {
+        let index = usize::try_from(value % 62).map_err(io::Error::other)?;
+        *digit = ID_ALPHABET
+            .get(index)
+            .copied()
+            .ok_or_else(|| io::Error::other("invalid base62 digit"))?;
+        value /= 62;
+    }
+    String::from_utf8(encoded.to_vec()).map_err(io::Error::other)
+}
+
 fn response(status: StatusCode) -> Response<HttpBody> {
     let mut output = Response::new(
         Empty::<Bytes>::new()
@@ -368,4 +409,30 @@ fn selected_bytes(frame: ReadFrame) -> io::Result<Bytes> {
         return Err(io::Error::other("invalid decoded frame selection"));
     }
     Ok(Bytes::from_owner(SelectedFrame(frame)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn base62_preserves_all_128_bits() -> io::Result<()> {
+        for value in [0, 1, 61, 62, u128::MAX] {
+            let id = encode_id(value)?;
+            assert_eq!(id.len(), 22);
+            assert!(id.bytes().all(|byte| byte.is_ascii_alphanumeric()));
+            let decoded = id.bytes().try_fold(0_u128, |decoded, byte| {
+                let digit = ID_ALPHABET
+                    .iter()
+                    .position(|candidate| *candidate == byte)
+                    .ok_or_else(|| io::Error::other("invalid encoded digit"))?;
+                decoded
+                    .checked_mul(62)
+                    .and_then(|decoded| decoded.checked_add(digit as u128))
+                    .ok_or_else(|| io::Error::other("base62 overflow"))
+            })?;
+            assert_eq!(decoded, value);
+        }
+        Ok(())
+    }
 }

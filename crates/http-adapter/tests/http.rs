@@ -104,6 +104,9 @@ async fn empty_objects_routes_metadata_and_send() -> TestResult {
             .method(Method::POST)
             .uri("/object")
             .header(header::CONTENT_TYPE, "text/plain")
+            .header("X-Meta-Yo", "true")
+            .header("X-Meta-Tag", "one")
+            .header("X-Meta-Tag", "two")
             .body(Full::new(Bytes::new()))?,
     );
     fn future_send<T: Send>(future: T) -> T {
@@ -121,13 +124,36 @@ async fn empty_objects_routes_metadata_and_send() -> TestResult {
     let id = location
         .strip_prefix("/object/")
         .ok_or("invalid Location")?;
-    assert_eq!(id.len(), 32);
+    assert_eq!(id.len(), 22);
+    assert!(id.bytes().all(|byte| byte.is_ascii_alphanumeric()));
     let record = objects.head(&format!("tests/{id}"), None).await?;
     assert_eq!(record.metadata.get("size").map(String::as_str), Some("0"));
+    assert_eq!(
+        record.metadata.get("x-meta-yo").map(String::as_str),
+        Some("true")
+    );
+    assert_eq!(
+        record.metadata.get("x-meta-tag").map(String::as_str),
+        Some("one, two")
+    );
     assert!(objects.head(&format!("neighbor/{id}"), None).await.is_err());
     for method in [Method::GET, Method::HEAD] {
         let response = request(&adapter, method, &location, None).await?;
         assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get("x-meta-yo")
+                .ok_or("missing metadata")?,
+            "true"
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get("x-meta-tag")
+                .ok_or("missing repeated metadata")?,
+            "one, two"
+        );
         assert_eq!(
             response
                 .headers()
