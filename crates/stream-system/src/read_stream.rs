@@ -14,7 +14,7 @@ use stream_registry::traits::StreamRegistry as _;
 use crate::{Error, FileBackend, FileRegistry, ReadFile, ReadFrame, StreamId, StreamRegistry};
 
 type Parts = <StreamRegistry as stream_registry::traits::StreamRegistry>::StreamPartStream;
-type OpenParts = Pin<Box<dyn Future<Output = Result<Parts, Error>>>>;
+type OpenParts = Pin<Box<dyn Future<Output = Result<Parts, Error>> + Send>>;
 type Scheduler<'a> = ReadScheduler<'a, ReadFrame, ReadFile, fn() -> ReadFrame>;
 
 enum Resolution {

@@ -117,7 +117,7 @@ struct CommonArgs {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
-    // ponytail: one runtime polls the stream directly, including its non-Send futures.
+    // ponytail: one runtime polls the stream directly, without per-file tasks.
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?

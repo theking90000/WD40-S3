@@ -16,7 +16,8 @@ use futures_util::StreamExt;
 
 use crate::{Error, FileBackend, FileRegistry};
 
-type OpenFuture = Pin<Box<dyn Future<Output = Result<(backends::ReadFile, Decoder), Error>>>>;
+type OpenFuture =
+    Pin<Box<dyn Future<Output = Result<(backends::ReadFile, Decoder), Error>> + Send>>;
 
 #[allow(
     clippy::large_enum_variant,

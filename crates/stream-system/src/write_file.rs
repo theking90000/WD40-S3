@@ -18,8 +18,8 @@ use stream_registry::{StreamPartId, traits::StreamRegistry as _};
 
 use crate::{Error, FileBackend, FileRegistry, StreamRegistry};
 
-type OpenFuture = Pin<Box<dyn Future<Output = Result<OpenedFile, Error>>>>;
-type CloseFuture = Pin<Box<dyn Future<Output = Result<StreamPartId, Error>>>>;
+type OpenFuture = Pin<Box<dyn Future<Output = Result<OpenedFile, Error>> + Send>>;
+type CloseFuture = Pin<Box<dyn Future<Output = Result<StreamPartId, Error>> + Send>>;
 
 #[allow(
     clippy::large_enum_variant,

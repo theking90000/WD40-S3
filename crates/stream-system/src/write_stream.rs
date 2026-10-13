@@ -15,7 +15,7 @@ use stream_registry::{StreamId, StreamPartId, traits::StreamRegistry as _};
 
 use crate::{Error, FileBackend, FileRegistry, StreamRegistry, StreamWriterConfig, WriteFile};
 
-type ManifestFuture = Pin<Box<dyn Future<Output = Result<StreamId, Error>>>>;
+type ManifestFuture = Pin<Box<dyn Future<Output = Result<StreamId, Error>> + Send>>;
 
 enum State {
     Writing,

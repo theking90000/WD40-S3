@@ -42,6 +42,28 @@ pub struct BlobSystem {
 }
 
 impl BlobSystem {
+    /// Validates writer, scheduler and budget settings without performing I/O.
+    pub fn validate_write_config(
+        &self,
+        config: BlobWriterConfig,
+        budget: &FrameBudget,
+        scheduler: &mut SchedulerConfig,
+    ) -> Result<(), Error> {
+        let frame_size = usize::try_from(config.frame_size).map_err(stream_system::Error::from)?;
+        let mut allocator =
+            BytesFrameAllocator::new(frame_size).map_err(stream_system::Error::from)?;
+        stream_system::WriteStream::new(
+            self.file_registry.clone(),
+            self.stream_registry.clone(),
+            self.backend.clone(),
+            config,
+            &mut allocator,
+            budget,
+            scheduler,
+        )?;
+        Ok(())
+    }
+
     /// Retains storage handles without performing I/O.
     pub fn new(
         blob_registry: BlobRegistry,

@@ -14,6 +14,10 @@ It is designed around three principles:
 - Composable systems that are easy to understand.
 - API interoperability, with S3 support for integration with existing tools and systems.
 
+The [HTTP Adapter](crates/http-adapter/README.md) provides anonymous object uploads
+and streaming downloads with byte-range support, as a composable Hyper service
+or an optional standalone server.
+
 ## Store files on Discord
 
 Storing files on Discord isn't really complicated. However, building reliable storage that integrates with existing systems isn't straightforward.

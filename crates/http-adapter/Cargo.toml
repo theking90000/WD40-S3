@@ -1,0 +1,44 @@
+[package]
+name = "http-adapter"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = []
+cli = ["dep:clap", "blob-system/cli"]
+standalone = ["cli", "dep:hyper-util", "dep:tokio-tcp-pool", "dep:webpki-roots", "backends/cli", "file-registry/cli", "stream-registry/cli", "blob-registry/cli", "object-registry/cli", "tokio/rt-multi-thread", "tokio/net", "tokio/signal"]
+grpc-client = ["object-registry/grpc-client", "blob-registry/grpc-client", "stream-registry/grpc-client", "file-registry/grpc-client"]
+grpc-tls = ["object-registry/grpc-tls", "blob-registry/grpc-tls", "stream-registry/grpc-tls", "file-registry/grpc-tls"]
+
+[[bin]]
+name = "http-adapter"
+path = "src/main.rs"
+required-features = ["standalone"]
+
+[dependencies]
+async-stream = "0.3"
+backends = { path = "../backends" }
+blob-registry = { path = "../blob-registry" }
+blob-system = { path = "../blob-system" }
+file-registry = { path = "../file-registry" }
+object-registry = { path = "../object-registry" }
+stream-registry = { path = "../stream-registry" }
+bytes = "1.11"
+futures-util = { version = "0.3", default-features = false, features = ["std", "async-await", "io"] }
+getrandom = "0.4"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["server", "http1"] }
+tokio = { version = "1", features = ["macros"] }
+clap = { version = "4", features = ["derive", "env"], optional = true }
+hyper-util = { version = "0.1", features = ["tokio", "http1", "server-graceful"], optional = true }
+tokio-tcp-pool = { version = "0.1.3", optional = true }
+webpki-roots = { version = "1", optional = true }
+
+[dev-dependencies]
+sled = "0.34"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time"] }
+tokio-tcp-pool = "0.1.3"
+hyper-util = { version = "0.1", features = ["tokio"] }
+
+[lints.rust]
+unsafe_code = "forbid"

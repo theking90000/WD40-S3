@@ -14,7 +14,7 @@ use crate::{
     PartId, SchedulerConfig,
 };
 
-type SaveFuture = Pin<Box<dyn Future<Output = Result<(), Error>>>>;
+type SaveFuture = Pin<Box<dyn Future<Output = Result<(), Error>> + Send>>;
 
 enum State {
     Writing,

@@ -16,7 +16,7 @@ use crate::{
 };
 
 type Slices = <BlobRegistry as blob_registry::traits::BlobRegistry>::StreamSliceStream;
-type OpenSlices = Pin<Box<dyn Future<Output = Result<Slices, blob_registry::Error>>>>;
+type OpenSlices = Pin<Box<dyn Future<Output = Result<Slices, blob_registry::Error>> + Send>>;
 
 enum Resolution {
     Opening(OpenSlices),
