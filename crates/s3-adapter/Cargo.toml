@@ -1,0 +1,24 @@
+[package]
+name = "s3-adapter"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = []
+cli = ["dep:clap"]
+standalone = ["cli", "dep:hyper", "dep:hyper-util", "dep:tokio"]
+
+[[bin]]
+name = "s3-adapter"
+path = "src/main.rs"
+required-features = ["standalone"]
+
+[dependencies]
+s3s = "0.17"
+clap = { version = "4", features = ["derive", "env"], optional = true }
+hyper = { version = "1", features = ["server", "http1"], optional = true }
+hyper-util = { version = "0.1", features = ["tokio", "http1", "server-graceful"], optional = true }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"], optional = true }
+
+[lints.rust]
+unsafe_code = "forbid"
