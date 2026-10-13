@@ -1,29 +1,51 @@
-# HTTP Adapter
+# HTTP adapter
 
-Create anonymous objects and stream their contents through a cloneable Hyper
-service. The adapter composes `ObjectRegistry` and `BlobSystem` directly. It does
-not authenticate requests or contact the access controller.
+Upload anonymous objects and stream their contents over HTTP. `http-adapter`
+connects `ObjectRegistry` and `BlobSystem` through a cloneable Hyper service.
+Requests are unauthenticated.
 
-| Request | Response |
+| Request | Result |
 | --- | --- |
-| `POST /object` | `201 Created`, `Location: /object/<id>`, empty body |
-| `GET /object/<id>` | `200 OK` or `206 Partial Content`, streaming body |
-| `HEAD /object/<id>` | Full-object headers, empty body |
+| `POST /object` | Creates an object and returns `201 Created` with its URL in `Location` and an empty body. |
+| `GET /object/<id>` | Streams the object with `200 OK`, or a byte range with `206 Partial Content`. |
+| `HEAD /object/<id>` | Returns the full object's headers with an empty body. |
 
-Each POST generates a 128-bit random ID encoded as 22 case-sensitive base62
-characters (`0-9`, `A-Z`, `a-z`). Existing 32-character lowercase hexadecimal IDs
-remain readable. The object registry key is `<prefix>/<id>`. The prefix is required,
-cannot be empty or contain NUL, and has trailing slashes removed. Public URLs
-contain only the ID. New objects are published after the blob is finalized and
-the registry stores its reference, plaintext `size` and `content-type` metadata.
-Uploads without a content type use `application/octet-stream`.
+## Run the server
 
-Send custom metadata as `X-Meta-<name>` headers. The registry stores their full
-lowercase header names and string values; GET and HEAD return them as response
-headers. Repeated values are joined with `, `. An empty metadata name or a
-non-text value returns `400` before storage. For example, `X-Meta-Yo: true`
-stores `x-meta-yo = "true"`. Other request headers are not stored as custom
-metadata. Metadata headers cannot replace the object's size or content type.
+```sh
+cargo run -p http-adapter --features standalone -- \
+  --prefix uploads --listen 127.0.0.1:8080 \
+  --webhook 'https://discord.com/api/webhooks/<id>/<token>'
+```
+
+The standalone server uses HTTP/1.1 and shuts down gracefully on Ctrl-C. Its
+default listener is `127.0.0.1:8080`; incoming TLS belongs to your application or
+proxy. Registries default to their `./data/*-registry` locations.
+
+Upload a file, then use the URL returned in `Location` to inspect or read it:
+
+```sh
+curl -i --data-binary @file.bin \
+  -H 'Content-Type: application/octet-stream' \
+  -H 'X-Meta-Yo: true' \
+  http://127.0.0.1:8080/object
+
+curl -I 'http://127.0.0.1:8080/object/<id>'
+curl -H 'Range: bytes=0-1023' 'http://127.0.0.1:8080/object/<id>'
+```
+
+`--prefix` is required and also accepts `WD40_HTTP_PREFIX`. It namespaces registry
+keys as `<prefix>/<id>` without appearing in public URLs. It must be nonempty
+and contain no NUL characters; trailing slashes are removed.
+
+| Feature | Use |
+| --- | --- |
+| `cli` | Embed `cli::HttpAdapterArgs` with `#[command(flatten)]`, including prefix, blob codec and CARBON options. |
+| `standalone` | Run the HTTP executable with registry/backend CLI settings and pool construction. |
+| `grpc-client` | Configure remote registry endpoints. |
+| `grpc-tls` | Enable verified HTTPS transport for the registries. |
+
+Enable `standalone` explicitly when running the executable with the gRPC features.
 
 ## Embed in Hyper
 
@@ -48,82 +70,63 @@ fn service(
 }
 ```
 
-Pass this service to Hyper's `serve_connection`, or use `Service::call` from an
-existing router. It accepts any Send HTTP body producing `Bytes` whose errors
-implement `std::error::Error + Send + Sync`. The service future and `HttpBody`
-are Send; the response body does not require Sync.
+Pass the service to Hyper's `serve_connection`, or call it through `Service::call`
+in an existing router. Your application supplies the storage handles, listener,
+runtime and TLS. Construction validates the prefix, writer and scheduler settings
+without I/O.
 
-Construction validates prefix, writer and scheduler settings without I/O.
-The application supplies the storage handles, budget, listener, runtime and
-TLS. Each operation owns its scheduler configuration and uploads own their
-allocator. Clones share the frame budget. CARBON is polled directly, without
-dedicated tasks or a mutex around transfers. HTTP response frames own decoded
-buffers without copying their payload; only the requested bytes are transmitted.
-Memory stays bounded by scheduler windows, the shared budget and retained HTTP
-frames, rather than object size.
+Request bodies must be `Send`, produce `Bytes`, and have errors implementing
+`std::error::Error + Send + Sync`. The service future and response body are `Send`;
+the response body need not be `Sync`.
 
-## Byte ranges and errors
+Transfers stream data with memory bounded by scheduler windows, the shared frame
+budget and retained HTTP frames. Service clones share the frame budget.
 
-GET supports one range: `bytes=start-end`, `bytes=start-`, or `bytes=-suffix`.
-End positions in the HTTP header are inclusive. Partial responses include
-`Content-Range` and `Content-Length`. Unsatisfiable ranges return `416` with
-`Content-Range: bytes */<size>`. Malformed ranges return `400`.
+## Uploads and metadata
 
-Multiple ranges, multiple Range fields and unknown range units produce a full
-`200` response. HEAD ignores Range, returns the full object's length and reads
-no backend content. Responses advertise `Accept-Ranges: bytes`. This version
-has no ETag validators; If-Range requests receive the full object.
+Each upload receives a random 128-bit ID encoded as 22 case-sensitive base62
+characters using `0-9`, `A-Z` and `a-z`. Existing 32-character lowercase hexadecimal
+IDs remain readable. Empty uploads are supported.
 
-Missing objects/routes return `404`, malformed IDs return `400`, and unsupported
-methods return `405` with `Allow`. Storage failures are logged on stderr and return
-`500` without exposing internal error details in the response. The first GET frame is read before headers are returned;
-a later read failure interrupts the body. HEAD responses always have no body,
-including errors. Empty uploads are supported without opening a backend file.
+The adapter publishes an object after finalizing its blob and storing the blob
+reference, plaintext size and content type in the registry. If the upload omits
+`Content-Type`, the adapter uses `application/octet-stream`.
 
-An interrupted upload does not publish an object key. Already-created storage
+Use `X-Meta-<name>` headers for custom metadata. GET and HEAD return these headers
+with lowercase names; repeated values are joined with `, `. For example,
+`X-Meta-Yo: true` is stored as `x-meta-yo = "true"`. Empty names and non-text values
+return `400` before storage. Other request headers are not stored as custom
+metadata, and metadata cannot override the object's size or content type.
+
+Interrupted uploads do not publish an object key, but already-created storage
 records are not rolled back. A registry error or cancellation can occur after a
-commit; retrying POST creates a new ID and is not a recovery operation.
+commit. Retrying POST creates a new ID; it does not recover the previous upload.
 
-## Standalone
+## Ranges and errors
 
-```sh
-cargo run -p http-adapter --features standalone -- \
-  --prefix uploads --listen 127.0.0.1:8080 \
-  --webhook 'https://discord.com/api/webhooks/<id>/<token>'
-```
+GET accepts a single byte range:
 
-`cli` exposes `cli::HttpAdapterArgs` for `#[command(flatten)]`, including `--prefix`
-or `WD40_HTTP_PREFIX` and the existing blob codec/CARBON options. `standalone`
-enables the optional HTTP/1.1 executable, registry/backend CLI configurations,
-pool construction and graceful Ctrl-C shutdown. The default listener is
-`127.0.0.1:8080`. Incoming TLS belongs to the embedding application or its proxy.
+| Header | Selection |
+| --- | --- |
+| `Range: bytes=start-end` | Bytes from `start` through `end`, inclusive. |
+| `Range: bytes=start-` | Bytes from `start` to the end of the object. |
+| `Range: bytes=-suffix` | The last `suffix` bytes. |
 
-Registries default to their existing `./data/*-registry` locations.
-`grpc-client` enables their remote endpoint options; `grpc-tls` enables their
-existing verified HTTPS transport. These features do not enable the executable
-on their own. Backend environment values remain hidden in CLI help.
+Partial responses include `Content-Range` and `Content-Length`. Unsatisfiable
+ranges return `416` with `Content-Range: bytes */<size>`; malformed ranges return
+`400`. Multiple ranges, multiple `Range` fields and unknown range units return
+the full object with `200 OK`.
 
-```sh
-curl -i --data-binary @file.bin -H 'Content-Type: application/octet-stream' \
-  -H 'X-Meta-Yo: true' \
-  http://127.0.0.1:8080/object
-curl -I http://127.0.0.1:8080/object/<id>
-curl -H 'Range: bytes=0-1023' http://127.0.0.1:8080/object/<id>
-```
+Responses advertise `Accept-Ranges: bytes`. HEAD ignores ranges and returns the
+full object's length without reading backend content. There are no ETag
+validators; requests with `If-Range` receive the full object.
 
-## Checks
+| Error | Response |
+| --- | --- |
+| Missing object or route | `404` |
+| Malformed ID | `400` |
+| Unsupported method | `405` with `Allow` |
+| Storage failure before the response starts | `500` with internal details logged to stderr only |
 
-```sh
-cargo test -p http-adapter --all-features
-cargo check -p http-adapter --no-default-features
-cargo check -p http-adapter --features cli
-cargo check -p http-adapter --features standalone
-cargo check -p http-adapter --features grpc-client,grpc-tls
-cargo run -p http-adapter --features standalone -- --help
-```
-
-Tests cover ranges, routes, metadata, empty POST/HEAD/GET and Send contracts.
-The deterministic loopback smoke test runs four concurrent nonempty uploads
-through the real Discord backend implementation, local registries, AES-256 and
-LZ4, then checks full reads, ranges and interrupted inputs. Its server simulates
-Discord HTTP; it does not contact Discord or use external credentials.
+GET reads its first frame before returning headers. A later read failure
+interrupts the response body. HEAD responses have no body, including errors.
