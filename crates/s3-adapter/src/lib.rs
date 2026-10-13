@@ -4,6 +4,7 @@ pub mod auth;
 #[cfg(feature = "cli")]
 pub mod cli;
 
+mod access;
 mod request;
 mod s3;
 
