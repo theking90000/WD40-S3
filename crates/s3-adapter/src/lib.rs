@@ -5,6 +5,8 @@ pub mod auth;
 #[cfg(feature = "cli")]
 pub mod cli;
 
+mod error;
+mod metadata;
 mod request;
 mod s3;
 

@@ -1,12 +1,12 @@
 use s3s::{
     S3Request, S3Response, S3Result,
-    dto::{ETag, HeadObjectInput, HeadObjectOutput},
+    dto::{HeadObjectInput, HeadObjectOutput},
 };
 
 use access_controller::Action;
 use object_registry::traits::ObjectRegistry;
 
-use crate::{S3Adapter, access::S3Access, to_key};
+use crate::{S3Adapter, access::S3Access, error, metadata, to_key};
 
 pub(crate) async fn head_object_access(
     access: &S3Access,
@@ -25,18 +25,7 @@ pub(crate) async fn head_object(
         .objects
         .head(&to_key!(req.input), None)
         .await
-        .map_err(|error| match error {
-            error @ object_registry::Error::ObjectNotFound(_) => {
-                s3s::s3_error!(error, NoSuchKey)
-            }
-            error @ object_registry::Error::VersionNotFound { .. } => {
-                s3s::s3_error!(error, NoSuchVersion)
-            }
-            error @ object_registry::Error::InvalidKey => {
-                s3s::s3_error!(error, InvalidArgument)
-            }
-            error => s3s::S3Error::internal_error(error),
-        })?;
+        .map_err(error::object_registry_error)?;
 
     if record.is_delete_marker {
         return Err(s3s::s3_error!(NoSuchKey));
@@ -44,17 +33,9 @@ pub(crate) async fn head_object(
 
     let mut metadata = record.metadata;
 
-    let length = metadata
-        .remove("size")
-        .ok_or_else(|| s3s::s3_error!(InternalError, "missing object size metadata"))?
-        .parse::<u64>()
-        .map_err(s3s::S3Error::internal_error)?;
-
-    let content_length = i64::try_from(length).map_err(s3s::S3Error::internal_error)?;
-
-    let content_type = metadata
-        .remove("content-type")
-        .ok_or_else(|| s3s::s3_error!(InternalError, "missing object content-type metadata"))?;
+    let length = metadata::take_size(&mut metadata)?;
+    let content_length = metadata::content_length(length)?;
+    let content_type = metadata::take_content_type(&mut metadata)?;
 
     let version_id = record.version_id.to_string();
 
@@ -62,7 +43,7 @@ pub(crate) async fn head_object(
         accept_ranges: Some("bytes".to_owned()),
         content_length: Some(content_length),
         content_type: Some(content_type),
-        e_tag: Some(ETag::Strong(version_id.clone())),
+        e_tag: Some(metadata::etag_from_version(record.version_id)),
         metadata: Some(metadata.into_iter().collect()),
         version_id: Some(version_id),
         ..Default::default()

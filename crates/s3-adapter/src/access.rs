@@ -1,10 +1,10 @@
 use access_controller::{AccessController, Action, Decision, Principal};
-use s3_credentials_registry::{KeyId, S3CredentialRegistry, traits::S3CredentialRegistry as _};
+use s3_credentials_registry::S3CredentialRegistry;
 use s3s::{
     S3Error, S3Request, S3Result, access::S3AccessContext, auth::Credentials, dto::HeadObjectInput,
 };
 
-use crate::request;
+use crate::{auth::get_credential, request};
 
 #[derive(Clone)]
 pub struct S3Access {
@@ -22,16 +22,7 @@ impl S3Access {
         let Some(credentials) = credentials else {
             return Ok(Principal::Anonymous);
         };
-        let id = credentials
-            .access_key
-            .parse::<KeyId>()
-            .map_err(|_| s3s::s3_error!(InvalidAccessKeyId))?;
-        let credential = self
-            .registry
-            .get_key(&id)
-            .await
-            .map_err(S3Error::internal_error)?
-            .ok_or_else(|| s3s::s3_error!(InvalidAccessKeyId))?;
+        let credential = get_credential(&self.registry, &credentials.access_key).await?;
         Ok(Principal::Authenticated(credential.principal_id))
     }
 
