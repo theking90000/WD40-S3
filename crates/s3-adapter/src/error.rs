@@ -10,7 +10,10 @@ pub(crate) fn object_registry_error(error: object_registry::Error) -> S3Error {
         error @ object_registry::Error::VersionNotFound { .. } => {
             s3s::s3_error!(error, NoSuchVersion)
         }
-        error @ object_registry::Error::InvalidKey => {
+        error @ (object_registry::Error::InvalidKey
+        | object_registry::Error::InvalidPrefix
+        | object_registry::Error::InvalidLimit
+        | object_registry::Error::InvalidCursor) => {
             s3s::s3_error!(error, InvalidArgument)
         }
         error => S3Error::internal_error(error),

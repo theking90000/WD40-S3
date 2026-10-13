@@ -1,12 +1,22 @@
 use s3s::{
     S3Request, S3Response, S3Result,
-    dto::{GetObjectInput, GetObjectOutput, HeadObjectInput, HeadObjectOutput},
+    dto::{
+        GetObjectInput, GetObjectOutput, HeadObjectInput, HeadObjectOutput, ListObjectsV2Input,
+        ListObjectsV2Output,
+    },
 };
 
 use crate::{S3Adapter, request};
 
 #[async_trait::async_trait]
 impl s3s::S3 for S3Adapter {
+    async fn list_objects_v2(
+        &self,
+        req: S3Request<ListObjectsV2Input>,
+    ) -> S3Result<S3Response<ListObjectsV2Output>> {
+        request::list_objects_v2::list_objects_v2(self, req).await
+    }
+
     async fn get_object(
         &self,
         req: S3Request<GetObjectInput>,
