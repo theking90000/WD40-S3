@@ -89,7 +89,7 @@ pub struct StreamSchedulerConfig {
     pub max_retries: u32,
 
     /// Total shared frame budget for this run.
-    #[arg(long, global = true, env = "WD40_FRAME_BUDGET", default_value = "256")]
+    #[arg(long, global = true, env = "WD40_FRAME_BUDGET", default_value = "1024")]
     pub frame_budget: NonZeroUsize,
 }
 
