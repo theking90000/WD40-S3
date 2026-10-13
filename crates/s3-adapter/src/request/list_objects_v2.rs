@@ -19,7 +19,7 @@ const TOKEN_VERSION: u8 = 1;
 const MAX_TOKEN_LENGTH: usize = 16_384;
 
 #[derive(Clone)]
-struct ListPolicy(Arc<CompiledPolicy>);
+pub(crate) struct ListPolicy(Arc<CompiledPolicy>);
 
 /// The cursor points before a registry page. last_key resumes within that page.
 /// Pages are not snapshots, so use a key bound rather than a record offset.
@@ -35,12 +35,12 @@ struct Continuation {
     last_common_prefix: Option<String>,
 }
 
-fn registry_prefix(input: &ListObjectsV2Input) -> S3Result<String> {
-    let prefix = input.prefix.as_deref().unwrap_or_default();
-    if input.bucket.is_empty() || input.bucket.contains(['/', '\0']) || prefix.contains('\0') {
+fn registry_prefix(bucket: &str, prefix: Option<&str>) -> S3Result<String> {
+    let prefix = prefix.unwrap_or_default();
+    if bucket.is_empty() || bucket.contains(['/', '\0']) || prefix.contains('\0') {
         return Err(s3s::s3_error!(InvalidArgument, "invalid bucket or prefix"));
     }
-    Ok(format!("{}/{prefix}", input.bucket))
+    Ok(format!("{bucket}/{prefix}"))
 }
 
 async fn compile_policy(
@@ -64,10 +64,27 @@ pub(crate) async fn list_objects_v2_access(
     access: &S3Access,
     req: &mut S3Request<ListObjectsV2Input>,
 ) -> S3Result<()> {
-    let prefix = registry_prefix(&req.input)?;
-    let policy = compile_policy(access, req.credentials.as_ref(), &prefix).await?;
-    req.extensions.insert(ListPolicy(policy));
+    let policy = list_policy(
+        access,
+        req.credentials.as_ref(),
+        &req.input.bucket,
+        req.input.prefix.as_deref(),
+    )
+    .await?;
+    req.extensions.insert(policy);
     Ok(())
+}
+
+pub(crate) async fn list_policy(
+    access: &S3Access,
+    credentials: Option<&Credentials>,
+    bucket: &str,
+    prefix: Option<&str>,
+) -> S3Result<ListPolicy> {
+    let prefix = registry_prefix(bucket, prefix)?;
+    Ok(ListPolicy(
+        compile_policy(access, credentials, &prefix).await?,
+    ))
 }
 
 fn validate_input(input: &ListObjectsV2Input) -> S3Result<(i32, bool)> {
@@ -199,9 +216,19 @@ fn common_prefix(key: &str, prefix: &str, delimiter: Option<&str>) -> Option<Str
 
 pub(crate) async fn list_objects_v2(
     adapter: &S3Adapter,
-    mut req: S3Request<ListObjectsV2Input>,
+    req: S3Request<ListObjectsV2Input>,
 ) -> S3Result<S3Response<ListObjectsV2Output>> {
-    let prefix = registry_prefix(&req.input)?;
+    let (response, _) = list_page(adapter, req, true).await?;
+    Ok(response)
+}
+
+/// V1 resumes from a returned key or common prefix; V2 uses an opaque token.
+pub(crate) async fn list_page(
+    adapter: &S3Adapter,
+    mut req: S3Request<ListObjectsV2Input>,
+    continuation_tokens: bool,
+) -> S3Result<(S3Response<ListObjectsV2Output>, Option<String>)> {
+    let prefix = registry_prefix(&req.input.bucket, req.input.prefix.as_deref())?;
     let (max_keys, encode) = validate_input(&req.input)?;
     let mut state = continuation(&req.input)?;
     let policy = match req.extensions.remove::<ListPolicy>() {
@@ -216,6 +243,7 @@ pub(crate) async fn list_objects_v2(
     let mut common_prefixes = Vec::new();
     let mut key_count = 0_i32;
     let mut is_truncated = false;
+    let mut next_marker = None;
 
     if max_keys > 0 {
         'pages: loop {
@@ -259,6 +287,12 @@ pub(crate) async fn list_objects_v2(
                     is_truncated = true;
                     break 'pages;
                 }
+                if !continuation_tokens && Some(key_count) == max_keys.checked_sub(1) {
+                    // Use the last returned entry, never a filtered-out key
+                    // consumed while looking ahead for another visible result.
+                    let marker = group.as_deref().map_or(key, |group| group);
+                    next_marker = Some(encode_value(marker.to_owned(), encode));
+                }
                 if let Some(group) = group {
                     common_prefixes.push(CommonPrefix {
                         prefix: Some(encode_value(group.clone(), encode)),
@@ -285,12 +319,12 @@ pub(crate) async fn list_objects_v2(
         }
     }
 
-    let next_continuation_token = if is_truncated {
+    let next_continuation_token = if is_truncated && continuation_tokens {
         Some(encode_token(&state)?)
     } else {
         None
     };
-    Ok(S3Response::new(ListObjectsV2Output {
+    let response = S3Response::new(ListObjectsV2Output {
         name: Some(req.input.bucket),
         prefix: Some(encode_value(state.prefix, encode)),
         max_keys: Some(max_keys),
@@ -307,5 +341,6 @@ pub(crate) async fn list_objects_v2(
             .start_after
             .map(|value| encode_value(value, encode)),
         ..Default::default()
-    }))
+    });
+    Ok((response, next_marker))
 }

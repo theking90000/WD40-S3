@@ -4,7 +4,7 @@ use s3s::{
     S3Error, S3Request, S3Result,
     access::S3AccessContext,
     auth::Credentials,
-    dto::{GetObjectInput, HeadObjectInput, ListObjectsV2Input},
+    dto::{GetObjectInput, HeadObjectInput, ListObjectsInput, ListObjectsV2Input},
 };
 
 use crate::{auth::get_credential, request};
@@ -51,6 +51,10 @@ impl S3Access {
 
 #[async_trait::async_trait]
 impl s3s::access::S3Access for S3Access {
+    async fn list_objects(&self, req: &mut S3Request<ListObjectsInput>) -> S3Result<()> {
+        request::list_objects::list_objects_access(self, req).await
+    }
+
     async fn list_objects_v2(&self, req: &mut S3Request<ListObjectsV2Input>) -> S3Result<()> {
         request::list_objects_v2::list_objects_v2_access(self, req).await
     }
