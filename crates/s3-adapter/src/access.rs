@@ -4,7 +4,10 @@ use s3s::{
     S3Error, S3Request, S3Result,
     access::S3AccessContext,
     auth::Credentials,
-    dto::{GetObjectInput, HeadObjectInput, ListObjectsInput, ListObjectsV2Input, PutObjectInput},
+    dto::{
+        CreateMultipartUploadInput, GetObjectInput, HeadObjectInput, ListObjectsInput,
+        ListObjectsV2Input, PutObjectInput,
+    },
 };
 
 use crate::{auth::get_credential, request};
@@ -51,6 +54,13 @@ impl S3Access {
 
 #[async_trait::async_trait]
 impl s3s::access::S3Access for S3Access {
+    async fn create_multipart_upload(
+        &self,
+        req: &mut S3Request<CreateMultipartUploadInput>,
+    ) -> S3Result<()> {
+        request::create_multipart_upload::create_multipart_upload_access(self, req).await
+    }
+
     async fn put_object(&self, req: &mut S3Request<PutObjectInput>) -> S3Result<()> {
         request::put_object::put_object_access(self, req).await
     }
