@@ -5,8 +5,8 @@ use s3s::{
     access::S3AccessContext,
     auth::Credentials,
     dto::{
-        CreateMultipartUploadInput, DeleteObjectInput, GetObjectInput, HeadObjectInput,
-        ListObjectsInput, ListObjectsV2Input, PutObjectInput, UploadPartInput,
+        CreateMultipartUploadInput, DeleteObjectInput, DeleteObjectsInput, GetObjectInput,
+        HeadObjectInput, ListObjectsInput, ListObjectsV2Input, PutObjectInput, UploadPartInput,
     },
 };
 
@@ -54,6 +54,10 @@ impl S3Access {
 
 #[async_trait::async_trait]
 impl s3s::access::S3Access for S3Access {
+    async fn delete_objects(&self, req: &mut S3Request<DeleteObjectsInput>) -> S3Result<()> {
+        request::delete_objects::delete_objects_access(self, req).await
+    }
+
     async fn delete_object(&self, req: &mut S3Request<DeleteObjectInput>) -> S3Result<()> {
         request::delete_object::delete_object_access(self, req).await
     }

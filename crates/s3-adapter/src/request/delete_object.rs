@@ -24,8 +24,15 @@ pub(crate) async fn delete_object(
     adapter: &S3Adapter,
     req: S3Request<DeleteObjectInput>,
 ) -> S3Result<S3Response<DeleteObjectOutput>> {
-    let version_id = validate_input(&req.input)?;
-    let key = to_key!(req.input);
+    Ok(S3Response::new(delete(adapter, &req.input).await?))
+}
+
+pub(super) async fn delete(
+    adapter: &S3Adapter,
+    input: &DeleteObjectInput,
+) -> S3Result<DeleteObjectOutput> {
+    let version_id = validate_input(input)?;
+    let key = to_key!(input);
 
     let delete_marker = if let Some(version) = version_id {
         match adapter.objects.head(&key, Some(version)).await {
@@ -43,11 +50,11 @@ pub(crate) async fn delete_object(
         .await
         .map_err(error::object_registry_error)?;
 
-    Ok(S3Response::new(DeleteObjectOutput {
+    Ok(DeleteObjectOutput {
         delete_marker,
         version_id: Some(result.version_id.to_string()),
         ..Default::default()
-    }))
+    })
 }
 
 fn validate_input(input: &DeleteObjectInput) -> S3Result<Option<VersionId>> {

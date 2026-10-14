@@ -2,9 +2,10 @@ use s3s::{
     S3Request, S3Response, S3Result,
     dto::{
         CreateMultipartUploadInput, CreateMultipartUploadOutput, DeleteObjectInput,
-        DeleteObjectOutput, GetObjectInput, GetObjectOutput, HeadObjectInput, HeadObjectOutput,
-        ListObjectsInput, ListObjectsOutput, ListObjectsV2Input, ListObjectsV2Output,
-        PutObjectInput, PutObjectOutput, UploadPartInput, UploadPartOutput,
+        DeleteObjectOutput, DeleteObjectsInput, DeleteObjectsOutput, GetObjectInput,
+        GetObjectOutput, HeadObjectInput, HeadObjectOutput, ListObjectsInput, ListObjectsOutput,
+        ListObjectsV2Input, ListObjectsV2Output, PutObjectInput, PutObjectOutput, UploadPartInput,
+        UploadPartOutput,
     },
 };
 
@@ -12,6 +13,13 @@ use crate::{S3Adapter, request};
 
 #[async_trait::async_trait]
 impl s3s::S3 for S3Adapter {
+    async fn delete_objects(
+        &self,
+        req: S3Request<DeleteObjectsInput>,
+    ) -> S3Result<S3Response<DeleteObjectsOutput>> {
+        request::delete_objects::delete_objects(self, req).await
+    }
+
     async fn delete_object(
         &self,
         req: S3Request<DeleteObjectInput>,
