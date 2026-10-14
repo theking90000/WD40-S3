@@ -19,3 +19,16 @@ pub(crate) fn object_registry_error(error: object_registry::Error) -> S3Error {
         error => S3Error::internal_error(error),
     }
 }
+
+pub(crate) fn multipart_registry_error(error: s3_multipart_registry::Error) -> S3Error {
+    match error {
+        error @ (s3_multipart_registry::Error::InvalidUploadId
+        | s3_multipart_registry::Error::InvalidBucket
+        | s3_multipart_registry::Error::InvalidPrefix
+        | s3_multipart_registry::Error::InvalidCursor
+        | s3_multipart_registry::Error::InvalidLimit) => {
+            s3s::s3_error!(error, InvalidArgument)
+        }
+        error => S3Error::internal_error(error),
+    }
+}

@@ -5,6 +5,7 @@ pub(crate) mod delete_object;
 pub(crate) mod delete_objects;
 pub(crate) mod get_object;
 pub(crate) mod head_object;
+pub(crate) mod list_multipart_uploads;
 pub(crate) mod list_objects;
 pub(crate) mod list_objects_v2;
 pub(crate) mod list_parts;

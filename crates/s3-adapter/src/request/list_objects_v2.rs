@@ -21,6 +21,12 @@ const MAX_TOKEN_LENGTH: usize = 16_384;
 #[derive(Clone)]
 pub(crate) struct ListPolicy(Arc<CompiledPolicy>);
 
+impl ListPolicy {
+    pub(super) fn authorize(&self, key: &str) -> Decision {
+        self.0.authorize(Action::List, key)
+    }
+}
+
 /// The cursor points before a registry page. last_key resumes within that page.
 /// Pages are not snapshots, so use a key bound rather than a record offset.
 #[derive(Serialize, Deserialize)]
@@ -193,7 +199,7 @@ fn encode_token(state: &Continuation) -> S3Result<String> {
     Ok(token)
 }
 
-fn encode_value(value: String, encode: bool) -> String {
+pub(super) fn encode_value(value: String, encode: bool) -> String {
     if encode {
         // Preserve RFC 3986 unreserved characters, including '-' and '_'.
         const SET: &percent_encoding::AsciiSet = &NON_ALPHANUMERIC
@@ -207,7 +213,7 @@ fn encode_value(value: String, encode: bool) -> String {
     }
 }
 
-fn common_prefix(key: &str, prefix: &str, delimiter: Option<&str>) -> Option<String> {
+pub(super) fn common_prefix(key: &str, prefix: &str, delimiter: Option<&str>) -> Option<String> {
     let delimiter = delimiter?;
     let suffix = key.strip_prefix(prefix)?;
     let (before, _) = suffix.split_once(delimiter)?;
