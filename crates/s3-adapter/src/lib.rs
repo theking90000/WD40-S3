@@ -26,6 +26,7 @@ use access_controller::AccessController;
 use blob_system::{BlobSystem, BlobWriterConfig, FrameBudget, SchedulerConfig};
 use object_registry::ObjectRegistry;
 use s3_credentials_registry::S3CredentialRegistry;
+use s3_multipart_registry::S3MultipartRegistry;
 
 /// Writer and scheduler settings independent of the listener and command line.
 #[derive(Clone, Debug)]
@@ -42,6 +43,7 @@ pub struct S3Adapter {
     pub access: AccessController,
     pub blobs: BlobSystem,
     pub objects: ObjectRegistry,
+    pub multipart: S3MultipartRegistry,
     pub budget: FrameBudget,
 }
 
@@ -53,6 +55,7 @@ impl S3Adapter {
         access: AccessController,
         blobs: BlobSystem,
         objects: ObjectRegistry,
+        multipart: S3MultipartRegistry,
         budget: FrameBudget,
     ) -> Self {
         Self {
@@ -61,6 +64,7 @@ impl S3Adapter {
             access,
             blobs,
             objects,
+            multipart,
             budget,
         }
     }

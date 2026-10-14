@@ -12,6 +12,7 @@ use object_registry::cli::ObjectRegistryConfig;
 use policy_registry::cli::PolicyRegistryConfig;
 use s3_adapter::{S3Adapter, cli::S3AdapterArgs};
 use s3_credentials_registry::cli::S3CredentialsRegistryConfig;
+use s3_multipart_registry::cli::S3MultipartRegistryConfig;
 use stream_registry::cli::StreamRegistryConfig;
 use tokio_tcp_pool::{Endpoint, Pool, PoolConfig, Route, rustls};
 
@@ -26,6 +27,8 @@ struct Args {
     policies: PolicyRegistryConfig,
     #[command(flatten)]
     objects: ObjectRegistryConfig,
+    #[command(flatten)]
+    multipart: S3MultipartRegistryConfig,
     #[command(flatten)]
     blobs: BlobRegistryConfig,
     #[command(flatten)]
@@ -87,6 +90,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         AccessController::new(args.policies.open().await?),
         blobs,
         args.objects.open().await?,
+        args.multipart.open().await?,
         budget,
     )
     .into_service();

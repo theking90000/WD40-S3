@@ -1932,6 +1932,7 @@ dependencies = [
  "policy-registry",
  "postcard",
  "s3-credentials-registry",
+ "s3-multipart-registry",
  "s3s",
  "serde",
  "stream-registry",
