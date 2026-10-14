@@ -103,6 +103,24 @@ async fn exercise(registry: &S3MultipartRegistry) -> TestResult {
         registry.get(&id).await? == Some(original.clone()),
         "transport changed upload",
     )?;
+    let page = registry.list("bucket", "directory/", None, Some(1)).await?;
+    check(
+        page.records
+            .first()
+            .is_some_and(|record| record.upload_id == id && record.upload == original)
+            && page.records.len() == 1
+            && page.next_cursor.is_none(),
+        "listing changed session or metadata",
+    )?;
+    for limit in [0, 1_001] {
+        check(
+            matches!(
+                registry.list("bucket", "", None, Some(limit)).await,
+                Err(Error::InvalidLimit)
+            ),
+            "listing limit error changed",
+        )?;
+    }
     check(
         matches!(registry.create(original.clone()).await, Err(Error::BlobAlreadyExists(value)) if value == u128::MAX),
         "typed duplicate lost",

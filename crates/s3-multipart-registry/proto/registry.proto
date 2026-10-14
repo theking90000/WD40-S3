@@ -4,6 +4,7 @@ package wd40.s3_multipart_registry.v1;
 service S3MultipartRegistry {
   rpc Create(CreateRequest) returns (CreateResponse);
   rpc Get(UploadRequest) returns (GetResponse);
+  rpc List(ListRequest) returns (ListResponse);
   rpc Remove(UploadRequest) returns (Empty);
 }
 
@@ -18,8 +19,22 @@ message CreateRequest { MultipartUpload upload = 1; }
 message CreateResponse { string upload_id = 1; }
 message UploadRequest { string upload_id = 1; }
 message GetResponse { MultipartUpload upload = 1; }
+message Cursor {
+  string bucket = 1;
+  string prefix = 2;
+  string key = 3;
+  optional string upload_id = 4;
+}
+message UploadRecord { string upload_id = 1; MultipartUpload upload = 2; }
+message ListRequest {
+  string bucket = 1;
+  string prefix = 2;
+  Cursor cursor = 3;
+  optional uint32 limit = 4;
+}
+message ListResponse { repeated UploadRecord records = 1; Cursor next_cursor = 2; }
 message RegistryError {
-  enum Kind { UNKNOWN = 0; BLOB_ALREADY_EXISTS = 1; }
+  enum Kind { UNKNOWN = 0; BLOB_ALREADY_EXISTS = 1; INVALID_BUCKET = 2; INVALID_PREFIX = 3; INVALID_CURSOR = 4; INVALID_LIMIT = 5; }
   Kind kind = 1;
   bytes blob_id = 2;
 }

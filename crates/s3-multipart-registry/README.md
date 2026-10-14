@@ -19,6 +19,22 @@ return `Error::BlobAlreadyExists(blob_id)`. `get(id)` returns `None` when absent
 `remove(id)` atomically removes both mappings, succeeds when absent and never
 removes the blob. The blob can be registered again after removal.
 
+`list(bucket, prefix, cursor, limit)` returns a `PageResult` with owned
+`UploadRecord` entries and an optional `next_cursor`. Entries are sorted by key,
+then upload ID, not creation time. The empty prefix selects all keys in the
+bucket. Limits range from 1 to 1,000, defaulting to 1,000.
+
+A `Cursor` carries the bucket, prefix and exclusive marker key. Its optional
+upload ID resumes after that key/ID pair; without an ID, it skips every upload
+for the marker key. A cursor may be used after its original session was removed,
+but changing its bucket or prefix is rejected. Pages are not snapshots and do
+not reserve sessions against creation or removal.
+
+Listing scans the existing session tree on each call and retains at most the
+requested limit plus one entry. It adds no index or stored fields and works
+with existing databases. Local, Remote and relay calls share the same contract;
+the List RPC uses the existing message limits and structured domain errors.
+
 Successful mutations await a durable flush using the other registries' named
 thread and oneshot pattern. A flush or transport failure does not imply
 rollback. Creating a blob and registering its session are separate operations;
@@ -69,4 +85,4 @@ retries, a mutex or local fallback.
 
 This crate stores sessions. S3 authorization, request bucket/key matching,
 blob creation, parts, completion and abort cleanup belong to the caller.
-There is no principal field, listing, expiration or lifecycle state machine.
+There is no principal field, expiration or lifecycle state machine.

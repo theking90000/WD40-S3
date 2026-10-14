@@ -18,7 +18,7 @@ pub use grpc::GrpcService;
 pub use local::LocalRegistry;
 #[cfg(feature = "grpc-client")]
 pub use remote::RemoteRegistry;
-pub use traits::{MultipartUpload, MultipartUploadId};
+pub use traits::{Cursor, MultipartUpload, MultipartUploadId, PageResult, UploadRecord};
 
 #[derive(Clone)]
 pub enum S3MultipartRegistry {
@@ -41,6 +41,24 @@ impl traits::S3MultipartRegistry for S3MultipartRegistry {
             Self::Local(registry) => traits::S3MultipartRegistry::get(registry, id).await,
             #[cfg(feature = "grpc-client")]
             Self::Remote(registry) => traits::S3MultipartRegistry::get(registry, id).await,
+        }
+    }
+
+    async fn list(
+        &self,
+        bucket: &str,
+        prefix: &str,
+        cursor: Option<&Cursor>,
+        limit: Option<usize>,
+    ) -> Result<PageResult, Error> {
+        match self {
+            Self::Local(registry) => {
+                traits::S3MultipartRegistry::list(registry, bucket, prefix, cursor, limit).await
+            }
+            #[cfg(feature = "grpc-client")]
+            Self::Remote(registry) => {
+                traits::S3MultipartRegistry::list(registry, bucket, prefix, cursor, limit).await
+            }
         }
     }
 

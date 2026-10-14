@@ -2,9 +2,7 @@
 use prost::Message;
 use tonic::{Code, Status};
 
-#[cfg(feature = "grpc-server")]
-use crate::MultipartUploadId;
-use crate::{BlobId, Error, MultipartUpload};
+use crate::{BlobId, Cursor, Error, MultipartUpload, MultipartUploadId};
 
 pub mod proto {
     tonic::include_proto!("wd40.s3_multipart_registry.v1");
@@ -37,6 +35,28 @@ pub(crate) fn encode_upload(value: MultipartUpload) -> proto::MultipartUpload {
     }
 }
 
+pub(crate) fn encode_cursor(value: Cursor) -> proto::Cursor {
+    proto::Cursor {
+        bucket: value.bucket,
+        prefix: value.prefix,
+        key: value.key,
+        upload_id: value.upload_id.map(|id| id.as_str().to_owned()),
+    }
+}
+
+pub(crate) fn decode_cursor(value: proto::Cursor) -> Result<Cursor, Error> {
+    Ok(Cursor {
+        bucket: value.bucket,
+        prefix: value.prefix,
+        key: value.key,
+        upload_id: value
+            .upload_id
+            .map(MultipartUploadId::new)
+            .transpose()
+            .map_err(|_| Error::InvalidCursor)?,
+    })
+}
+
 #[cfg(feature = "grpc-server")]
 pub(crate) fn into_status(error: Error) -> Status {
     match error {
@@ -51,6 +71,28 @@ pub(crate) fn into_status(error: Error) -> Status {
             .into(),
         ),
         Error::InvalidUploadId => Status::invalid_argument("invalid upload ID"),
+        error @ (Error::InvalidBucket
+        | Error::InvalidPrefix
+        | Error::InvalidCursor
+        | Error::InvalidLimit) => {
+            let kind = match &error {
+                Error::InvalidBucket => proto::registry_error::Kind::InvalidBucket,
+                Error::InvalidPrefix => proto::registry_error::Kind::InvalidPrefix,
+                Error::InvalidCursor => proto::registry_error::Kind::InvalidCursor,
+                Error::InvalidLimit => proto::registry_error::Kind::InvalidLimit,
+                _ => proto::registry_error::Kind::Unknown,
+            };
+            Status::with_details(
+                Code::InvalidArgument,
+                error.to_string(),
+                proto::RegistryError {
+                    kind: kind as i32,
+                    blob_id: Vec::new(),
+                }
+                .encode_to_vec()
+                .into(),
+            )
+        }
         Error::Rpc(status) => status,
         #[cfg(feature = "grpc-client")]
         Error::Transport(_) => Status::unavailable("upstream registry transport failed"),
@@ -60,12 +102,20 @@ pub(crate) fn into_status(error: Error) -> Status {
 
 #[cfg(feature = "grpc-client")]
 pub(crate) fn from_status(status: Status) -> Error {
-    if status.code() == Code::AlreadyExists
-        && let Ok(details) = proto::RegistryError::decode(status.details())
-        && details.kind == proto::registry_error::Kind::BlobAlreadyExists as i32
-        && let Ok(blob_id) = decode_blob_id(&details.blob_id)
-    {
-        return Error::BlobAlreadyExists(blob_id);
+    use proto::registry_error::Kind;
+    if let Ok(details) = proto::RegistryError::decode(status.details()) {
+        match (status.code(), Kind::try_from(details.kind).ok()) {
+            (Code::AlreadyExists, Some(Kind::BlobAlreadyExists)) => {
+                if let Ok(blob_id) = decode_blob_id(&details.blob_id) {
+                    return Error::BlobAlreadyExists(blob_id);
+                }
+            }
+            (Code::InvalidArgument, Some(Kind::InvalidBucket)) => return Error::InvalidBucket,
+            (Code::InvalidArgument, Some(Kind::InvalidPrefix)) => return Error::InvalidPrefix,
+            (Code::InvalidArgument, Some(Kind::InvalidCursor)) => return Error::InvalidCursor,
+            (Code::InvalidArgument, Some(Kind::InvalidLimit)) => return Error::InvalidLimit,
+            _ => {}
+        }
     }
     Error::Rpc(status)
 }
@@ -122,6 +172,40 @@ impl proto::s3_multipart_registry_server::S3MultipartRegistry for GrpcService {
         let upload = self.registry.get(&id).await.map_err(into_status)?;
         Ok(tonic::Response::new(proto::GetResponse {
             upload: upload.map(encode_upload),
+        }))
+    }
+
+    async fn list(
+        &self,
+        request: tonic::Request<proto::ListRequest>,
+    ) -> Result<tonic::Response<proto::ListResponse>, Status> {
+        use crate::traits::S3MultipartRegistry as _;
+        let r = request.into_inner();
+        let cursor = r
+            .cursor
+            .map(decode_cursor)
+            .transpose()
+            .map_err(into_status)?;
+        let limit = r
+            .limit
+            .map(usize::try_from)
+            .transpose()
+            .map_err(|_| into_status(Error::InvalidLimit))?;
+        let page = self
+            .registry
+            .list(&r.bucket, &r.prefix, cursor.as_ref(), limit)
+            .await
+            .map_err(into_status)?;
+        Ok(tonic::Response::new(proto::ListResponse {
+            records: page
+                .records
+                .into_iter()
+                .map(|record| proto::UploadRecord {
+                    upload_id: record.upload_id.as_str().to_owned(),
+                    upload: Some(encode_upload(record.upload)),
+                })
+                .collect(),
+            next_cursor: page.next_cursor.map(encode_cursor),
         }))
     }
 

@@ -16,6 +16,10 @@ pub enum Error {
     FlushWorker(std::io::Error),
     FlushCanceled(futures_channel::oneshot::Canceled),
     InvalidUploadId,
+    InvalidBucket,
+    InvalidPrefix,
+    InvalidCursor,
+    InvalidLimit,
     BlobAlreadyExists(BlobId),
     CorruptState(&'static str),
 }
@@ -37,6 +41,10 @@ impl fmt::Display for Error {
             Self::InvalidUploadId => {
                 f.write_str("upload ID must contain exactly 32 lowercase hexadecimal characters")
             }
+            Self::InvalidBucket => f.write_str("invalid listing bucket"),
+            Self::InvalidPrefix => f.write_str("invalid listing prefix"),
+            Self::InvalidCursor => f.write_str("invalid listing cursor"),
+            Self::InvalidLimit => f.write_str("listing limit must be between 1 and 1,000"),
             Self::BlobAlreadyExists(id) => write!(f, "blob {id} already has a multipart upload"),
             Self::CorruptState(reason) => write!(f, "corrupt multipart registry state: {reason}"),
         }
