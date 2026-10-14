@@ -1,0 +1,25 @@
+syntax = "proto3";
+package wd40.s3_multipart_registry.v1;
+
+service S3MultipartRegistry {
+  rpc Create(CreateRequest) returns (CreateResponse);
+  rpc Get(UploadRequest) returns (GetResponse);
+  rpc Remove(UploadRequest) returns (Empty);
+}
+
+message Empty {}
+message MultipartUpload {
+  bytes blob_id = 1;
+  string bucket = 2;
+  string key = 3;
+  map<string, string> metadata = 4;
+}
+message CreateRequest { MultipartUpload upload = 1; }
+message CreateResponse { string upload_id = 1; }
+message UploadRequest { string upload_id = 1; }
+message GetResponse { MultipartUpload upload = 1; }
+message RegistryError {
+  enum Kind { UNKNOWN = 0; BLOB_ALREADY_EXISTS = 1; }
+  Kind kind = 1;
+  bytes blob_id = 2;
+}

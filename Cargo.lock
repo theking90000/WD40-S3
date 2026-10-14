@@ -1960,6 +1960,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "s3-multipart-registry"
+version = "0.1.0"
+dependencies = [
+ "blob-registry",
+ "clap",
+ "futures-channel",
+ "futures-executor",
+ "getrandom 0.4.3",
+ "postcard",
+ "prost",
+ "serde",
+ "sled",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+]
+
+[[package]]
 name = "s3s"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
