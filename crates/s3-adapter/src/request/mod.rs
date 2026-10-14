@@ -1,4 +1,5 @@
 pub(crate) mod create_multipart_upload;
+pub(crate) mod delete_object;
 pub(crate) mod get_object;
 pub(crate) mod head_object;
 pub(crate) mod list_objects;
