@@ -3,7 +3,7 @@ use s3s::{
     dto::{
         CreateMultipartUploadInput, CreateMultipartUploadOutput, GetObjectInput, GetObjectOutput,
         HeadObjectInput, HeadObjectOutput, ListObjectsInput, ListObjectsOutput, ListObjectsV2Input,
-        ListObjectsV2Output, PutObjectInput, PutObjectOutput,
+        ListObjectsV2Output, PutObjectInput, PutObjectOutput, UploadPartInput, UploadPartOutput,
     },
 };
 
@@ -11,6 +11,13 @@ use crate::{S3Adapter, request};
 
 #[async_trait::async_trait]
 impl s3s::S3 for S3Adapter {
+    async fn upload_part(
+        &self,
+        req: S3Request<UploadPartInput>,
+    ) -> S3Result<S3Response<UploadPartOutput>> {
+        request::upload_part::upload_part(self, req).await
+    }
+
     async fn create_multipart_upload(
         &self,
         req: S3Request<CreateMultipartUploadInput>,

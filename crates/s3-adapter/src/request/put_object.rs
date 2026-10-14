@@ -73,7 +73,15 @@ async fn write_blob(
     req: &mut S3Request<PutObjectInput>,
     expected_length: Option<u64>,
 ) -> S3Result<(BlobId, u64, Checksum)> {
-    let (mut hasher, trailer_names) = prepare_checksums(req)?;
+    let (mut hasher, trailer_names) = prepare_checksums(
+        req,
+        req.input
+            .checksum_algorithm
+            .as_ref()
+            .map(|value| value.as_str()),
+        requested_checksums(&req.input),
+        req.input.content_md5.as_deref(),
+    )?;
     let mut body = req
         .input
         .body
@@ -148,7 +156,13 @@ async fn write_blob(
         let length = writer.length();
         check_length(length, expected_length)?;
 
-        let checksum = verify_checksums(req, hasher, &trailer_names)?;
+        let checksum = verify_checksums(
+            req,
+            hasher,
+            &trailer_names,
+            requested_checksums(&req.input),
+            req.input.content_md5.as_deref(),
+        )?;
 
         writer.close().await.map_err(S3Error::internal_error)?;
         drop(writer);
@@ -156,7 +170,13 @@ async fn write_blob(
         (blob_id, vec![1], length, checksum)
     } else {
         check_length(0, expected_length)?;
-        let checksum = verify_checksums(req, hasher, &trailer_names)?;
+        let checksum = verify_checksums(
+            req,
+            hasher,
+            &trailer_names,
+            requested_checksums(&req.input),
+            req.input.content_md5.as_deref(),
+        )?;
         let blob_id = adapter
             .blobs
             .create()
@@ -284,7 +304,7 @@ fn check_chunk(length: u64, chunk_length: usize, expected: Option<u64>) -> S3Res
     Ok(())
 }
 
-fn check_length(length: u64, expected: Option<u64>) -> S3Result<()> {
+pub(super) fn check_length(length: u64, expected: Option<u64>) -> S3Result<()> {
     if expected.is_some_and(|expected| length != expected) {
         return Err(s3s::s3_error!(
             IncompleteBody,
@@ -294,7 +314,7 @@ fn check_length(length: u64, expected: Option<u64>) -> S3Result<()> {
     Ok(())
 }
 
-fn body_error(error: StdError) -> S3Error {
+pub(super) fn body_error(error: StdError) -> S3Error {
     let error = match error.downcast::<S3Error>() {
         Ok(error) => return *error,
         Err(error) => error,
@@ -396,8 +416,11 @@ fn validate_digest(value: &str, length: usize) -> S3Result<()> {
     Ok(())
 }
 
-fn prepare_checksums(
-    req: &S3Request<PutObjectInput>,
+pub(super) fn prepare_checksums<T>(
+    req: &S3Request<T>,
+    algorithm: Option<&str>,
+    expected_values: [Option<&str>; 10],
+    content_md5: Option<&str>,
 ) -> S3Result<(ChecksumHasher, Vec<&'static str>)> {
     let mut trailer_names = Vec::new();
 
@@ -428,17 +451,10 @@ fn prepare_checksums(
         ));
     }
 
-    let input = &req.input;
-    let algorithm = input
-        .checksum_algorithm
-        .as_ref()
-        .map(|value| value.as_str());
     let mut known_algorithm = algorithm.is_none();
     let mut hasher = ChecksumHasher::default();
 
-    for ((name, header, length), expected) in
-        CHECKSUM_FIELDS.into_iter().zip(requested_checksums(input))
-    {
+    for ((name, header, length), expected) in CHECKSUM_FIELDS.into_iter().zip(expected_values) {
         let declared = trailer_names.contains(&header);
 
         if algorithm == Some(name) {
@@ -468,7 +484,7 @@ fn prepare_checksums(
         ));
     }
 
-    if let Some(value) = input.content_md5.as_deref() {
+    if let Some(value) = content_md5 {
         validate_digest(value, 16)?;
         if hasher.md5.is_none() {
             hasher.md5 = Some(Default::default());
@@ -485,10 +501,12 @@ fn verify_digest(expected: &str, actual: Option<&str>) -> S3Result<()> {
     Ok(())
 }
 
-fn verify_checksums(
-    req: &S3Request<PutObjectInput>,
+pub(super) fn verify_checksums<T>(
+    req: &S3Request<T>,
     hasher: ChecksumHasher,
     trailer_names: &[&str],
+    expected_values: [Option<&str>; 10],
+    content_md5: Option<&str>,
 ) -> S3Result<Checksum> {
     let mut actual = hasher.finalize();
     let trailers = req
@@ -521,8 +539,7 @@ fn verify_checksums(
         }
     }
 
-    let input = &req.input;
-    let expected_values = requested_checksums(input);
+    let explicit_md5 = expected_values.into_iter().nth(3).flatten().is_some();
     let actual_values = calculated_checksums(&actual);
 
     for ((_, header, length), (expected, calculated)) in CHECKSUM_FIELDS
@@ -554,9 +571,9 @@ fn verify_checksums(
         verify_digest(value, calculated)?;
     }
 
-    if let Some(expected) = input.content_md5.as_deref() {
+    if let Some(expected) = content_md5 {
         verify_digest(expected, actual.checksum_md5.as_deref())?;
-        if input.checksum_md5.is_none() && !trailer_names.contains(&"x-amz-checksum-md5") {
+        if !explicit_md5 && !trailer_names.contains(&"x-amz-checksum-md5") {
             actual.checksum_md5 = None;
         }
     }

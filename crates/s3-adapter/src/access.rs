@@ -6,7 +6,7 @@ use s3s::{
     auth::Credentials,
     dto::{
         CreateMultipartUploadInput, GetObjectInput, HeadObjectInput, ListObjectsInput,
-        ListObjectsV2Input, PutObjectInput,
+        ListObjectsV2Input, PutObjectInput, UploadPartInput,
     },
 };
 
@@ -54,6 +54,10 @@ impl S3Access {
 
 #[async_trait::async_trait]
 impl s3s::access::S3Access for S3Access {
+    async fn upload_part(&self, req: &mut S3Request<UploadPartInput>) -> S3Result<()> {
+        request::upload_part::upload_part_access(self, req).await
+    }
+
     async fn create_multipart_upload(
         &self,
         req: &mut S3Request<CreateMultipartUploadInput>,
