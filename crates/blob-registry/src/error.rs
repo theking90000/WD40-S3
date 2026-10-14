@@ -28,6 +28,7 @@ pub enum Error {
         length: u64,
     },
     LengthOverflow,
+    CorruptState(&'static str),
 }
 
 impl fmt::Display for Error {
@@ -57,6 +58,7 @@ impl fmt::Display for Error {
                 )
             }
             Self::LengthOverflow => write!(f, "blob logical length exceeds u64"),
+            Self::CorruptState(reason) => write!(f, "corrupt blob registry state: {reason}"),
         }
     }
 }

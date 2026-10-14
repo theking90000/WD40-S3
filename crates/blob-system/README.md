@@ -57,6 +57,11 @@ when closing succeeds while the blob is open. Unreferenced
 streams remain registered. A storage error can also occur after a commit; a
 failed close is terminal and does not imply rollback.
 
+`get_parts(blob_id)` returns all registered parts as a `BTreeMap<PartId, BlobPart>`.
+Each value contains the stream ID and plaintext length. It accepts open and
+finalized blobs and includes unselected parts. It reads no stream content,
+reserves nothing, and provides no atomic snapshot across concurrent writes.
+
 Close every selected part writer before calling `finalize`. Its explicit part
 ordering defines the blob; repetitions and empty selections are allowed. The
 operation returns the total length and freezes the blob.

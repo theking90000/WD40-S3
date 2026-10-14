@@ -40,6 +40,13 @@ nothing: finalization may follow the check, so `save_part` repeats the same chec
 in its insertion or replacement transaction. Concurrent saves of the same part
 retain the last committed stream reference and length.
 
+`get_parts(blob_id)` returns a `BTreeMap<PartId, BlobPart>` containing all stored
+part references and lengths, sorted by part ID. It accepts open and finalized
+blobs, including parts excluded from the manifest. An existing blob without
+parts returns an empty map; a missing blob returns `BlobNotFound`. It reads no
+stream content, reserves nothing, and provides no atomic snapshot across
+concurrent writes.
+
 Finalization checks every selected part and rejects total lengths exceeding
 `u64`. Missing parts and length overflow leave an open blob unchanged. Sled
 transactions coordinate `save_part` and `finalize` across registry clones. After
@@ -101,7 +108,7 @@ Endpoints must address the same logical namespace and relay chains must not cycl
 Successful writes retain the durable-flush guarantee; an error or cancellation
 does not imply rollback.
 
-Create, CanSave, SavePart and Finalize are unary RPCs. Read streams owned
+Create, CanSave, SavePart, GetParts and Finalize are unary RPCs. Read streams owned
 `StreamSlice` plans while preserving ranges, order, repetitions and terminal
 errors. An identical Finalize retains its existing idempotency. No stream content
 is transferred or existence-checked.

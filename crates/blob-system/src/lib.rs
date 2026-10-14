@@ -17,12 +17,12 @@ mod error;
 mod read_blob;
 mod write_part;
 
-use std::ops::Range;
+use std::{collections::BTreeMap, ops::Range};
 
 use blob_registry::traits::BlobRegistry as _;
 
 pub use async_read::AsyncReadAdapter;
-pub use blob_registry::{BlobId, BlobRegistry, PartId, StreamId};
+pub use blob_registry::{BlobId, BlobPart, BlobRegistry, PartId, StreamId};
 pub use error::Error;
 pub use read_blob::ReadBlob;
 pub use stream_system::{
@@ -112,6 +112,13 @@ impl BlobSystem {
             carbon_config,
         )
         .await
+    }
+
+    /// Returns all stored part references and lengths for an open or finalized blob.
+    /// Includes unselected parts. This read is not an atomic snapshot across
+    /// concurrent writes and neither reserves parts nor reads stream content.
+    pub async fn get_parts(&self, blob_id: BlobId) -> Result<BTreeMap<PartId, BlobPart>, Error> {
+        Ok(self.blob_registry.get_parts(blob_id).await?)
     }
 
     /// Freezes the supplied ordering and returns the total plaintext length.

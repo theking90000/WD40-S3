@@ -1,4 +1,4 @@
-use std::{ops::Range, pin::Pin};
+use std::{collections::BTreeMap, ops::Range, pin::Pin};
 
 use futures_core::Stream;
 use futures_util::{StreamExt, stream};
@@ -142,6 +142,23 @@ impl BlobRegistry for LocalRegistry {
         })?;
         self.flush().await?;
         Ok(())
+    }
+
+    async fn get_parts(&self, blob_id: BlobId) -> Result<BTreeMap<PartId, BlobPart>, Error> {
+        if !self.blobs.contains_key(blob_id.to_be_bytes())? {
+            return Err(Error::BlobNotFound(blob_id));
+        }
+        let mut parts = BTreeMap::new();
+        for entry in self.parts.scan_prefix(blob_id.to_be_bytes()) {
+            let (key, data) = entry?;
+            let part_id = key
+                .as_ref()
+                .get(16..)
+                .and_then(|bytes| <[u8; 16]>::try_from(bytes).ok())
+                .ok_or(Error::CorruptState("invalid blob part key"))?;
+            parts.insert(PartId::from_be_bytes(part_id), postcard::from_bytes(&data)?);
+        }
+        Ok(parts)
     }
 
     async fn finalize(&self, blob_id: BlobId, parts: Vec<PartId>) -> Result<u64, Error> {

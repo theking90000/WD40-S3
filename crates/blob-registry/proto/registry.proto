@@ -4,6 +4,7 @@ service BlobRegistry {
   rpc Create(Empty) returns (CreateResponse);
   rpc CanSave(CanSaveRequest) returns (Empty);
   rpc SavePart(SavePartRequest) returns (Empty);
+  rpc GetParts(GetPartsRequest) returns (GetPartsResponse);
   rpc Finalize(FinalizeRequest) returns (FinalizeResponse);
   rpc Read(ReadRequest) returns (stream StreamSlice);
 }
@@ -11,6 +12,9 @@ message Empty {}
 message CreateResponse { bytes blob_id = 1; }
 message CanSaveRequest { bytes blob_id = 1; reserved 2; reserved "part_id"; }
 message SavePartRequest { bytes blob_id = 1; bytes stream_id = 2; uint64 length = 3; bytes part_id = 4; }
+message GetPartsRequest { bytes blob_id = 1; }
+message BlobPart { bytes part_id = 1; bytes stream_id = 2; uint64 length = 3; }
+message GetPartsResponse { repeated BlobPart parts = 1; }
 message FinalizeRequest { bytes blob_id = 1; repeated bytes part_ids = 2; }
 message FinalizeResponse { uint64 length = 1; }
 message ReadRequest { bytes blob_id = 1; uint64 start = 2; uint64 end = 3; }

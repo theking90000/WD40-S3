@@ -14,7 +14,7 @@ pub mod local;
 pub mod remote;
 pub mod traits;
 
-use std::ops::Range;
+use std::{collections::BTreeMap, ops::Range};
 
 pub use error::Error;
 #[cfg(feature = "grpc-server")]
@@ -64,6 +64,13 @@ impl traits::BlobRegistry for BlobRegistry {
             Self::Remote(registry) => {
                 traits::BlobRegistry::save_part(registry, blob_id, stream_id, length, part_id).await
             }
+        }
+    }
+    async fn get_parts(&self, blob_id: BlobId) -> Result<BTreeMap<PartId, BlobPart>, Error> {
+        match self {
+            Self::Local(registry) => traits::BlobRegistry::get_parts(registry, blob_id).await,
+            #[cfg(feature = "grpc-client")]
+            Self::Remote(registry) => traits::BlobRegistry::get_parts(registry, blob_id).await,
         }
     }
     async fn finalize(&self, blob_id: BlobId, parts: Vec<PartId>) -> Result<u64, Error> {

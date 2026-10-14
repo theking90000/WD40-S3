@@ -187,6 +187,28 @@ impl proto::blob_registry_server::BlobRegistry for GrpcService {
             .map_err(into_status)?;
         Ok(tonic::Response::new(proto::Empty {}))
     }
+    async fn get_parts(
+        &self,
+        request: tonic::Request<proto::GetPartsRequest>,
+    ) -> Result<tonic::Response<proto::GetPartsResponse>, Status> {
+        use crate::traits::BlobRegistry as _;
+        let r = request.into_inner();
+        let parts = self
+            .registry
+            .get_parts(decode_id(&r.blob_id)?)
+            .await
+            .map_err(into_status)?;
+        Ok(tonic::Response::new(proto::GetPartsResponse {
+            parts: parts
+                .into_iter()
+                .map(|(part_id, part)| proto::BlobPart {
+                    part_id: part_id.to_be_bytes().to_vec(),
+                    stream_id: part.stream_id.to_be_bytes().to_vec(),
+                    length: part.length,
+                })
+                .collect(),
+        }))
+    }
     async fn finalize(
         &self,
         request: tonic::Request<proto::FinalizeRequest>,

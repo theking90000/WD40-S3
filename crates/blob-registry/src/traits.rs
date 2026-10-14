@@ -1,4 +1,4 @@
-use std::{future::Future, ops::Range};
+use std::{collections::BTreeMap, future::Future, ops::Range};
 
 use futures_core::Stream;
 use serde::{Deserialize, Serialize};
@@ -56,6 +56,16 @@ pub trait BlobRegistry {
         length: u64,
         part_id: PartId,
     ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Returns all stored parts by ID, for an open or finalized blob.
+    /// Includes parts excluded from the finalized manifest. A missing blob is
+    /// an error; an existing blob without parts returns an empty map.
+    /// This read neither reserves parts nor provides an atomic snapshot across
+    /// concurrent writes. No stream content is read or existence-checked.
+    fn get_parts(
+        &self,
+        blob_id: BlobId,
+    ) -> impl Future<Output = Result<BTreeMap<PartId, BlobPart>, Error>> + Send;
 
     /// Atomically checks all references, sums their lengths and closes the blob.
     /// The supplied order and repetitions are retained. Unselected parts are

@@ -1,9 +1,10 @@
 //! Connected gRPC client. Failed operations are not replayed.
 use crate::{
-    BlobId, Error, PartId, StreamId, StreamSlice,
+    BlobId, BlobPart, Error, PartId, StreamId, StreamSlice,
     grpc::{self, proto},
     traits::BlobRegistry,
 };
+use std::collections::BTreeMap;
 use tonic::{Status, transport::Endpoint};
 /// A connected registry client. Clones share its HTTP/2 channel.
 #[derive(Clone)]
@@ -79,6 +80,37 @@ impl BlobRegistry for RemoteRegistry {
             .await
             .map_err(grpc::from_status)?;
         Ok(())
+    }
+    async fn get_parts(&self, blob_id: BlobId) -> Result<BTreeMap<PartId, BlobPart>, Error> {
+        let response = self
+            .client
+            .clone()
+            .get_parts(proto::GetPartsRequest {
+                blob_id: blob_id.to_be_bytes().to_vec(),
+            })
+            .await
+            .map_err(grpc::from_status)?
+            .into_inner();
+        let mut parts = BTreeMap::new();
+        for part in response.parts {
+            let part_id = grpc::decode_id(&part.part_id)
+                .map_err(|error| Error::Rpc(Status::data_loss(error.message())))?;
+            let stream_id = grpc::decode_id(&part.stream_id)
+                .map_err(|error| Error::Rpc(Status::data_loss(error.message())))?;
+            if parts
+                .insert(
+                    part_id,
+                    BlobPart {
+                        stream_id,
+                        length: part.length,
+                    },
+                )
+                .is_some()
+            {
+                return Err(Error::Rpc(Status::data_loss("duplicate blob part ID")));
+            }
+        }
+        Ok(parts)
     }
     async fn finalize(&self, blob_id: BlobId, parts: Vec<PartId>) -> Result<u64, Error> {
         Ok(self
