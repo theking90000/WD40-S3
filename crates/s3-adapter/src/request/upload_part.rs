@@ -1,7 +1,4 @@
-use std::fmt::Write as _;
-
 use access_controller::Action;
-use base64::{Engine as _, engine::general_purpose::STANDARD};
 use blob_system::{BytesFrameAllocator, PartId};
 use bytes::Bytes;
 use futures_util::{StreamExt, io::AsyncWriteExt};
@@ -56,11 +53,6 @@ pub(crate) async fn upload_part(
         requested_checksums(&req.input),
         req.input.content_md5.as_deref(),
     )?;
-    let return_md5 =
-        req.input.checksum_md5.is_some() || trailer_names.contains(&"x-amz-checksum-md5");
-    if hasher.md5.is_none() {
-        hasher.md5 = Some(Default::default());
-    }
     let mut body = req
         .input
         .body
@@ -109,27 +101,17 @@ pub(crate) async fn upload_part(
     // Consume EOF and verify signatures, length and checksums before replacing
     // the registered part. A failed body leaves the previous reference intact.
     check_length(writer.length(), expected_length)?;
-    let mut checksum = verify_checksums(
+    let checksum = verify_checksums(
         &req,
         hasher,
         &trailer_names,
         requested_checksums(&req.input),
         req.input.content_md5.as_deref(),
     )?;
-    let md5 = checksum
-        .checksum_md5
-        .as_deref()
-        .or(req.input.content_md5.as_deref())
-        .ok_or_else(|| s3s::s3_error!(InternalError, "missing part MD5"))?;
-    let e_tag = etag_from_md5(md5)?;
-    if !return_md5 {
-        checksum.checksum_md5 = None;
-    }
-
-    writer.close().await.map_err(S3Error::internal_error)?;
+    let stream_id = writer.close().await.map_err(S3Error::internal_error)?;
 
     Ok(S3Response::new(UploadPartOutput {
-        e_tag: Some(e_tag),
+        e_tag: Some(ETag::Strong(stream_id.to_string())),
         checksum_crc32: checksum.checksum_crc32,
         checksum_crc32c: checksum.checksum_crc32c,
         checksum_crc64nvme: checksum.checksum_crc64nvme,
@@ -211,24 +193,12 @@ fn requested_checksums(input: &UploadPartInput) -> [Option<&str>; 10] {
     ]
 }
 
-fn etag_from_md5(value: &str) -> S3Result<ETag> {
-    let digest = STANDARD.decode(value).map_err(S3Error::internal_error)?;
-    if digest.len() != 16 {
-        return Err(s3s::s3_error!(InternalError, "invalid part MD5 length"));
-    }
-    let mut hex = String::with_capacity(32);
-    for byte in digest {
-        write!(&mut hex, "{byte:02x}").map_err(S3Error::internal_error)?;
-    }
-    Ok(ETag::Strong(hex))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn part_bounds_and_empty_etag() -> S3Result<()> {
+    fn part_bounds_and_lengths() -> S3Result<()> {
         let mut input = UploadPartInput {
             bucket: "bucket".to_owned(),
             key: "key".to_owned(),
@@ -253,12 +223,6 @@ mod tests {
                 InternalError,
                 "invalid part length accepted"
             ));
-        }
-        if !matches!(
-            etag_from_md5("1B2M2Y8AsgTpgAmY7PhCfg==")?,
-            ETag::Strong(value) if value == "d41d8cd98f00b204e9800998ecf8427e"
-        ) {
-            return Err(s3s::s3_error!(InternalError, "empty part ETag changed"));
         }
         Ok(())
     }
