@@ -49,9 +49,10 @@ Cancelled write/close futures retain their operations in the writer; dropping
 the writer cancels local work without rolling back registered data.
 
 `write_part` awaits `can_save` before creating the underlying writer, so a
-missing/finalized blob or existing part is rejected before backend allocation.
-The check reserves nothing. Concurrent finalization or another upload of the
-same part ID can still make closing fail after its stream was published. Such
+missing or finalized blob is rejected before backend allocation.
+The check reserves nothing. Concurrent finalization can still make closing fail
+after its stream was published. Uploading the same part ID replaces its reference
+when closing succeeds while the blob is open. Unreferenced
 streams remain registered. A storage error can also occur after a commit; a
 failed close is terminal and does not imply rollback.
 

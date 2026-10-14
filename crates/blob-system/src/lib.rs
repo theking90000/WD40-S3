@@ -84,10 +84,10 @@ impl BlobSystem {
         Ok(self.blob_registry.create().await?)
     }
 
-    /// Rejects a missing/finalized blob or an existing part before allocation.
+    /// Rejects a missing or finalized blob before allocation.
     /// This check reserves nothing; the writer checks again before registration.
-    pub async fn can_save(&self, blob_id: BlobId, part_id: PartId) -> Result<(), Error> {
-        self.blob_registry.can_save(blob_id, part_id).await?;
+    pub async fn can_save(&self, blob_id: BlobId) -> Result<(), Error> {
+        self.blob_registry.can_save(blob_id).await?;
         Ok(())
     }
 

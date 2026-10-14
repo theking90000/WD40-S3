@@ -42,15 +42,11 @@ impl traits::BlobRegistry for BlobRegistry {
             Self::Remote(registry) => traits::BlobRegistry::create(registry).await,
         }
     }
-    async fn can_save(&self, blob_id: BlobId, part_id: PartId) -> Result<(), Error> {
+    async fn can_save(&self, blob_id: BlobId) -> Result<(), Error> {
         match self {
-            Self::Local(registry) => {
-                traits::BlobRegistry::can_save(registry, blob_id, part_id).await
-            }
+            Self::Local(registry) => traits::BlobRegistry::can_save(registry, blob_id).await,
             #[cfg(feature = "grpc-client")]
-            Self::Remote(registry) => {
-                traits::BlobRegistry::can_save(registry, blob_id, part_id).await
-            }
+            Self::Remote(registry) => traits::BlobRegistry::can_save(registry, blob_id).await,
         }
     }
     async fn save_part(

@@ -51,12 +51,11 @@ impl BlobRegistry for RemoteRegistry {
             .into_inner();
         grpc::decode_id(&r.blob_id).map_err(|e| Error::Rpc(Status::data_loss(e.message())))
     }
-    async fn can_save(&self, blob_id: BlobId, part_id: PartId) -> Result<(), Error> {
+    async fn can_save(&self, blob_id: BlobId) -> Result<(), Error> {
         self.client
             .clone()
             .can_save(proto::CanSaveRequest {
                 blob_id: blob_id.to_be_bytes().to_vec(),
-                part_id: part_id.to_be_bytes().to_vec(),
             })
             .await
             .map_err(grpc::from_status)?;

@@ -76,7 +76,8 @@ fn local(db: &sled::Db) -> TestResult<BlobRegistry> {
 
 async fn exercise(registry: &BlobRegistry, _: &str) -> TestResult {
     let blob = registry.create().await?;
-    registry.can_save(blob, u128::MAX).await?;
+    registry.can_save(blob).await?;
+    registry.save_part(blob, 41, 1, u128::MAX).await?;
     registry.save_part(blob, u128::MAX, 3, u128::MAX).await?;
     registry.save_part(blob, 7, 5, 2).await?;
     let selected = vec![u128::MAX, 2, u128::MAX];
@@ -132,7 +133,7 @@ async fn domain_errors_and_lazy_terminal_read_errors() -> TestResult {
     let registry = BlobRegistry::Remote(RemoteRegistry::connect(server.endpoint.clone()).await?);
     check(
         matches!(
-            registry.can_save(u128::MAX, 0).await,
+            registry.can_save(u128::MAX).await,
             Err(Error::BlobNotFound(u128::MAX))
         ),
         "missing blob variant changed",
@@ -148,14 +149,16 @@ async fn domain_errors_and_lazy_terminal_read_errors() -> TestResult {
     )?;
     registry.save_part(blob, 41, 3, 1).await?;
     registry.save_part(blob, 42, 5, 2).await?;
-    check(
-        matches!(registry.save_part(blob, 99, 9, 1).await, Err(Error::PartAlreadyExists { blob_id, part_id: 1 }) if blob_id == blob),
-        "duplicate part was accepted",
-    )?;
+    registry.save_part(blob, 99, 3, 1).await?;
+    registry.can_save(blob).await?;
     registry.finalize(blob, vec![1, 2]).await?;
     check(
-        matches!(registry.can_save(blob, 3).await, Err(Error::BlobFinalized(id)) if id == blob),
+        matches!(registry.can_save(blob).await, Err(Error::BlobFinalized(id)) if id == blob),
         "finalized blob accepted new parts",
+    )?;
+    check(
+        matches!(registry.save_part(blob, 100, 9, 1).await, Err(Error::BlobFinalized(id)) if id == blob),
+        "finalized blob accepted part replacement",
     )?;
     check(
         matches!(
@@ -176,7 +179,7 @@ async fn domain_errors_and_lazy_terminal_read_errors() -> TestResult {
     db.open_tree("blob-parts")?.remove(key)?;
     let mut slices = registry.read(blob, 0..8).await?;
     check(
-        matches!(slices.next().await, Some(Ok(s)) if s.stream_id == 41),
+        matches!(slices.next().await, Some(Ok(s)) if s.stream_id == 99),
         "lazy read failed eagerly",
     )?;
     check(
@@ -198,10 +201,7 @@ async fn invalid_ids_and_oversized_messages_are_rejected() -> TestResult {
         proto::blob_registry_client::BlobRegistryClient::connect(server.endpoint.clone()).await?;
     for id in [vec![], vec![0; 15], vec![0; 17]] {
         let error = raw
-            .can_save(proto::CanSaveRequest {
-                blob_id: id,
-                part_id: vec![0; 16],
-            })
+            .can_save(proto::CanSaveRequest { blob_id: id })
             .await
             .err()
             .ok_or("invalid ID accepted")?;

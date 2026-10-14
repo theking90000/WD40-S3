@@ -82,15 +82,6 @@ pub(crate) fn into_status(error: Error) -> Status {
                 ..Default::default()
             },
         ),
-        Error::PartAlreadyExists { blob_id, part_id } => (
-            Code::AlreadyExists,
-            proto::RegistryError {
-                kind: Kind::PartAlreadyExists as i32,
-                blob_id: blob_id.to_be_bytes().to_vec(),
-                part_id: part_id.to_be_bytes().to_vec(),
-                ..Default::default()
-            },
-        ),
         Error::InvalidRange { start, end, length } => (
             Code::OutOfRange,
             proto::RegistryError {
@@ -136,10 +127,6 @@ pub(crate) fn from_status(status: Status) -> Error {
                 blob_id: grpc_id(&d.blob_id)?,
                 part_id: grpc_id(&d.part_id)?,
             },
-            (Code::AlreadyExists, Kind::PartAlreadyExists) => Error::PartAlreadyExists {
-                blob_id: grpc_id(&d.blob_id)?,
-                part_id: grpc_id(&d.part_id)?,
-            },
             (Code::OutOfRange, Kind::InvalidRange) => Error::InvalidRange {
                 start: d.start,
                 end: d.end,
@@ -178,7 +165,7 @@ impl proto::blob_registry_server::BlobRegistry for GrpcService {
         use crate::traits::BlobRegistry as _;
         let r = request.into_inner();
         self.registry
-            .can_save(decode_id(&r.blob_id)?, decode_id(&r.part_id)?)
+            .can_save(decode_id(&r.blob_id)?)
             .await
             .map_err(into_status)?;
         Ok(tonic::Response::new(proto::Empty {}))
@@ -260,10 +247,6 @@ mod tests {
             Error::BlobNotFinalized(u128::MAX),
             Error::BlobFinalized(u128::MAX),
             Error::PartNotFound {
-                blob_id: u128::MAX,
-                part_id: u128::MAX,
-            },
-            Error::PartAlreadyExists {
                 blob_id: u128::MAX,
                 part_id: u128::MAX,
             },

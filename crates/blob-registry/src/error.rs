@@ -22,10 +22,6 @@ pub enum Error {
         blob_id: BlobId,
         part_id: PartId,
     },
-    PartAlreadyExists {
-        blob_id: BlobId,
-        part_id: PartId,
-    },
     InvalidRange {
         start: u64,
         end: u64,
@@ -53,9 +49,6 @@ impl fmt::Display for Error {
             Self::BlobFinalized(id) => write!(f, "blob {id} is finalized"),
             Self::PartNotFound { blob_id, part_id } => {
                 write!(f, "part {part_id} in blob {blob_id} was not found")
-            }
-            Self::PartAlreadyExists { blob_id, part_id } => {
-                write!(f, "part {part_id} in blob {blob_id} already exists")
             }
             Self::InvalidRange { start, end, length } => {
                 write!(

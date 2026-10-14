@@ -15,7 +15,7 @@ use futures_util::StreamExt;
 
 let registry = LocalRegistry::new(database)?;
 let blob_id = registry.create().await?;
-registry.can_save(blob_id, 1).await?; // Check before allocating/uploading a stream.
+registry.can_save(blob_id).await?; // Check before allocating/uploading a stream.
 registry.save_part(blob_id, first_stream_id, 10, 1).await?;
 registry.save_part(blob_id, second_stream_id, 20, 2).await?;
 let length = registry.finalize(blob_id, vec![1, 2]).await?; // 30
@@ -28,17 +28,17 @@ while let Some(slice) = slices.next().await {
 }
 ```
 
-`PartId` belongs to one blob. Saving an existing ID fails even when its stream and
-length match. Different parts may reference the same stream. Finalization uses
+`PartId` belongs to one blob. Saving an existing ID replaces its stream reference
+and length while the blob is open. Different parts may reference the same stream. Finalization uses
 exactly the supplied order, including repetitions, and excludes unselected parts.
 An empty list produces a zero-length blob. Zero-length streams are allowed.
 
-`can_save(blob_id, part_id)` returns `Ok(())` only when the blob exists, is open
-and the part ID is absent. It reports `BlobNotFound`, `BlobFinalized` or
-`PartAlreadyExists` otherwise. This read-only transaction lets the caller reject
-an upload before allocating backend files. It reserves nothing: another save or
-finalization may follow the check, so `save_part` repeats the same checks in its
-insertion transaction.
+`can_save(blob_id)` returns `Ok(())` only when the blob exists and is open.
+It reports `BlobNotFound` or `BlobFinalized` otherwise. This read-only transaction
+lets the caller reject an upload before allocating backend files. It reserves
+nothing: finalization may follow the check, so `save_part` repeats the same checks
+in its insertion or replacement transaction. Concurrent saves of the same part
+retain the last committed stream reference and length.
 
 Finalization checks every selected part and rejects total lengths exceeding
 `u64`. Missing parts and length overflow leave an open blob unchanged. Sled
@@ -53,8 +53,8 @@ is one thread per flush; thread creation and worker failures are returned.
 A storage/flush error or a
 cancelled future can occur after transaction commit; an error does not imply
 rollback. Retrying finalization with the same list also flushes the database.
-After an uncertain part save, a retry may report `PartAlreadyExists`. An uncertain
-create can leave an unused open blob.
+After an uncertain part save, a retry replaces the part if the blob is still open.
+An uncertain create can leave an unused open blob.
 
 `read(blob_id, start..end)` requires a finalized blob and an exclusive end with
 `start <= end <= length`. Empty ranges return an empty stream, including at EOF.

@@ -20,7 +20,7 @@ enum BlobState {
 
 /// A registry with separate sled trees for parts and blob states/manifests.
 /// Clones share the database. Successful mutations await its durable flush.
-/// Transactions coordinate part insertion and finalization without a mutex.
+/// Transactions coordinate part replacement and finalization without a mutex.
 #[derive(Clone)]
 pub struct LocalRegistry {
     database: Db,
@@ -89,10 +89,8 @@ fn part_key(blob_id: BlobId, part_id: PartId) -> [u8; 32] {
 }
 
 fn check_can_save(
-    parts: &TransactionalTree,
     blobs: &TransactionalTree,
     blob_id: BlobId,
-    part_id: PartId,
 ) -> ConflictableTransactionResult<(), Error> {
     let state = blobs
         .get(blob_id.to_be_bytes())?
@@ -100,9 +98,6 @@ fn check_can_save(
     let state: BlobState = postcard::from_bytes(&state).map_err(Error::from)?;
     if let BlobState::Finalized(_) = state {
         return Err(Error::BlobFinalized(blob_id).into());
-    }
-    if parts.get(part_key(blob_id, part_id))?.is_some() {
-        return Err(Error::PartAlreadyExists { blob_id, part_id }.into());
     }
     Ok(())
 }
@@ -125,9 +120,9 @@ impl BlobRegistry for LocalRegistry {
         Ok(id)
     }
 
-    async fn can_save(&self, blob_id: BlobId, part_id: PartId) -> Result<(), Error> {
-        (&self.parts, &self.blobs)
-            .transaction(|(parts, blobs)| check_can_save(parts, blobs, blob_id, part_id))?;
+    async fn can_save(&self, blob_id: BlobId) -> Result<(), Error> {
+        self.blobs
+            .transaction(|blobs| check_can_save(blobs, blob_id))?;
         Ok(())
     }
 
@@ -141,7 +136,7 @@ impl BlobRegistry for LocalRegistry {
         let key = part_key(blob_id, part_id);
         let data = postcard::to_allocvec(&BlobPart { stream_id, length })?;
         (&self.parts, &self.blobs).transaction(|(parts, blobs)| {
-            check_can_save(parts, blobs, blob_id, part_id)?;
+            check_can_save(blobs, blob_id)?;
             parts.insert(key.as_slice(), data.as_slice())?;
             Ok(())
         })?;

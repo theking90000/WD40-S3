@@ -70,47 +70,38 @@ fn parallel_mutations_across_independent_databases_complete() -> TestResult {
 }
 
 #[test]
-fn can_save_checks_state_without_reserving_a_part() -> TestResult {
+fn can_save_checks_open_state_without_reserving() -> TestResult {
     block_on(async {
         let database = temporary_database()?;
         let registry = BlobRegistry::Local(LocalRegistry::new(database.clone())?);
         check(
             matches!(
-                registry.can_save(u128::MAX, 1).await,
+                registry.can_save(u128::MAX).await,
                 Err(Error::BlobNotFound(u128::MAX))
             ),
             "can_save accepted a missing blob",
         )?;
         let blob = registry.create().await?;
         let other = registry.create().await?;
-        let can_save = registry.can_save(blob, 1);
+        let can_save = registry.can_save(blob);
         require_send(&can_save);
         can_save.await?;
-        registry.can_save(blob, 1).await?;
+        registry.can_save(blob).await?;
         check(
             database.open_tree("blob-parts")?.is_empty(),
             "can_save reserved a part",
         )?;
         registry.save_part(blob, 41, 3, 1).await?;
+        registry.can_save(blob).await?;
+        registry.can_save(other).await?;
+        registry.finalize(blob, vec![1]).await?;
         check(
             matches!(
-                registry.can_save(blob, 1).await,
-                Err(Error::PartAlreadyExists { blob_id, part_id: 1 }) if blob_id == blob
+                registry.can_save(blob).await,
+                Err(Error::BlobFinalized(id)) if id == blob
             ),
-            "can_save accepted an existing part",
+            "can_save accepted a finalized blob",
         )?;
-        registry.can_save(other, 1).await?;
-        registry.can_save(blob, 2).await?;
-        registry.finalize(blob, vec![1]).await?;
-        for part_id in [1, 2] {
-            check(
-                matches!(
-                    registry.can_save(blob, part_id).await,
-                    Err(Error::BlobFinalized(id)) if id == blob
-                ),
-                "can_save accepted a finalized blob",
-            )?;
-        }
         check(
             matches!(
                 registry.save_part(blob, 42, 5, 2).await,
@@ -226,26 +217,22 @@ fn part_ids_are_scoped_and_finalized_blobs_are_immutable() -> TestResult {
         let other = registry.create().await?;
         registry.save_part(blob, 41, 3, 1).await?;
         registry.save_part(other, 42, 5, 1).await?;
-        check(
-            matches!(registry.save_part(blob, 43, 8, 1).await,
-                Err(Error::PartAlreadyExists { blob_id, part_id: 1 }) if blob_id == blob),
-            "save_part replaced an existing part",
-        )?;
+        registry.save_part(blob, 43, 8, 1).await?;
         check(
             matches!(registry.read(blob, 0..0).await,
                 Err(Error::BlobNotFinalized(id)) if id == blob),
             "read accepted an open blob",
         )?;
         check(
-            registry.finalize(blob, vec![1]).await? == 3,
-            "duplicate save changed length",
+            registry.finalize(blob, vec![1]).await? == 8,
+            "replacement did not update length",
         )?;
         check(
             registry.finalize(other, vec![1]).await? == 5,
             "part IDs crossed blobs",
         )?;
         check(
-            registry.finalize(blob, vec![1]).await? == 3,
+            registry.finalize(blob, vec![1]).await? == 8,
             "identical finalize retry failed",
         )?;
         check(
@@ -259,15 +246,20 @@ fn part_ids_are_scoped_and_finalized_blobs_are_immutable() -> TestResult {
             "save_part accepted a finalized blob",
         )?;
         check(
+            matches!(registry.save_part(blob, 45, 1, 1).await,
+                Err(Error::BlobFinalized(id)) if id == blob),
+            "save_part replaced a finalized part",
+        )?;
+        check(
             registry
-                .read(blob, 0..3)
+                .read(blob, 0..8)
                 .await?
                 .try_collect::<Vec<_>>()
                 .await?
                 == vec![StreamSlice {
-                    stream_id: 41,
+                    stream_id: 43,
                     skip: 0,
-                    length: 3,
+                    length: 8,
                 }],
             "rejected writes changed a finalized read",
         )
@@ -457,7 +449,8 @@ fn corrupted_parts_abort_finalization_and_terminate_lazy_reads() -> TestResult {
 
 #[test]
 fn concurrent_saves_and_finalization_preserve_blob_state() -> TestResult {
-    let registry = LocalRegistry::new(temporary_database()?)?;
+    let database = temporary_database()?;
+    let registry = LocalRegistry::new(database.clone())?;
     for _ in 0..16 {
         let blob = block_on(registry.create())?;
         let barrier = Arc::new(Barrier::new(2));
@@ -475,14 +468,23 @@ fn concurrent_saves_and_finalization_preserve_blob_state() -> TestResult {
             });
             (a.join(), b.join())
         });
-        let first = first.map_err(|_| "save thread panicked")?;
-        let second = second.map_err(|_| "save thread panicked")?;
-        let length: u64 = match (first, second) {
-            (Ok(()), Err(Error::PartAlreadyExists { .. })) => 3,
-            (Err(Error::PartAlreadyExists { .. }), Ok(())) => 5,
-            _ => return Err("concurrent saves did not choose exactly one winner".into()),
-        };
-        let expected_length = length.checked_add(7).ok_or("test length overflow")?;
+        first.map_err(|_| "save thread panicked")??;
+        second.map_err(|_| "save thread panicked")??;
+        let key: Vec<_> = blob
+            .to_be_bytes()
+            .into_iter()
+            .chain(1_u128.to_be_bytes())
+            .collect();
+        let data = database
+            .open_tree("blob-parts")?
+            .get(key)?
+            .ok_or("missing saved part")?;
+        let part: blob_registry::BlobPart = postcard::from_bytes(&data)?;
+        check(
+            matches!((part.stream_id, part.length), (41, 3) | (42, 5)),
+            "concurrent saves mixed stream reference and length",
+        )?;
+        let expected_length = part.length.checked_add(7).ok_or("test length overflow")?;
         let barrier = Arc::new(Barrier::new(2));
         let (saved, finalized) = std::thread::scope(|scope| {
             let left = registry.clone();

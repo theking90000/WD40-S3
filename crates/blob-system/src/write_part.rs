@@ -51,7 +51,7 @@ impl<'a> WriteBlobPart<'a> {
         budget: &'a FrameBudget,
         carbon_config: &'a mut SchedulerConfig,
     ) -> Result<Self, Error> {
-        system.can_save(blob_id, part_id).await?;
+        system.can_save(blob_id).await?;
         let stream = WriteStream::new(
             system.file_registry.clone(),
             system.stream_registry.clone(),
