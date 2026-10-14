@@ -155,6 +155,28 @@ fn bump_revision(state: &TransactionalTree) -> ConflictableTransactionResult<Rev
 }
 
 impl PolicyRegistry for LocalRegistry {
+    async fn create_policy(&self, policy: Policy) -> Result<PolicyId, Error> {
+        let data = encode(&policy)?;
+        loop {
+            let id = PolicyId::from(self.database.generate_id()?);
+            let key = id.to_be_bytes();
+            let created = (&self.policies, &self.state).transaction(
+                |(policies, state)| -> ConflictableTransactionResult<bool, Error> {
+                    if policies.get(key)?.is_some() {
+                        return Ok(false);
+                    }
+                    policies.insert(key.as_slice(), data.as_slice())?;
+                    bump_revision(state)?;
+                    Ok(true)
+                },
+            )?;
+            if created {
+                self.flush().await?;
+                return Ok(id);
+            }
+        }
+    }
+
     async fn get_policy(&self, id: PolicyId) -> Result<Option<Policy>, Error> {
         self.policies
             .get(id.to_be_bytes())?

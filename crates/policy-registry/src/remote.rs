@@ -40,6 +40,20 @@ impl RemoteRegistry {
 }
 
 impl PolicyRegistry for RemoteRegistry {
+    async fn create_policy(&self, policy: Policy) -> Result<PolicyId, Error> {
+        let response = self
+            .client
+            .clone()
+            .create_policy(proto::CreatePolicyRequest {
+                policy: Some(grpc::encode_policy(policy)),
+            })
+            .await
+            .map_err(grpc::from_status)?
+            .into_inner();
+        grpc::decode_id(&response.id)
+            .map_err(|error| Error::Rpc(Status::data_loss(error.message())))
+    }
+
     async fn get_policy(&self, id: PolicyId) -> Result<Option<Policy>, Error> {
         let response = self
             .client

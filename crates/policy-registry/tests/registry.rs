@@ -47,6 +47,98 @@ fn policy(resource: &str) -> Policy {
 fn require_send<T: Send>(_: &T) {}
 
 #[test]
+fn creation_allocates_distinct_ids_without_replacing_explicit_policies() -> TestResult {
+    block_on(async {
+        let db = database()?;
+        let occupied = u128::from(db.generate_id()?.checked_add(1).ok_or("ID overflow")?);
+        let registry = PolicyRegistry::Local(LocalRegistry::new(db)?);
+        let original = policy("explicit/");
+        let value = policy("created/");
+        registry.put_policy(occupied, original.clone()).await?;
+        registry
+            .attach(PrincipalSelector::Everyone, occupied)
+            .await?;
+        let create = registry.create_policy(value.clone());
+        require_send(&create);
+        let first = create.await?;
+        check(first > occupied, "creation did not skip occupied ID")?;
+        check(
+            registry.get_policy(first).await? == Some(value.clone()),
+            "created policy content changed",
+        )?;
+        check(
+            registry.get_policy(occupied).await? == Some(original.clone()),
+            "creation replaced explicit policy",
+        )?;
+        check(
+            registry
+                .load_policies(&[PrincipalSelector::Everyone])
+                .await?
+                == PolicySnapshot {
+                    revision: Revision(3),
+                    policies: vec![(occupied, original)],
+                },
+            "creation changed existing bindings or incremented revision more than once",
+        )?;
+        let second = registry.create_policy(value.clone()).await?;
+        check(first != second, "identical creations reused an ID")?;
+        check(
+            registry.get_policy(second).await? == Some(value)
+                && registry.load_policies(&[]).await?.revision == Revision(4),
+            "second creation lost content or revision",
+        )
+    })
+}
+
+#[test]
+fn concurrent_creations_across_clones_and_independent_handles_allocate_distinct_ids() -> TestResult
+{
+    let db = database()?;
+    let registry = LocalRegistry::new(db.clone())?;
+    let barrier = Arc::new(Barrier::new(9));
+    let (sender, receiver) = mpsc::channel();
+    let mut workers = Vec::new();
+    for number in 0..8 {
+        let handle = if number % 2 == 0 {
+            registry.clone()
+        } else {
+            LocalRegistry::new(db.clone())?
+        };
+        let barrier = barrier.clone();
+        let sender = sender.clone();
+        workers.push(std::thread::Builder::new().spawn(move || {
+            barrier.wait();
+            let result: TestResult<u128> =
+                block_on(async { Ok(handle.create_policy(policy("concurrent/")).await?) });
+            let _ = sender.send(result);
+        })?);
+    }
+    barrier.wait();
+    let mut ids = std::collections::BTreeSet::new();
+    for _ in 0..8 {
+        check(
+            ids.insert(receiver.recv_timeout(Duration::from_secs(20))??),
+            "concurrent creations returned duplicate IDs",
+        )?;
+    }
+    for worker in workers {
+        worker.join().map_err(|_| "creation worker panicked")?;
+    }
+    block_on(async {
+        for id in ids {
+            check(
+                registry.get_policy(id).await? == Some(policy("concurrent/")),
+                "concurrent creation lost policy",
+            )?;
+        }
+        check(
+            registry.load_policies(&[]).await?.revision == Revision(8),
+            "concurrent creations lost revision updates",
+        )
+    })
+}
+
+#[test]
 fn action_masks_preserve_legacy_list_serialization() -> TestResult {
     let legacy = vec![Action::Write, Action::Read, Action::Write];
     let bytes = postcard::to_allocvec(&legacy)?;
@@ -297,6 +389,17 @@ fn revision_overflow_rolls_back_each_mutation() -> TestResult {
         let before = registry.load_policies(&[selector]).await?;
         check(
             matches!(
+                registry.create_policy(value.clone()).await,
+                Err(Error::RevisionOverflow)
+            ),
+            "allocated creation accepted revision overflow",
+        )?;
+        check(
+            db.open_tree("policy-records")?.len() == 2,
+            "failed creation inserted a policy",
+        )?;
+        check(
+            matches!(
                 registry.put_policy(1, policy("changed/")).await,
                 Err(Error::RevisionOverflow)
             ),
@@ -430,23 +533,32 @@ fn persistent_reopen_preserves_revision_policy_and_bindings() -> TestResult {
     let value = policy("photos/");
     let selector = PrincipalSelector::Specific(u128::MAX);
     let result: TestResult = block_on(async {
-        {
+        let id = {
             let registry = LocalRegistry::new(sled::open(&path)?)?;
-            registry.put_policy(u128::MAX, value.clone()).await?;
-            registry.attach(selector, u128::MAX).await?;
-        }
+            let id = registry.create_policy(value.clone()).await?;
+            registry.attach(selector, id).await?;
+            id
+        };
         let registry = LocalRegistry::new(sled::open(&path)?)?;
         check(
             registry.load_policies(&[selector]).await?
                 == PolicySnapshot {
                     revision: Revision(2),
-                    policies: vec![(u128::MAX, value.clone())],
+                    policies: vec![(id, value.clone())],
                 },
             "reopen lost persisted state",
         )?;
         check(
-            registry.detach(selector, u128::MAX).await? == Revision(3),
+            registry.detach(selector, id).await? == Revision(3),
             "reopen reset revision",
+        )?;
+        let next = registry.create_policy(value.clone()).await?;
+        check(next != id, "reopen reused an allocated ID")?;
+        check(
+            registry.get_policy(id).await? == Some(value.clone())
+                && registry.get_policy(next).await? == Some(value)
+                && registry.load_policies(&[]).await?.revision == Revision(4),
+            "creation after reopen lost policy or revision",
         )
     });
     std::fs::remove_dir_all(path)?;

@@ -2,6 +2,7 @@ syntax = "proto3";
 package wd40.policy_registry.v1;
 
 service PolicyRegistry {
+  rpc CreatePolicy(CreatePolicyRequest) returns (CreatePolicyResponse);
   rpc GetPolicy(PolicyRequest) returns (GetPolicyResponse);
   rpc PutPolicy(PutPolicyRequest) returns (RevisionResponse);
   rpc DeletePolicy(PolicyRequest) returns (RevisionResponse);
@@ -32,6 +33,8 @@ message Statement {
   ResourcePattern resource = 3;
 }
 message Policy { repeated Statement statements = 1; }
+message CreatePolicyRequest { Policy policy = 1; }
+message CreatePolicyResponse { bytes id = 1; }
 message PolicyRequest { bytes id = 1; }
 message GetPolicyResponse { Policy policy = 1; }
 message PutPolicyRequest { bytes id = 1; Policy policy = 2; }

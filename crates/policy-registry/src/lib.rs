@@ -31,6 +31,14 @@ pub enum PolicyRegistry {
 }
 
 impl traits::PolicyRegistry for PolicyRegistry {
+    async fn create_policy(&self, policy: Policy) -> Result<PolicyId, Error> {
+        match self {
+            Self::Local(registry) => traits::PolicyRegistry::create_policy(registry, policy).await,
+            #[cfg(feature = "grpc-client")]
+            Self::Remote(registry) => traits::PolicyRegistry::create_policy(registry, policy).await,
+        }
+    }
+
     async fn get_policy(&self, id: PolicyId) -> Result<Option<Policy>, Error> {
         match self {
             Self::Local(registry) => traits::PolicyRegistry::get_policy(registry, id).await,

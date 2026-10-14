@@ -157,6 +157,42 @@ async fn exercise(registry: &PolicyRegistry, id: u128) -> TestResult {
     Ok(())
 }
 
+async fn exercise_creation(registry: &PolicyRegistry) -> TestResult {
+    let before = registry.load_policies(&[]).await?.revision;
+    let value = policy("created/");
+    let empty = Policy { statements: vec![] };
+    let first = registry.create_policy(value.clone()).await?;
+    let second = registry.create_policy(empty.clone()).await?;
+    check(first != second, "remote creation reused an ID")?;
+    check(
+        registry.get_policy(first).await? == Some(value.clone())
+            && registry.get_policy(second).await? == Some(empty),
+        "remote creation changed policy content or ID",
+    )?;
+    let expected = Revision(before.0.checked_add(2).ok_or("revision overflow")?);
+    let snapshot = registry
+        .load_policies(&[PrincipalSelector::Authenticated])
+        .await?;
+    check(
+        snapshot.revision == expected && snapshot.policies.is_empty(),
+        "remote creation changed revision or added a binding",
+    )?;
+    registry
+        .attach(PrincipalSelector::Authenticated, first)
+        .await?;
+    check(
+        registry
+            .load_policies(&[PrincipalSelector::Authenticated])
+            .await?
+            .policies
+            == vec![(first, value)],
+        "allocated policy could not be attached",
+    )?;
+    registry.delete_policy(first).await?;
+    registry.delete_policy(second).await?;
+    Ok(())
+}
+
 #[tokio::test]
 async fn roundtrip_and_relay_preserve_all_methods() -> TestResult {
     let db = database()?;
@@ -164,9 +200,11 @@ async fn roundtrip_and_relay_preserve_all_methods() -> TestResult {
     let client = RemoteRegistry::connect(upstream.endpoint.clone()).await?;
     let direct = PolicyRegistry::Remote(client.clone());
     exercise(&direct, 0).await?;
+    exercise_creation(&direct).await?;
     let mut relay = TestServer::start(PolicyRegistry::Remote(client), Server::builder()).await?;
     let registry = PolicyRegistry::Remote(RemoteRegistry::connect(relay.endpoint.clone()).await?);
     exercise(&registry, u128::MAX).await?;
+    exercise_creation(&registry).await?;
     check(
         matches!(
             registry
@@ -215,6 +253,17 @@ async fn domain_errors_and_idempotent_revisions_are_preserved() -> TestResult {
     )?;
     db.open_tree("policy-state")?
         .insert(b"revision", postcard::to_allocvec(&Revision(u64::MAX))?)?;
+    check(
+        matches!(
+            registry.create_policy(value.clone()).await,
+            Err(Error::RevisionOverflow)
+        ),
+        "creation revision overflow details changed",
+    )?;
+    check(
+        db.open_tree("policy-records")?.len() == 1,
+        "failed remote creation inserted a policy",
+    )?;
     check(
         matches!(
             registry.put_policy(0, policy("changed/")).await,
@@ -323,6 +372,17 @@ async fn malformed_ids_fields_enums_and_oversized_messages_are_rejected() -> Tes
             }],
         }),
     ] {
+        let error = raw
+            .create_policy(proto::CreatePolicyRequest {
+                policy: invalid.clone(),
+            })
+            .await
+            .err()
+            .ok_or("invalid creation policy accepted")?;
+        check(
+            error.code() == Code::InvalidArgument,
+            "invalid creation policy status changed",
+        )?;
         let error = raw
             .put_policy(proto::PutPolicyRequest {
                 id: vec![0; 16],

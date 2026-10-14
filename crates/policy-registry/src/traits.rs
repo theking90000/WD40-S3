@@ -163,6 +163,10 @@ pub struct PolicySnapshot {
 }
 
 pub trait PolicyRegistry {
+    /// Allocates a fresh ID and creates an unbound policy, incrementing the revision once.
+    fn create_policy(&self, policy: Policy)
+    -> impl Future<Output = Result<PolicyId, Error>> + Send;
+
     fn get_policy(
         &self,
         id: PolicyId,

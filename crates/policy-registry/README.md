@@ -12,7 +12,6 @@ use policy_registry::{
 };
 
 let registry = LocalRegistry::new(database)?;
-let id = 42_u128;
 let policy = Policy {
     statements: vec![Statement {
         effect: Effect::Allow,
@@ -20,7 +19,7 @@ let policy = Policy {
         resource: ResourcePattern::Prefix("photos/".to_owned()),
     }],
 };
-let revision = registry.put_policy(id, policy).await?;
+let id = registry.create_policy(policy).await?;
 registry.attach(PrincipalSelector::Specific(alice), id).await?;
 let snapshot = registry.load_policies(&[
     PrincipalSelector::Everyone,
@@ -31,7 +30,8 @@ let snapshot = registry.load_policies(&[
 
 ## Model and operations
 
-`PolicyId` and `PrincipalSelector::Specific` use caller-supplied `u128` IDs.
+`PolicyId` is a `u128`. `create_policy` allocates an ID, while `put_policy` accepts
+a caller-supplied ID. `PrincipalSelector::Specific` uses caller-supplied `u128` IDs.
 `Action` has `Read`, `Write`, `Delete` and `List` variants. `Actions` is a `u8`
 bitmask with `EMPTY`, `READ`, `WRITE`, `DELETE`, `LIST` and `ALL` constants.
 Combine masks with `|` or `|=`, check a single action with `contains(Action)`,
@@ -48,6 +48,12 @@ Replacing a legacy policy whose stored action list is not canonical may advance
 the revision once, because replacement compares serialized records.
 The registry stores both Allow and Deny statements without interpreting them.
 Authorization, resource matching and action evaluation belong to the caller.
+
+`create_policy` stores a new policy without bindings and returns its allocated
+ID after the durable flush. Local allocation uses sled's database-wide ID
+generator, converted to `u128`, and skips IDs already occupied by explicit puts.
+Remote allocation happens on the server. Separate creations receive distinct
+IDs even when their policy contents are identical.
 
 `get_policy` returns `None` for an absent policy. `put_policy` creates or replaces
 the policy while preserving existing bindings. `attach` requires an existing
@@ -71,6 +77,8 @@ the same database.
 once, inside the mutation transaction. Identical puts, repeated attachments,
 missing detachments and deletion of missing policies retain the current
 revision. Revision overflow aborts the entire mutation with `RevisionOverflow`.
+Each creation increments the revision once. Allocated IDs can be consumed even
+when creation fails; IDs are not guaranteed to be contiguous.
 Revisions survive database reopening and apply to the whole registry, so an
 unrelated policy change also invalidates a previously loaded revision.
 The registry retains current policies only; a revision is not a historical
@@ -118,7 +126,7 @@ TLS. HTTPS clients verify certificates and hostnames using system trust roots.
 `--policy-registry-ca` or `WD40_POLICY_REGISTRY_CA` adds a PEM CA. HTTPS requires
 the TLS feature, and a custom CA requires an HTTPS endpoint.
 
-The `wd40.policy_registry.v1` protocol exposes all six trait methods as unary
+The `wd40.policy_registry.v1` protocol exposes all seven trait methods as unary
 RPCs. Policies and selectors use typed Protobuf messages. IDs use exactly
 16 big-endian bytes; revisions use native `uint64`. Missing fields, malformed
 IDs and unknown enum values are rejected. Messages have a 4 MiB encoding and
@@ -130,11 +138,13 @@ transport preserves the registry's snapshot and durable-flush contracts.
 ## Tests
 
 Local integration tests cover the policy lifecycle, idempotent revisions,
-explicit selector unions, binding cleanup, empty policies, serialization,
+allocated IDs and explicit-ID collisions, explicit selector unions, binding cleanup,
+empty policies, serialization,
 database reopening, revision-overflow rollback and corrupt indexes.
 Concurrent tests check that independent handles return matching policies and
 revisions, preserve parallel binding updates and flush sixteen databases
 without starving sled's I/O pool.
+Concurrent creation tests check distinct IDs across clones and independent handles.
 
 gRPC tests cover direct clients and relays, domain errors, malformed requests,
 message-size limits, shutdown, CLI selection and TLS trust/hostname checks.

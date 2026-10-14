@@ -191,6 +191,27 @@ impl GrpcService {
 #[cfg(feature = "grpc-server")]
 #[tonic::async_trait]
 impl proto::policy_registry_server::PolicyRegistry for GrpcService {
+    async fn create_policy(
+        &self,
+        request: tonic::Request<proto::CreatePolicyRequest>,
+    ) -> Result<tonic::Response<proto::CreatePolicyResponse>, Status> {
+        use crate::traits::PolicyRegistry as _;
+        let policy = decode_policy(
+            request
+                .into_inner()
+                .policy
+                .ok_or_else(|| Status::invalid_argument("missing policy"))?,
+        )?;
+        let id = self
+            .registry
+            .create_policy(policy)
+            .await
+            .map_err(into_status)?;
+        Ok(tonic::Response::new(proto::CreatePolicyResponse {
+            id: id.to_be_bytes().to_vec(),
+        }))
+    }
+
     async fn get_policy(
         &self,
         request: tonic::Request<proto::PolicyRequest>,
