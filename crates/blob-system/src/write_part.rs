@@ -11,22 +11,22 @@ use stream_system::WriteStream;
 
 use crate::{
     BlobId, BlobRegistry, BlobSystem, BlobWriterConfig, BytesFrameAllocator, Error, FrameBudget,
-    PartId, SchedulerConfig,
+    PartId, SchedulerConfig, StreamId,
 };
 
-type SaveFuture = Pin<Box<dyn Future<Output = Result<(), Error>> + Send>>;
+type SaveFuture = Pin<Box<dyn Future<Output = Result<StreamId, Error>> + Send>>;
 
 enum State {
     Writing,
     Closing,
     Saving(SaveFuture),
-    Closed,
+    Closed(StreamId),
     Failed,
 }
 
 /// An AsyncWrite part backed directly by stream-system's WriteStream.
 /// Successful close publishes the stream and then saves its reference in the
-/// blob registry. Neither the stream writer nor its ID is exposed to callers.
+/// blob registry. Closing returns the registered stream ID to callers.
 /// The allocator must have the fixed frame size from BlobWriterConfig.
 /// Drop this writer before reusing its borrowed CARBON resources.
 pub struct WriteBlobPart<'a> {
@@ -86,7 +86,7 @@ impl<'a> WriteBlobPart<'a> {
 
     /// True only after both stream closing and blob part registration succeed.
     pub fn is_closed(&self) -> bool {
-        matches!(self.state, State::Closed)
+        matches!(self.state, State::Closed(_))
     }
 
     /// Drives the internal WriteStream without accepting additional bytes.
@@ -106,9 +106,15 @@ impl<'a> WriteBlobPart<'a> {
         result
     }
 
-    /// Awaitable close; has the same semantics as AsyncWrite::poll_close.
-    pub async fn close(&mut self) -> io::Result<()> {
-        poll_fn(|cx| Pin::new(&mut *self).poll_close(cx)).await
+    /// Closes the stream and registers the part before returning its stream ID.
+    /// Repeated successful closes return the same ID, including after closing
+    /// through AsyncWrite::poll_close. Errors retain the poll_close semantics.
+    pub async fn close(&mut self) -> io::Result<StreamId> {
+        poll_fn(|cx| Pin::new(&mut *self).poll_close(cx)).await?;
+        match self.state {
+            State::Closed(stream_id) => Ok(stream_id),
+            _ => Err(Error::MissingStreamId.into()),
+        }
     }
 
     fn poll_input(&mut self, cx: &mut Context<'_>, input: &[u8]) -> Poll<io::Result<usize>> {
@@ -149,15 +155,15 @@ impl<'a> WriteBlobPart<'a> {
                         registry
                             .save_part(blob_id, stream_id, length, part_id)
                             .await?;
-                        Ok(())
+                        Ok(stream_id)
                     }));
                 }
                 State::Saving(future) => {
-                    ready!(future.as_mut().poll(cx))?;
-                    self.state = State::Closed;
+                    let stream_id = ready!(future.as_mut().poll(cx))?;
+                    self.state = State::Closed(stream_id);
                     return Poll::Ready(Ok(()));
                 }
-                State::Closed => return Poll::Ready(Ok(())),
+                State::Closed(_) => return Poll::Ready(Ok(())),
                 State::Writing | State::Failed => {
                     return Poll::Ready(Err(Error::InputClosed.into()));
                 }

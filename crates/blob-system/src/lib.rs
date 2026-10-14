@@ -3,7 +3,7 @@
 //! [`WriteBlobPart`] uses an internal `WriteStream` and registers its stream
 //! reference only after successful closing. [`ReadBlob`] drives an internal
 //! `ReadStream` through the blob's ordered slices. Callers use blob and part IDs;
-//! stream IDs stay inside these adapters.
+//! successful part closing returns the registered stream ID.
 //!
 //! CARBON configuration, shared frame budget and the write allocator remain
 //! caller-owned. Constructors start no tasks. Writes, reads, closing and
@@ -22,7 +22,7 @@ use std::ops::Range;
 use blob_registry::traits::BlobRegistry as _;
 
 pub use async_read::AsyncReadAdapter;
-pub use blob_registry::{BlobId, BlobRegistry, PartId};
+pub use blob_registry::{BlobId, BlobRegistry, PartId, StreamId};
 pub use error::Error;
 pub use read_blob::ReadBlob;
 pub use stream_system::{

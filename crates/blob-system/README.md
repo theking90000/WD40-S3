@@ -2,7 +2,7 @@
 
 Write multipart blobs and read their logical byte ranges through blob and part
 IDs. Part writers use `stream-system::WriteStream`; readers use its `ReadStream`.
-Stream IDs and their lifecycle stay inside the adapters.
+Part closing returns the registered stream ID; the adapters manage its lifecycle.
 
 Create a cloneable `BlobSystem` with the existing registry and backend handles.
 The system owns no runtime or CARBON resources.
@@ -24,7 +24,7 @@ let mut part = system.write_part(
     blob_id, 1, settings, &mut allocator, &budget, &mut carbon_config,
 ).await?;
 part.write_all(payload).await?;
-part.close().await?; // Closes WriteStream, then registers the blob part.
+let stream_id = part.close().await?; // Closes and registers the part, then returns its stream ID.
 drop(part); // Allows reuse of the borrowed CARBON resources.
 
 let length = system.finalize(blob_id, vec![1]).await?;
@@ -43,7 +43,8 @@ share a frame budget.
 
 Each part writer counts the plaintext bytes accepted by `WriteStream`. Closing
 waits for stream publication, then saves its ID and length in `BlobRegistry`.
-Repeated successful closing is harmless. Flushing does not finalize anything.
+Closing returns the registered stream ID. Repeated successful closing returns
+the same ID. Flushing does not finalize anything.
 `progress()` drives writing while an independent input source is awaited.
 Cancelled write/close futures retain their operations in the writer; dropping
 the writer cancels local work without rolling back registered data.
