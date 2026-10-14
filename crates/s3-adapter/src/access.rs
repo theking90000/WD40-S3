@@ -7,7 +7,7 @@ use s3s::{
     dto::{
         CompleteMultipartUploadInput, CopyObjectInput, CreateMultipartUploadInput,
         DeleteObjectInput, DeleteObjectsInput, GetObjectInput, HeadObjectInput, ListObjectsInput,
-        ListObjectsV2Input, PutObjectInput, UploadPartInput,
+        ListObjectsV2Input, ListPartsInput, PutObjectInput, UploadPartInput,
     },
 };
 
@@ -95,6 +95,10 @@ impl s3s::access::S3Access for S3Access {
 
     async fn list_objects_v2(&self, req: &mut S3Request<ListObjectsV2Input>) -> S3Result<()> {
         request::list_objects_v2::list_objects_v2_access(self, req).await
+    }
+
+    async fn list_parts(&self, req: &mut S3Request<ListPartsInput>) -> S3Result<()> {
+        request::list_parts::list_parts_access(self, req).await
     }
 
     async fn check(&self, _cx: &mut S3AccessContext<'_>) -> S3Result<()> {

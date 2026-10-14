@@ -5,8 +5,8 @@ use s3s::{
         CopyObjectOutput, CreateMultipartUploadInput, CreateMultipartUploadOutput,
         DeleteObjectInput, DeleteObjectOutput, DeleteObjectsInput, DeleteObjectsOutput,
         GetObjectInput, GetObjectOutput, HeadObjectInput, HeadObjectOutput, ListObjectsInput,
-        ListObjectsOutput, ListObjectsV2Input, ListObjectsV2Output, PutObjectInput,
-        PutObjectOutput, UploadPartInput, UploadPartOutput,
+        ListObjectsOutput, ListObjectsV2Input, ListObjectsV2Output, ListPartsInput,
+        ListPartsOutput, PutObjectInput, PutObjectOutput, UploadPartInput, UploadPartOutput,
     },
 };
 
@@ -75,6 +75,13 @@ impl s3s::S3 for S3Adapter {
         req: S3Request<ListObjectsV2Input>,
     ) -> S3Result<S3Response<ListObjectsV2Output>> {
         request::list_objects_v2::list_objects_v2(self, req).await
+    }
+
+    async fn list_parts(
+        &self,
+        req: S3Request<ListPartsInput>,
+    ) -> S3Result<S3Response<ListPartsOutput>> {
+        request::list_parts::list_parts(self, req).await
     }
 
     async fn get_object(
