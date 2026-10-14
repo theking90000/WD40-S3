@@ -24,7 +24,10 @@ impl LocalRegistry {
         std::thread::Builder::new()
             .name("s3-credentials-registry-flush".to_owned())
             .spawn(move || {
-                let _ = sender.send(database.flush());
+                let result = database.flush();
+                // Release the worker's handle before allowing immediate reopening.
+                drop(database);
+                let _ = sender.send(result);
             })
             .map_err(Error::FlushWorker)?;
         receiver.await??;
