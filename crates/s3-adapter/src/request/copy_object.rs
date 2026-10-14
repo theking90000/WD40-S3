@@ -1,0 +1,237 @@
+use std::time::SystemTime;
+
+use access_controller::Action;
+use object_registry::{Metadata, VersionId, traits::ObjectRegistry as _};
+use s3s::{
+    S3Request, S3Response, S3Result,
+    dto::{
+        CopyObjectInput, CopyObjectOutput, CopyObjectResult, CopySource, MetadataDirective,
+        StorageClass,
+    },
+};
+
+use crate::{S3Adapter, access::S3Access, error, metadata, to_key};
+
+pub(crate) async fn copy_object_access(
+    access: &S3Access,
+    req: &mut S3Request<CopyObjectInput>,
+) -> S3Result<()> {
+    let (source_key, _) = source_object(&req.input.copy_source)?;
+    access
+        .authorize(req.credentials.as_ref(), &source_key, Action::Read)
+        .await?;
+    access
+        .authorize(req.credentials.as_ref(), &to_key!(req.input), Action::Write)
+        .await
+}
+
+pub(crate) async fn copy_object(
+    adapter: &S3Adapter,
+    req: S3Request<CopyObjectInput>,
+) -> S3Result<S3Response<CopyObjectOutput>> {
+    let mut input = req.input;
+    validate_input(&input)?;
+    let (source_key, source_version) = source_object(&input.copy_source)?;
+    let key = to_key!(input);
+
+    // An explicit source version can restore an older version to the same key.
+    if source_key == key
+        && source_version.is_none()
+        && input
+            .metadata_directive
+            .as_ref()
+            .map(|value| value.as_str())
+            != Some(MetadataDirective::REPLACE)
+    {
+        return Err(s3s::s3_error!(
+            InvalidRequest,
+            "copying an object onto itself requires REPLACE or an explicit source version"
+        ));
+    }
+
+    let record = adapter
+        .objects
+        .head(&source_key, source_version)
+        .await
+        .map_err(error::object_registry_error)?;
+    if record.is_delete_marker {
+        return Err(if source_version.is_some() {
+            s3s::s3_error!(InvalidRequest, "copy source version is a delete marker")
+        } else {
+            s3s::s3_error!(NoSuchKey)
+        });
+    }
+    let blob_id = record
+        .blob_id
+        .ok_or_else(|| s3s::s3_error!(InternalError, "object has no blob reference"))?;
+    let object_metadata = copy_metadata(&mut input, record.metadata)?;
+    let last_modified = SystemTime::now().into();
+
+    // Finalized blobs are immutable. A new object version can share their bytes.
+    // A store flush error does not imply that the new version was rolled back.
+    let version_id = adapter
+        .objects
+        .store(&key, blob_id, object_metadata)
+        .await
+        .map_err(error::object_registry_error)?;
+
+    Ok(S3Response::new(CopyObjectOutput {
+        copy_object_result: Some(CopyObjectResult {
+            e_tag: Some(metadata::etag_from_version(version_id)),
+            last_modified: Some(last_modified),
+            ..Default::default()
+        }),
+        copy_source_version_id: Some(record.version_id.to_string()),
+        version_id: Some(version_id.to_string()),
+        ..Default::default()
+    }))
+}
+
+fn source_object(source: &CopySource) -> S3Result<(String, Option<VersionId>)> {
+    let CopySource::Bucket {
+        bucket,
+        key,
+        version_id,
+    } = source
+    else {
+        return Err(s3s::s3_error!(
+            NotImplemented,
+            "unsupported copy source ARN"
+        ));
+    };
+    if bucket.is_empty() || bucket.contains(['/', '\0']) || key.is_empty() || key.contains('\0') {
+        return Err(s3s::s3_error!(
+            InvalidArgument,
+            "invalid source bucket or key"
+        ));
+    }
+    let version_id = version_id
+        .as_deref()
+        .map(str::parse::<VersionId>)
+        .transpose()
+        .map_err(|error| s3s::s3_error!(error, InvalidArgument))?;
+    Ok((format!("{bucket}/{key}"), version_id))
+}
+
+fn validate_input(input: &CopyObjectInput) -> S3Result<()> {
+    if input.bucket.is_empty()
+        || input.bucket.contains(['/', '\0'])
+        || input.key.is_empty()
+        || input.key.contains('\0')
+    {
+        return Err(s3s::s3_error!(InvalidArgument, "invalid bucket or key"));
+    }
+    if input.metadata.as_ref().is_some_and(|metadata| {
+        metadata.keys().any(|key| {
+            key.is_empty()
+                || key.contains('\0')
+                || key.eq_ignore_ascii_case("size")
+                || key.eq_ignore_ascii_case("content-type")
+        })
+    }) {
+        return Err(s3s::s3_error!(
+            InvalidArgument,
+            "invalid or reserved metadata key"
+        ));
+    }
+    match input
+        .metadata_directive
+        .as_ref()
+        .map(|value| value.as_str())
+    {
+        None | Some(MetadataDirective::COPY | MetadataDirective::REPLACE) => {}
+        Some(_) => {
+            return Err(s3s::s3_error!(
+                InvalidArgument,
+                "invalid metadata directive"
+            ));
+        }
+    }
+    validate_options(input)
+}
+
+fn validate_options(input: &CopyObjectInput) -> S3Result<()> {
+    if input.acl.is_some()
+        || input.annotation_directive.is_some()
+        || input.bucket_key_enabled.is_some()
+        || input.cache_control.is_some()
+        || input.checksum_algorithm.is_some()
+        || input.content_disposition.is_some()
+        || input.content_encoding.is_some()
+        || input.content_language.is_some()
+        || input.copy_source_if_match.is_some()
+        || input.copy_source_if_modified_since.is_some()
+        || input.copy_source_if_none_match.is_some()
+        || input.copy_source_if_unmodified_since.is_some()
+        || input.copy_source_sse_customer_algorithm.is_some()
+        || input.copy_source_sse_customer_key.is_some()
+        || input.copy_source_sse_customer_key_md5.is_some()
+        || input.expected_bucket_owner.is_some()
+        || input.expected_source_bucket_owner.is_some()
+        || input.expires.is_some()
+        || input.grant_full_control.is_some()
+        || input.grant_read.is_some()
+        || input.grant_read_acp.is_some()
+        || input.grant_write_acp.is_some()
+        || input.if_match.is_some()
+        || input.if_none_match.is_some()
+        || input.object_lock_legal_hold_status.is_some()
+        || input.object_lock_mode.is_some()
+        || input.object_lock_retain_until_date.is_some()
+        || input.request_payer.is_some()
+        || input.server_side_encryption.is_some()
+        || input.sse_customer_algorithm.is_some()
+        || input.sse_customer_key.is_some()
+        || input.sse_customer_key_md5.is_some()
+        || input.ssekms_encryption_context.is_some()
+        || input.ssekms_key_id.is_some()
+        || input.tagging.is_some()
+        || input.tagging_directive.is_some()
+        || input.website_redirect_location.is_some()
+        || input
+            .storage_class
+            .as_ref()
+            .is_some_and(|value| value.as_str() != StorageClass::STANDARD)
+    {
+        return Err(s3s::s3_error!(
+            NotImplemented,
+            "unsupported CopyObject option"
+        ));
+    }
+    Ok(())
+}
+
+fn copy_metadata(input: &mut CopyObjectInput, mut source: Metadata) -> S3Result<Metadata> {
+    let size = metadata::take_size(&mut source)?;
+    let content_type = metadata::take_content_type(&mut source)?;
+    if size > 5_368_709_120 {
+        return Err(s3s::s3_error!(EntityTooLarge, "copy source exceeds 5 GiB"));
+    }
+
+    let mut metadata = if input
+        .metadata_directive
+        .as_ref()
+        .map(|value| value.as_str())
+        == Some(MetadataDirective::REPLACE)
+    {
+        let mut replacement = input
+            .metadata
+            .take()
+            .unwrap_or_default()
+            .into_iter()
+            .collect::<Metadata>();
+        replacement.insert(
+            "content-type".to_owned(),
+            input
+                .content_type
+                .take()
+                .unwrap_or_else(|| "application/octet-stream".to_owned()),
+        );
+        replacement
+    } else {
+        source.insert("content-type".to_owned(), content_type);
+        source
+    };
+    metadata.insert("size".to_owned(), size.to_string());
+    Ok(metadata)
+}

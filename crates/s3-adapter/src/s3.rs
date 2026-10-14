@@ -1,11 +1,11 @@
 use s3s::{
     S3Request, S3Response, S3Result,
     dto::{
-        CreateMultipartUploadInput, CreateMultipartUploadOutput, DeleteObjectInput,
-        DeleteObjectOutput, DeleteObjectsInput, DeleteObjectsOutput, GetObjectInput,
-        GetObjectOutput, HeadObjectInput, HeadObjectOutput, ListObjectsInput, ListObjectsOutput,
-        ListObjectsV2Input, ListObjectsV2Output, PutObjectInput, PutObjectOutput, UploadPartInput,
-        UploadPartOutput,
+        CopyObjectInput, CopyObjectOutput, CreateMultipartUploadInput, CreateMultipartUploadOutput,
+        DeleteObjectInput, DeleteObjectOutput, DeleteObjectsInput, DeleteObjectsOutput,
+        GetObjectInput, GetObjectOutput, HeadObjectInput, HeadObjectOutput, ListObjectsInput,
+        ListObjectsOutput, ListObjectsV2Input, ListObjectsV2Output, PutObjectInput,
+        PutObjectOutput, UploadPartInput, UploadPartOutput,
     },
 };
 
@@ -13,6 +13,13 @@ use crate::{S3Adapter, request};
 
 #[async_trait::async_trait]
 impl s3s::S3 for S3Adapter {
+    async fn copy_object(
+        &self,
+        req: S3Request<CopyObjectInput>,
+    ) -> S3Result<S3Response<CopyObjectOutput>> {
+        request::copy_object::copy_object(self, req).await
+    }
+
     async fn delete_objects(
         &self,
         req: S3Request<DeleteObjectsInput>,
