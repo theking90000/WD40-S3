@@ -12,8 +12,15 @@ struct Args {
 async fn main() -> std::io::Result<()> {
     let args = Args::parse();
     let listener = tokio::net::TcpListener::bind(args.portal.listen).await?;
-    eprintln!("Portal listening on {}", listener.local_addr()?);
-    axum::serve(listener, Portal::new().into_router())
+    let router = Portal::new().into_router();
+    let basename = env!("WD40_PORTAL_BASE_PATH").trim_end_matches('/');
+    let router = if basename.is_empty() {
+        router
+    } else {
+        axum::Router::new().nest(basename, router)
+    };
+    eprintln!("Portal listening on {}{}/", listener.local_addr()?, basename);
+    axum::serve(listener, router)
         .with_graceful_shutdown(async {
             if let Err(error) = tokio::signal::ctrl_c().await {
                 eprintln!("Cannot listen for Ctrl-C: {error}");

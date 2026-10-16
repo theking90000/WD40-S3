@@ -1,0 +1,34 @@
+import { Link, Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
+import "./style.css";
+
+export function Layout({ children }) {
+  return (
+    <html lang="fr">
+      <head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>WD40 Portal</title>
+        <Meta />
+        <Links />
+      </head>
+      <body>
+        {children}
+        <ScrollRestoration />
+        <Scripts />
+      </body>
+    </html>
+  );
+}
+
+export default function App() {
+  return (
+    <main>
+      <h1>WD40 Portal</h1>
+      <nav aria-label="Navigation principale">
+        <Link to="/">Accueil</Link>{" · "}
+        <Link to="/status">État du service</Link>
+      </nav>
+      <Outlet />
+    </main>
+  );
+}

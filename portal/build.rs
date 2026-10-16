@@ -1,4 +1,4 @@
-use std::{env, fs, io, path::Path, process::Command};
+use std::{env, io, path::Path, process::Command};
 
 fn main() -> io::Result<()> {
     println!("cargo::rerun-if-changed=build.rs");
@@ -6,61 +6,42 @@ fn main() -> io::Result<()> {
         return Ok(());
     }
 
+    println!("cargo::rerun-if-env-changed=WD40_PORTAL_BASE_PATH");
+    let basename = match env::var("WD40_PORTAL_BASE_PATH") {
+        Ok(value) => value,
+        Err(env::VarError::NotPresent) => "/".to_owned(),
+        Err(error) => return Err(io::Error::other(error)),
+    };
+    if !basename.starts_with('/')
+        || !basename.ends_with('/')
+        || basename.contains("//")
+        || basename.contains(['?', '#', '\\', '\n', '\r', '{', '}', '*', ':'])
+        || basename.split('/').any(|part| matches!(part, "." | ".."))
+    {
+        return Err(io::Error::other("WD40_PORTAL_BASE_PATH must be an absolute URL path ending with /"));
+    }
+    println!("cargo::rustc-env=WD40_PORTAL_BASE_PATH={basename}");
+
     let manifest = env::var_os("CARGO_MANIFEST_DIR")
         .ok_or_else(|| io::Error::other("CARGO_MANIFEST_DIR is missing"))?;
     let output = env::var_os("OUT_DIR")
         .ok_or_else(|| io::Error::other("OUT_DIR is missing"))?;
-    let source = Path::new(&manifest).join("console");
-    let output = Path::new(&output);
-    let console = output.join("console");
-
-    // Keep generated files outside the source tree and discard stale assets.
-    if console.exists() {
-        fs::remove_dir_all(&console)?;
-    }
-    fs::create_dir_all(&console)?;
-    for name in ["package.json", "package-lock.json", "build.mjs", "index.html", "src"] {
+    let console = Path::new(&manifest).join("console");
+    for name in ["package.json", "package-lock.json", "vite.config.js", "react-router.config.js", "src"] {
         println!("cargo::rerun-if-changed=console/{name}");
-        copy(&source.join(name), &console.join(name))?;
     }
 
-    npm(&console, &output.join("npm-cache"), &["ci", "--include=dev", "--no-audit", "--no-fund"])?;
-    npm(&console, &output.join("npm-cache"), &["run", "build"])?;
-
-    if !console.join("dist/index.html").is_file() {
-        return Err(io::Error::other("console build did not produce index.html"));
-    }
-    Ok(())
-}
-
-fn copy(source: &Path, destination: &Path) -> io::Result<()> {
-    let kind = fs::symlink_metadata(source)?.file_type();
-    if kind.is_dir() {
-        fs::create_dir_all(destination)?;
-        for entry in fs::read_dir(source)? {
-            let entry = entry?;
-            copy(&entry.path(), &destination.join(entry.file_name()))?;
-        }
-    } else if kind.is_file() {
-        fs::copy(source, destination)?;
-    } else {
-        return Err(io::Error::other(format!("unsupported console source: {}", source.display())));
-    }
-    Ok(())
-}
-
-fn npm(directory: &Path, cache: &Path, args: &[&str]) -> io::Result<()> {
     let executable = if cfg!(windows) { "npm.cmd" } else { "npm" };
     let status = Command::new(executable)
-        .args(args)
-        .current_dir(directory)
-        .env("npm_config_cache", cache)
+        .args(["ci", "--include=dev", "--no-audit", "--no-fund"])
+        .current_dir(console)
+        .env("npm_config_cache", Path::new(&output).join("npm-cache"))
         .status()
         .map_err(|error| {
             io::Error::new(error.kind(), format!("cannot run npm; install Node.js and npm: {error}"))
         })?;
     if !status.success() {
-        return Err(io::Error::other(format!("npm {} failed: {status}", args.join(" "))));
+        return Err(io::Error::other(format!("npm ci failed: {status}")));
     }
     Ok(())
 }

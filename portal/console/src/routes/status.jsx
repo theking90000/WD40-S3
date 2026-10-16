@@ -1,14 +1,12 @@
 import { useState } from "react";
-import { createRoot } from "react-dom/client";
-import "./style.css";
 
-function App() {
+export default function Status() {
   const [status, setStatus] = useState("Non vérifié");
 
   async function check() {
     setStatus("Vérification…");
     try {
-      const response = await fetch(new URL("api/health", document.baseURI));
+      const response = await fetch(`${import.meta.env.BASE_URL}api/health`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       setStatus(await response.text());
     } catch (error) {
@@ -17,13 +15,10 @@ function App() {
   }
 
   return (
-    <main>
-      <h1>WD40 Portal</h1>
-      <p>Console de gestion. Authentification et opérations WD40 à venir.</p>
+    <section>
+      <h2>État du service</h2>
       <button type="button" onClick={check}>Vérifier le service</button>
       <p role="status">{status}</p>
-    </main>
+    </section>
   );
 }
-
-createRoot(document.getElementById("root")).render(<App />);
