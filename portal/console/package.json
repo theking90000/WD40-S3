@@ -7,7 +7,7 @@
     "node": ">=22.22.0"
   },
   "scripts": {
-    "build": "vite build"
+    "build": "react-router build"
   },
   "dependencies": {
     "isbot": "5.2.2",

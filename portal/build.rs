@@ -32,16 +32,21 @@ fn main() -> io::Result<()> {
     }
 
     let executable = if cfg!(windows) { "npm.cmd" } else { "npm" };
-    let status = Command::new(executable)
-        .args(["ci", "--include=dev", "--no-audit", "--no-fund"])
-        .current_dir(console)
-        .env("npm_config_cache", Path::new(&output).join("npm-cache"))
-        .status()
-        .map_err(|error| {
-            io::Error::new(error.kind(), format!("cannot run npm; install Node.js and npm: {error}"))
-        })?;
-    if !status.success() {
-        return Err(io::Error::other(format!("npm ci failed: {status}")));
+    for args in [
+        &["ci", "--include=dev", "--no-audit", "--no-fund"][..],
+        &["run", "build"][..],
+    ] {
+        let status = Command::new(executable)
+            .args(args)
+            .current_dir(&console)
+            .env("npm_config_cache", Path::new(&output).join("npm-cache"))
+            .status()
+            .map_err(|error| {
+                io::Error::new(error.kind(), format!("cannot run npm; install Node.js and npm: {error}"))
+            })?;
+        if !status.success() {
+            return Err(io::Error::other(format!("npm {} failed: {status}", args.join(" "))));
+        }
     }
     Ok(())
 }

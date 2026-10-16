@@ -1,66 +1,37 @@
 use axum::{
     Router,
     body::Body,
-    extract::Path,
     http::{StatusCode, Uri, header},
-    response::{IntoResponse, Redirect, Response},
+    response::{IntoResponse, Response},
     routing::get,
 };
 
-#[derive(vite_rs::Embed)]
-#[root = "./console"]
-#[output = "./build/client"]
-#[dev_server_port = "21012"]
+#[derive(rust_embed::Embed)]
+#[folder = "console/build/client/"]
 struct ConsoleAssets;
 
 pub(crate) fn router() -> Router {
-    Router::new()
-        .route("/", get(|| async { asset("index.html") }))
-        .route("/{*path}", get(file))
+    Router::new().fallback_service(get(file))
 }
 
-async fn file(Path(path): Path<String>, uri: Uri) -> Response {
-    if embedded(&path).is_some() {
-        return asset(&path);
-    }
-    if path == "api" || path.starts_with("api/") || path == "assets" || path.starts_with("assets/") {
+async fn file(uri: Uri) -> Response {
+    let path = uri.path().trim_matches('/');
+    if path == "api" || path.starts_with("api/") {
         return StatusCode::NOT_FOUND.into_response();
     }
-    let index = format!("{}/index.html", path.trim_end_matches('/'));
-    if embedded(&index).is_none() {
-        return StatusCode::NOT_FOUND.into_response();
-    }
-    if path.ends_with('/') {
-        return asset(&index);
-    }
-
-    // Relative redirects preserve an outer Axum mount prefix.
-    let Some(segment) = uri.path().rsplit('/').next() else {
-        return StatusCode::NOT_FOUND.into_response();
+    let index = if path.is_empty() {
+        "index.html".to_owned()
+    } else {
+        format!("{path}/index.html")
     };
-    let mut location = format!("./{segment}/");
-    if let Some(query) = uri.query() {
-        location.push('?');
-        location.push_str(query);
-    }
-    Redirect::permanent(&location).into_response()
-}
-
-fn embedded(path: &str) -> Option<vite_rs::ViteFile> {
-    ConsoleAssets::get(path).or_else(|| {
-        let basename = env!("WD40_PORTAL_BASE_PATH").trim_matches('/');
-        if basename.is_empty() {
-            return None;
-        }
+    let basename = env!("WD40_PORTAL_BASE_PATH").trim_matches('/');
+    let file = [path, index.as_str()].into_iter().find_map(|path| {
         ConsoleAssets::get(&format!("{basename}/{path}"))
-    })
-}
-
-fn asset(path: &str) -> Response {
-    let Some(file) = embedded(path) else {
+            .or_else(|| ConsoleAssets::get(path))
+    });
+    let Some(file) = file else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    // Everything under assets/ is emitted by Vite with a content hash.
     let cache_control = if path.starts_with("assets/") {
         "public, max-age=31536000, immutable"
     } else {
@@ -68,10 +39,26 @@ fn asset(path: &str) -> Response {
     };
     (
         [
-            (header::CONTENT_TYPE, file.content_type),
+            (header::CONTENT_TYPE, file.metadata.mimetype()),
             (header::CACHE_CONTROL, cache_control),
         ],
-        Body::from(file.bytes),
+        Body::from(file.data),
     )
         .into_response()
+}
+
+#[cfg(all(test, feature = "standalone"))]
+#[tokio::test]
+async fn serves_prerendered_pages_and_returns_404_for_missing_paths() {
+    for path in ["/", "/status", "/status/"] {
+        let response = file(Uri::from_static(path)).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(header::CONTENT_TYPE).and_then(|value| value.to_str().ok()),
+            Some("text/html"),
+        );
+    }
+    for path in ["/missing", "/api/missing", "/assets/missing.js"] {
+        assert_eq!(file(Uri::from_static(path)).await.status(), StatusCode::NOT_FOUND);
+    }
 }

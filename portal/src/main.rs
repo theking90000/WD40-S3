@@ -17,7 +17,7 @@ async fn main() -> std::io::Result<()> {
     let router = if basename.is_empty() {
         router
     } else {
-        axum::Router::new().nest(basename, router)
+        axum::Router::new().nest_service(basename, router)
     };
     eprintln!("Portal listening on {}{}/", listener.local_addr()?, basename);
     axum::serve(listener, router)

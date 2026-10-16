@@ -6,7 +6,7 @@ edition.workspace = true
 [features]
 default = []
 cli = ["dep:clap"]
-embed-console = ["dep:vite-rs"]
+embed-console = ["dep:rust-embed"]
 standalone = ["cli", "embed-console", "dep:tokio"]
 
 [[bin]]
@@ -19,7 +19,7 @@ axum = { version = "0.8.9", default-features = false, features = ["http1", "toki
 hyper-util = { version = "0.1.21", features = ["service"] }
 clap = { version = "4.6.7", features = ["derive", "env"], optional = true }
 tokio = { version = "1.53.3", features = ["macros", "rt-multi-thread", "net", "signal"], optional = true }
-vite-rs = { version = "0.3.0", default-features = false, features = ["debug-prod", "content-hash"], optional = true }
+rust-embed = { version = "8.13.0", default-features = false, features = ["debug-embed", "mime-guess"], optional = true }
 
 [lints.rust]
 unsafe_code = "forbid"
