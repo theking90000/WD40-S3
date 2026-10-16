@@ -1,0 +1,26 @@
+[package]
+name = "portal"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = []
+cli = ["dep:clap"]
+embed-console = ["dep:rust-embed", "dep:mime_guess"]
+standalone = ["cli", "embed-console", "dep:tokio"]
+
+[[bin]]
+name = "portal"
+path = "src/main.rs"
+required-features = ["standalone"]
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+hyper-util = { version = "0.1", features = ["service"] }
+clap = { version = "4", features = ["derive", "env"], optional = true }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"], optional = true }
+rust-embed = { version = "8", features = ["debug-embed", "interpolate-folder-path"], optional = true }
+mime_guess = { version = "2", optional = true }
+
+[lints.rust]
+unsafe_code = "forbid"
