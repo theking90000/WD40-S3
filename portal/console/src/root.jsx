@@ -1,5 +1,18 @@
 import { Link, Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
+import { authMiddleware } from "./auth-router.js";
 import "./style.css";
+
+export const clientMiddleware = [authMiddleware];
+
+// Keep public prerendered HTML while running the callback middleware on hydration.
+export function loader() {
+  return null;
+}
+
+export function clientLoader() {
+  return null;
+}
+clientLoader.hydrate = true;
 
 export function Layout({ children }) {
   return (

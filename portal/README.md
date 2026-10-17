@@ -1,9 +1,10 @@
 # Portal
 
 Portal service with OIDC authentication and a Vite and React Router framework
-console, prerendered during compilation. The Rust authentication API is available;
-the console login flow, organizations API and WD40 RPC operations are not
-implemented yet. `GET /api/health` returns `ok` without authentication.
+console, prerendered during compilation. The authentication API and console routing
+integration are available without a login UI. The organizations API and WD40 RPC
+operations are not implemented yet. `GET /api/health` returns `ok` without
+authentication.
 
 ## Standalone
 
@@ -141,8 +142,9 @@ cookies contain the random values directly; they are neither encrypted nor backe
 by server storage. The PKCE verifier stays out of the authorization URL.
 
 Callback URLs must be absolute HTTPS URLs, or HTTP loopback URLs for development,
-without credentials or fragments. The React callback page will be implemented
-separately and must be included in the console's prerendered routes.
+without credentials or fragments. The console detects callbacks globally on any
+served page; there is no dedicated callback route. Each selected callback URI
+must be allowed by the provider.
 
 ### POST /api/callback
 
@@ -242,6 +244,111 @@ the access-token cookie. JSON extractor rejections on login retain Axum's status
 with a JSON error body; the callback normalizes malformed input to JSON `400` so
 it can always expire its temporary cookies. No authentication payload or provider
 error body is logged.
+
+## Console authentication
+
+`console/src/auth.js` owns the browser protocol and API calls without importing
+React or React Router. It exports:
+
+- `getLoginUrl(returnTo?, { signal }?)`, which requests an authorization URL and
+  saves the exact callback URI and return destination in `sessionStorage`.
+- `login(returnTo?)`, which calls `getLoginUrl` and navigates the browser to the
+  provider. The default destination is the current page, including query and hash.
+- `completeCallback({ code, state, redirectUri })`, the low-level callback POST.
+- `getCurrentUser({ signal }?)`, which returns a user or `null` on `401` and
+  propagates other failures.
+- `logout()`, which clears the server cookies and pending browser login metadata.
+  The caller chooses the subsequent navigation, typically to a public route.
+
+Requests use the compiled base path, same-origin credentials and `no-store`.
+POSTs include `X-WD40-Portal: 1`; JSON bodies also set `Content-Type`.
+`AuthError` exposes an error `code` and HTTP `status`. Network errors propagate.
+No access token, nonce or PKCE verifier is exposed to JavaScript. The callback's
+returned state is read from the URL and forwarded to Rust for its cookie
+comparison; it is not persisted in browser storage.
+
+The only browser storage is `{ redirectUri, returnTo }` for a pending login,
+scoped to the console base path in `sessionStorage`. The fragment is excluded
+from the callback URI and restored after success. The original URI is reused
+verbatim for the token exchange, including its original query encoding. Return
+destinations must remain on the current origin and under the console base path.
+Callback parameters `code`, `state`, `iss`, `session_state`, `error`,
+`error_description` and `error_uri` are reserved for OIDC and cannot appear in a
+login return destination. Only one login can be pending per origin because the
+Rust cookies are shared by tabs and mounts.
+
+### Global callback handling
+
+`root.jsx` exports a `clientMiddleware` from `auth-router.js`. Before route
+loaders or actions run, it detects `code`/`state` or an OIDC error on any route,
+finishes the callback, and replaces the URL with its clean destination. Existing
+business query parameters and the saved fragment are preserved. A root build-time
+`loader` and browser `clientLoader` both return `null`; `clientLoader.hydrate = true`
+ensures the middleware runs on the first document load without fetching a user
+or removing public prerendered content.
+
+The same callback shares one promise, including across repeated middleware
+calls. Its POST is not aborted when a route navigation is cancelled. A navigation
+that supersedes an ongoing callback waits for its exchange before loading data.
+Malformed callbacks, missing browser metadata and authorization refusals trigger
+a best-effort empty callback POST to expire Rust's temporary cookies. Once an
+exchange has been submitted, it is not retried automatically.
+
+Both success and failure remove pending browser metadata and replace the callback
+URL. On failure, the router then receives the original error before protected
+loaders can start another login. Route error boundaries can handle it when their
+UI is built. No component effect or dedicated callback page is involved.
+
+### Public and protected routes
+
+The existing home and status pages remain public and do not call `/api/me`.
+`auth-router.js` provides `optionalUser(args)`, `requireUser(args)` and
+`withUser(loader?)` for routes that need identity. A fresh React Router context
+shares a lazy user promise and a lazy login promise during each navigation or
+fetcher call. There is no persistent user cache or React authentication provider.
+
+For a route with an optional user:
+
+```js
+import { optionalUser } from "../auth-router.js";
+
+export async function clientLoader(args) {
+  return { user: await optionalUser(args) };
+}
+
+export function HydrateFallback() { return null; }
+```
+
+For a protected route:
+
+```js
+import { withUser } from "../auth-router.js";
+
+export const clientLoader = withUser(async ({ user, request }) => {
+  // Load this route's data here, after authentication has completed.
+  return { user };
+});
+
+export function HydrateFallback() { return null; }
+```
+
+`withUser()` without an argument returns `{ user }`. The wrapper runs during
+initial hydration and only calls the supplied loader after obtaining a user.
+Without a user it starts one login and uses `redirectDocument` to navigate to the
+provider. Provider outages and other errors propagate instead of triggering a
+login. Every child loader that depends on identity needs its own guard; parent
+and child loaders can run in parallel. Client actions can call `requireUser(args)`
+before their mutations. Rust remains responsible for API access control.
+
+Components can consume the result through `loaderData` or `useLoaderData` when
+the UI is added. No authenticated content or user lookup runs during prerendering.
+Any route used for a document callback must be served by Rust. Dynamic paths not
+included in prerendering currently return `404`; they need explicit prerendered
+paths or a future server fallback before they can receive an OIDC return.
+
+The focused integration check is available from `portal/console/` with
+`node --test src/auth.test.js`. It uses mocked HTTP and a memory router, without
+an IdP or browser service.
 
 ## Rust architecture
 
