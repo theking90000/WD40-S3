@@ -2,8 +2,8 @@
 
 SeaORM database crate for portal data. SQLite is enabled by default; enable
 `postgres` for PostgreSQL, with `default-features = false` for PostgreSQL only.
-Both drivers can be enabled together. Optional SeaORM type integrations are
-disabled until needed.
+Both drivers can be enabled together. UUID and Chrono type integrations are
+enabled for organization identifiers and creation timestamps.
 
 The package is named `portal-db` to avoid workspace name conflicts and stays in
 `portal/db/`. Its Rust crate name is `portal_db`.
@@ -12,9 +12,45 @@ The caller opens the connection with `portal_db::Database::connect`, optionally
 using `portal_db::ConnectOptions`, and owns its shutdown. No connection is opened
 implicitly.
 
-Add persistence entities under `src/entities/` and versioned migrations under
-`src/migrations/` with the first schema. Keep HTTP request/response types in
-portal and reuse WD40 registries for the data they already own. Use portable
-types and migrations when supporting both database engines.
+This crate is not yet wired into portal. Apply migrations explicitly with
+`Migrator::up(&db, None).await?`, importing `portal_db::{Migrator, MigratorTrait}`.
 
-This crate does not yet define tables or migrations and is not wired into portal.
+## Organizations
+
+`portal_db::Organization` is the persisted model; `portal_db::organization`
+exposes its SeaORM entity and active model. The `organizations` table contains
+`id: Uuid`, `name: String` and `created_at: DateTimeWithTimeZone`, all required.
+
+Inserting through `organization::ActiveModel::insert` or `save` generates a UUID
+v4 when `id` is unset. Random-source failures return a database error. Bulk or
+direct entity inserts must supply identifiers themselves. The database fills
+an omitted `created_at` with `CURRENT_TIMESTAMP`; updates leave it unchanged
+unless explicitly set. Names are not required to be unique.
+
+## Code structure
+
+Add the following modules as the schema grows; do not create empty placeholders:
+
+```text
+src/
+├── lib.rs                 # Module declarations and public exports
+├── entities/
+│   ├── mod.rs
+│   └── organization.rs    # One entity file per table
+└── migrations/
+    ├── mod.rs             # Migrator and ordered migration list
+    └── m..._create_organizations.rs
+```
+
+- Keep persistence models, columns and relations in `entities/`. HTTP handlers
+  and request/response types belong in `portal/src/api/<feature>/`.
+- Add versioned migrations with the first schema. Keep applied migrations
+  unchanged and append new ones for schema changes. Prefer SeaQuery and portable
+  types when supporting both SQLite and PostgreSQL.
+- Keep operation-specific queries with their portal feature; extract shared
+  queries within that feature when needed. Do not add generic repository or
+  service layers around SeaORM.
+- Keep modules private unless callers need them, and expose the required types
+  through `lib.rs`. Connection setup, migration execution and shutdown remain
+  the caller's responsibility.
+- Store portal-owned data here; reuse WD40 registries for the data they already own.

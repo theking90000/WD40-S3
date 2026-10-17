@@ -9,7 +9,11 @@ sqlite = ["sea-orm/sqlx-sqlite", "sea-orm/sqlite-use-returning-for-3_35"]
 postgres = ["sea-orm/sqlx-postgres", "sea-orm/runtime-tokio-rustls"]
 
 [dependencies]
-sea-orm = { version = "2.0.4", default-features = false, features = ["macros", "runtime-tokio"] }
+async-trait = "0.1"
+getrandom = "0.4"
+sea-orm = { version = "2.0.4", default-features = false, features = ["macros", "runtime-tokio", "with-chrono", "with-uuid"] }
+sea-orm-migration = { version = "2.0.4", default-features = false }
+uuid = { version = "1", default-features = false }
 
 [lints.rust]
 unsafe_code = "forbid"
