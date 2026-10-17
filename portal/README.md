@@ -42,14 +42,14 @@ production.
 ## Pages and prerendering
 
 The console uses React 19.3.1, React Router 8.4.0 and Vite 8.3.4.
-`console/react-router.config.js` sets `ssr: false` and `prerender: true`, following
+`console/react-router.config.ts` sets `ssr: false` and `prerender: true`, following
 the [React Router prerendering guide](https://reactrouter.com/how-to/pre-rendering).
 The framework prerenders all static paths and generates browser hydration code.
 Dynamic routes require concrete URLs in React Router's `prerender` configuration.
 
-`console/src/routes.js` uses the official `@react-router/fs-routes` package to
-discover pages under `console/src/routes/`. `_index.jsx` maps to `/` and
-`status.jsx` to `/status`. Adding `settings.jsx` generates `/settings/index.html`
+`console/src/routes.ts` uses the official `@react-router/fs-routes` package to
+discover pages under `console/src/routes/`. `_index.tsx` maps to `/` and
+`status.tsx` to `/status`. Adding `settings.tsx` generates `/settings/index.html`
 on the next Cargo build, without editing the route configuration. Nested and
 dynamic routes follow the [file route conventions](https://reactrouter.com/how-to/file-route-conventions).
 
@@ -57,7 +57,11 @@ dynamic routes follow the [file route conventions](https://reactrouter.com/how-t
 to build and prerender the application. The default Web Streams rendering entry
 requires `isbot` during compilation; no `@react-router/node` adapter is needed.
 
-`console/src/root.jsx` defines the document and navigation. Route modules provide
+The console uses strict TypeScript. From `console/`, `npm run typecheck` generates
+React Router's route types and runs TypeScript without emitting files. This check
+is separate from the Cargo-driven production build.
+
+`console/src/root.tsx` defines the document and navigation. Route modules provide
 their pages as default exports. Page content is present before browser JavaScript
 runs; React hydrates it for interactions and React Router handles navigation.
 Vite and React Router handle asset hashing, HTML references, tree shaking and
@@ -247,7 +251,7 @@ error body is logged.
 
 ## Console authentication
 
-`console/src/auth.js` owns the browser protocol and API calls without importing
+`console/src/auth.ts` owns the browser protocol and API calls without importing
 React or React Router. It exports:
 
 - `getLoginUrl(returnTo?, { signal }?)`, which requests an authorization URL and
@@ -263,6 +267,8 @@ React or React Router. It exports:
 Requests use the compiled base path, same-origin credentials and `no-store`.
 POSTs include `X-WD40-Portal: 1`; JSON bodies also set `Content-Type`.
 `AuthError` exposes an error `code` and HTTP `status`. Network errors propagate.
+`CurrentUser` describes the `/api/me` response; `getCurrentUser` returns
+`Promise<CurrentUser | null>`.
 No access token, nonce or PKCE verifier is exposed to JavaScript. The callback's
 returned state is read from the URL and forwarded to Rust for its cookie
 comparison; it is not persisted in browser storage.
@@ -279,7 +285,7 @@ Rust cookies are shared by tabs and mounts.
 
 ### Global callback handling
 
-`root.jsx` exports a `clientMiddleware` from `auth-router.js`. Before route
+`root.tsx` exports a `clientMiddleware` from `auth-router.ts`. Before route
 loaders or actions run, it detects `code`/`state` or an OIDC error on any route,
 finishes the callback, and replaces the URL with its clean destination. Existing
 business query parameters and the saved fragment are preserved. A root build-time
@@ -302,17 +308,18 @@ UI is built. No component effect or dedicated callback page is involved.
 ### Public and protected routes
 
 The existing home and status pages remain public and do not call `/api/me`.
-`auth-router.js` provides `optionalUser(args)`, `requireUser(args)` and
+`auth-router.ts` provides `optionalUser(args)`, `requireUser(args)` and
 `withUser(loader?)` for routes that need identity. A fresh React Router context
 shares a lazy user promise and a lazy login promise during each navigation or
 fetcher call. There is no persistent user cache or React authentication provider.
 
 For a route with an optional user:
 
-```js
-import { optionalUser } from "../auth-router.js";
+```ts
+import type { LoaderFunctionArgs } from "react-router";
+import { optionalUser } from "../auth-router.ts";
 
-export async function clientLoader(args) {
+export async function clientLoader(args: LoaderFunctionArgs) {
   return { user: await optionalUser(args) };
 }
 
@@ -321,8 +328,8 @@ export function HydrateFallback() { return null; }
 
 For a protected route:
 
-```js
-import { withUser } from "../auth-router.js";
+```ts
+import { withUser } from "../auth-router.ts";
 
 export const clientLoader = withUser(async ({ user, request }) => {
   // Load this route's data here, after authentication has completed.
@@ -347,7 +354,8 @@ included in prerendering currently return `404`; they need explicit prerendered
 paths or a future server fallback before they can receive an OIDC return.
 
 The focused integration check is available from `portal/console/` with
-`node --test src/auth.test.js`. It uses mocked HTTP and a memory router, without
+`node --test src/auth.test.ts`. Node.js strips the TypeScript types directly.
+It uses mocked HTTP and a memory router, without
 an IdP or browser service.
 
 ## Rust architecture

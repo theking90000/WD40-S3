@@ -3,10 +3,49 @@ const pendingKey = `wd40.portal.oidc:${base}`;
 const callbackParams = [
   "code", "state", "iss", "session_state", "error", "error_description", "error_uri",
 ];
-let callback;
+export interface CurrentUser {
+  issuer: string;
+  subject: string;
+  name: string | null;
+  email: string | null;
+  email_verified: boolean | null;
+  roles: string[];
+  groups: string[];
+}
+
+interface RequestOptions {
+  signal?: AbortSignal;
+}
+
+interface ApiOptions extends RequestOptions {
+  method?: "GET" | "POST";
+  body?: unknown;
+}
+
+interface CallbackInput {
+  code?: string;
+  state?: string;
+  redirectUri?: string;
+}
+
+interface CallbackResult {
+  url: string;
+  error: unknown;
+}
+
+interface CallbackAttempt {
+  url: string;
+  pending: boolean;
+  promise: Promise<CallbackResult>;
+}
+
+let callback: CallbackAttempt | undefined;
 
 export class AuthError extends Error {
-  constructor(code, status) {
+  readonly code: string;
+  readonly status: number;
+
+  constructor(code: string, status: number) {
     super(code);
     this.name = "AuthError";
     this.code = code;
@@ -14,7 +53,11 @@ export class AuthError extends Error {
   }
 }
 
-async function api(path, { method = "GET", body, signal } = {}) {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+async function api(path: string, { method = "GET", body, signal }: ApiOptions = {}) {
   const headers = new Headers();
   if (method === "POST") headers.set("X-WD40-Portal", "1");
   if (body !== undefined) headers.set("Content-Type", "application/json");
@@ -27,16 +70,16 @@ async function api(path, { method = "GET", body, signal } = {}) {
     signal,
   });
   if (!response.ok) {
-    const body = await response.json().catch(() => null);
+    const body: unknown = await response.json().catch(() => null);
     throw new AuthError(
-      typeof body?.error === "string" ? body.error : "http_error",
+      isRecord(body) && typeof body.error === "string" ? body.error : "http_error",
       response.status,
     );
   }
   return response;
 }
 
-function consoleUrl(value) {
+function consoleUrl(value: string | URL) {
   const url = new URL(value, window.location.href);
   const root = new URL(base, window.location.href);
   if (url.origin !== root.origin || !url.pathname.startsWith(root.pathname)
@@ -46,7 +89,7 @@ function consoleUrl(value) {
   return url;
 }
 
-export async function getLoginUrl(returnTo = window.location.href, { signal } = {}) {
+export async function getLoginUrl(returnTo = window.location.href, { signal }: RequestOptions = {}) {
   const target = consoleUrl(returnTo);
   if (callbackParams.some((name) => target.searchParams.has(name))) {
     throw new AuthError("callback_parameters_in_return_url", 400);
@@ -56,8 +99,10 @@ export async function getLoginUrl(returnTo = window.location.href, { signal } = 
   const response = await api("login", {
     method: "POST", body: { redirect_uri: redirect.href }, signal,
   });
-  const body = await response.json();
-  if (typeof body?.url !== "string") throw new AuthError("invalid_login_response", 502);
+  const body: unknown = await response.json();
+  if (!isRecord(body) || typeof body.url !== "string") {
+    throw new AuthError("invalid_login_response", 502);
+  }
   const authorization = new URL(body.url);
   if (authorization.protocol !== "https:" && authorization.protocol !== "http:") {
     throw new AuthError("invalid_login_response", 502);
@@ -69,18 +114,18 @@ export async function getLoginUrl(returnTo = window.location.href, { signal } = 
   return authorization.href;
 }
 
-export async function login(returnTo) {
+export async function login(returnTo?: string) {
   window.location.assign(await getLoginUrl(returnTo));
 }
 
-export async function completeCallback({ code, state, redirectUri }) {
+export async function completeCallback({ code, state, redirectUri }: CallbackInput) {
   // This exchange belongs to the login attempt, not to an abortable route loader.
   await api("callback", {
     method: "POST", body: { code, state, redirect_uri: redirectUri },
   });
 }
 
-export async function getCurrentUser({ signal } = {}) {
+export async function getCurrentUser({ signal }: RequestOptions = {}): Promise<CurrentUser | null> {
   let response;
   try {
     response = await api("me", { signal });
@@ -88,7 +133,7 @@ export async function getCurrentUser({ signal } = {}) {
     if (error instanceof AuthError && error.status === 401) return null;
     throw error;
   }
-  const user = await response.json();
+  const user: CurrentUser | null = await response.json();
   if (!user || typeof user.issuer !== "string" || !user.issuer
     || typeof user.subject !== "string" || !user.subject) {
     throw new AuthError("invalid_user_response", 502);
@@ -102,7 +147,7 @@ export async function logout() {
   callback = undefined;
 }
 
-export function finishCallback(value) {
+export function finishCallback(value: string | URL): Promise<CallbackResult | null> | null {
   const url = new URL(value);
   if (!["code", "state", "error"].some((name) => url.searchParams.has(name))) {
     // A navigation can supersede the callback while its non-abortable exchange is running.
@@ -112,21 +157,26 @@ export function finishCallback(value) {
   }
   consoleUrl(url);
   if (callback?.url === url.href) return callback.promise;
-  const attempt = { url: url.href, pending: true };
-  attempt.promise = exchangeCallback(url).finally(() => { attempt.pending = false; });
+  const attempt: CallbackAttempt = {
+    url: url.href,
+    pending: true,
+    promise: exchangeCallback(url),
+  };
+  attempt.promise = attempt.promise.finally(() => { attempt.pending = false; });
   callback = attempt;
   return attempt.promise;
 }
 
-async function exchangeCallback(url) {
+async function exchangeCallback(url: URL): Promise<CallbackResult> {
   const clean = new URL(url);
   for (const name of callbackParams) clean.searchParams.delete(name);
   let destination = clean;
   let submitted = false;
-  let failure;
+  let failure: unknown;
   try {
-    const pending = JSON.parse(window.sessionStorage.getItem(pendingKey) ?? "null");
-    if (typeof pending?.redirectUri !== "string" || typeof pending?.returnTo !== "string") {
+    const pending: unknown = JSON.parse(window.sessionStorage.getItem(pendingKey) ?? "null");
+    if (!isRecord(pending) || typeof pending.redirectUri !== "string"
+      || typeof pending.returnTo !== "string") {
       throw new AuthError("missing_login_context", 400);
     }
     const redirect = consoleUrl(pending.redirectUri);
@@ -140,16 +190,18 @@ async function exchangeCallback(url) {
     }
     destination = returnTo;
     const params = url.searchParams;
+    const code = params.get("code");
+    const state = params.get("state");
     if (callbackParams.some((name) => params.getAll(name).length > 1)
-      || !params.get("state") || params.has("code") === params.has("error")) {
+      || !state || params.has("code") === params.has("error")) {
       throw new AuthError("invalid_callback", 400);
     }
     if (params.has("error")) throw new AuthError("oidc_authorization_failed", 400);
-    if (!params.get("code")) throw new AuthError("invalid_callback", 400);
+    if (!code) throw new AuthError("invalid_callback", 400);
     submitted = true;
     await completeCallback({
-      code: params.get("code"),
-      state: params.get("state"),
+      code,
+      state,
       redirectUri: pending.redirectUri,
     });
   } catch (error) {

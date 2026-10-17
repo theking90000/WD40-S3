@@ -1,5 +1,6 @@
+import type { ReactNode } from "react";
 import { Link, Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
-import { authMiddleware } from "./auth-router.js";
+import { authMiddleware } from "./auth-router.ts";
 import "./style.css";
 
 export const clientMiddleware = [authMiddleware];
@@ -12,9 +13,9 @@ export function loader() {
 export function clientLoader() {
   return null;
 }
-clientLoader.hydrate = true;
+clientLoader.hydrate = true as const;
 
-export function Layout({ children }) {
+export function Layout({ children }: { children: ReactNode }) {
   return (
     <html lang="fr">
       <head>

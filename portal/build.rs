@@ -31,8 +31,9 @@ fn main() -> io::Result<()> {
     for name in [
         "package.json",
         "package-lock.json",
-        "vite.config.js",
-        "react-router.config.js",
+        "vite.config.ts",
+        "react-router.config.ts",
+        "tsconfig.json",
         "src",
     ] {
         println!("cargo::rerun-if-changed=console/{name}");

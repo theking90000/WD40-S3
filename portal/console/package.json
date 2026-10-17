@@ -7,7 +7,8 @@
     "node": ">=22.22.0"
   },
   "scripts": {
-    "build": "react-router build"
+    "build": "react-router build",
+    "typecheck": "react-router typegen && tsc --noEmit"
   },
   "dependencies": {
     "isbot": "5.2.2",
@@ -18,6 +19,10 @@
   "devDependencies": {
     "@react-router/dev": "8.4.0",
     "@react-router/fs-routes": "8.4.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^6.0.0",
     "vite": "8.3.4"
   }
 }

@@ -1,35 +1,45 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createMemoryRouter } from "react-router";
-import { AuthError, finishCallback, getLoginUrl, logout } from "./auth.js";
-import { authMiddleware, optionalUser, withUser } from "./auth-router.js";
+import type { RouteObject } from "react-router";
+import { AuthError, finishCallback, getLoginUrl, logout } from "./auth.ts";
+import type { CurrentUser } from "./auth.ts";
+import { authMiddleware, optionalUser, withUser } from "./auth-router.ts";
 
 test("callbacks precede guarded loaders, public routes skip user lookup, and failures do not log in", async (t) => {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
-  const storage = new Map();
-  globalThis.window = {
-    location: { href: "http://localhost/" },
-    sessionStorage: {
-      getItem: (key) => storage.get(key) ?? null,
-      setItem: (key, value) => storage.set(key, value),
-      removeItem: (key) => storage.delete(key),
+  const storage = new Map<string, string>();
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      location: { href: "http://localhost/" },
+      sessionStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => storage.set(key, value),
+        removeItem: (key: string) => storage.delete(key),
+      },
     },
-  };
+  });
   t.after(() => {
     if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
-    else delete globalThis.window;
+    else Reflect.deleteProperty(globalThis, "window");
   });
 
-  const calls = [];
+  const calls: Array<{ url: string; options?: RequestInit }> = [];
   let authenticated = false;
   let unavailable = false;
-  const user = { issuer: "https://identity.example", subject: "alice" };
-  t.mock.method(globalThis, "fetch", async (url, options) => {
+  const user: CurrentUser = {
+    issuer: "https://identity.example", subject: "alice",
+    name: null, email: null, email_verified: null, roles: [], groups: [],
+  };
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, options: RequestInit = {}) => {
+    const url = input instanceof Request ? input.url : String(input);
     calls.push({ url, options });
     assert.equal(options.credentials, "same-origin");
-    if (options.method === "POST") assert.equal(options.headers.get("X-WD40-Portal"), "1");
+    if (options.method === "POST") assert.equal(new Headers(options.headers).get("X-WD40-Portal"), "1");
     if (url === "/api/login") return Response.json({ url: "https://identity.example/authorize" });
     if (url === "/api/callback") {
+      assert.ok(typeof options.body === "string");
       const body = JSON.parse(options.body);
       if (!body.code) return Response.json({ error: "invalid_request" }, { status: 400 });
       assert.equal(body.redirect_uri, "http://localhost/private?view=a%20b");
@@ -49,8 +59,8 @@ test("callbacks precede guarded loaders, public routes skip user lookup, and fai
   });
 
   const rootLoader = () => null;
-  rootLoader.hydrate = true;
-  const routes = [{
+  rootLoader.hydrate = true as const;
+  const routes: RouteObject[] = [{
     id: "root",
     path: "/",
     middleware: [authMiddleware],
@@ -77,7 +87,7 @@ test("callbacks precede guarded loaders, public routes skip user lookup, and fai
 
   async function idle(target = router) {
     if (target.state.initialized && target.state.navigation.state === "idle") return;
-    await new Promise((resolve) => {
+    await new Promise<void>((resolve) => {
       const unsubscribe = target.subscribe((state) => {
         if (state.initialized && state.navigation.state === "idle") {
           unsubscribe();
@@ -107,7 +117,9 @@ test("callbacks precede guarded loaders, public routes skip user lookup, and fai
   unavailable = true;
   await router.revalidate();
   await idle();
-  assert.ok(Object.values(router.state.errors ?? {}).some((error) => error.status === 503));
+  assert.ok(Object.values(router.state.errors ?? {}).some((error) => (
+    error instanceof AuthError && error.status === 503
+  )));
   assert.equal(calls.filter(({ url }) => url === "/api/login").length, 1);
   unavailable = false;
 

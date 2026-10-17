@@ -3,7 +3,7 @@ import { useState } from "react";
 export default function Status() {
   const [status, setStatus] = useState("Non vérifié");
 
-  async function check() {
+  async function check(): Promise<void> {
     setStatus("Vérification…");
     try {
       const response = await fetch(`${import.meta.env.BASE_URL}api/health`);
