@@ -15,7 +15,9 @@ async fn main() -> std::io::Result<()> {
         issuer_url: args.portal.oidc_issuer_url,
         client_id: args.portal.oidc_client_id,
         client_secret: args.portal.oidc_client_secret,
-    }).await?.into_router();
+    })
+    .await?
+    .into_router();
     let listener = tokio::net::TcpListener::bind(args.portal.listen).await?;
     let basename = env!("WD40_PORTAL_BASE_PATH").trim_end_matches('/');
     let router = if basename.is_empty() {
@@ -23,7 +25,11 @@ async fn main() -> std::io::Result<()> {
     } else {
         axum::Router::new().nest_service(basename, router)
     };
-    eprintln!("Portal listening on {}{}/", listener.local_addr()?, basename);
+    eprintln!(
+        "Portal listening on {}{}/",
+        listener.local_addr()?,
+        basename
+    );
     axum::serve(listener, router)
         .with_graceful_shutdown(async {
             if let Err(error) = tokio::signal::ctrl_c().await {

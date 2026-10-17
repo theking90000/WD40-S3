@@ -26,8 +26,7 @@ async fn file(uri: Uri) -> Response {
     };
     let basename = env!("WD40_PORTAL_BASE_PATH").trim_matches('/');
     let file = [path, index.as_str()].into_iter().find_map(|path| {
-        ConsoleAssets::get(&format!("{basename}/{path}"))
-            .or_else(|| ConsoleAssets::get(path))
+        ConsoleAssets::get(&format!("{basename}/{path}")).or_else(|| ConsoleAssets::get(path))
     });
     let Some(file) = file else {
         return StatusCode::NOT_FOUND.into_response();
@@ -54,11 +53,17 @@ async fn serves_prerendered_pages_and_returns_404_for_missing_paths() {
         let response = file(Uri::from_static(path)).await;
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
-            response.headers().get(header::CONTENT_TYPE).and_then(|value| value.to_str().ok()),
+            response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
             Some("text/html"),
         );
     }
     for path in ["/missing", "/api/missing", "/assets/missing.js"] {
-        assert_eq!(file(Uri::from_static(path)).await.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            file(Uri::from_static(path)).await.status(),
+            StatusCode::NOT_FOUND
+        );
     }
 }

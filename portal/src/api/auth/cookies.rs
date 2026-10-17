@@ -1,6 +1,9 @@
 use std::net::IpAddr;
 
-use axum::{http::{HeaderMap, header}, response::{IntoResponse, Response}};
+use axum::{
+    http::{HeaderMap, header},
+    response::{IntoResponse, Response},
+};
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use openidconnect::url::{Host, Url};
 use subtle::ConstantTimeEq;
@@ -29,14 +32,18 @@ fn loopback(url: &Url) -> bool {
 
 impl Cookies {
     pub(super) fn from_headers(headers: &HeaderMap) -> Self {
-        let host = headers.get(header::HOST)
+        let host = headers
+            .get(header::HOST)
             .and_then(|value| value.to_str().ok())
             .and_then(|value| Url::parse(&format!("http://{value}")).ok());
-        let origin = headers.get(header::ORIGIN)
+        let origin = headers
+            .get(header::ORIGIN)
             .and_then(|value| value.to_str().ok())
             .and_then(|value| Url::parse(value).ok());
         let local_http = host.as_ref().is_some_and(loopback)
-            && origin.as_ref().is_none_or(|url| url.scheme() == "http" && loopback(url));
+            && origin
+                .as_ref()
+                .is_none_or(|url| url.scheme() == "http" && loopback(url));
         Self { local_http }
     }
 
@@ -59,7 +66,12 @@ impl Cookies {
         jar.add(self.cookie(kind, value, seconds))
     }
 
-    pub(super) fn set_token(self, jar: CookieJar, token: String, seconds: i64) -> Result<CookieJar, AuthError> {
+    pub(super) fn set_token(
+        self,
+        jar: CookieJar,
+        token: String,
+        seconds: i64,
+    ) -> Result<CookieJar, AuthError> {
         let cookie = self.cookie(ACCESS_TOKEN, token, seconds);
         if cookie.encoded().to_string().len() > 4096 {
             return Err(AuthError::upstream());
@@ -108,7 +120,9 @@ impl Cookies {
 pub(super) fn redirect_uri(value: String) -> Result<openidconnect::RedirectUrl, AuthError> {
     let uri = openidconnect::RedirectUrl::new(value).map_err(|_| AuthError::invalid_request())?;
     let url = uri.url();
-    if url.host().is_none() || !url.username().is_empty() || url.password().is_some()
+    if url.host().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
         || url.fragment().is_some()
         || !(url.scheme() == "https" || url.scheme() == "http" && loopback(url))
     {
@@ -126,7 +140,12 @@ mod tests {
     #[test]
     fn state_is_bound_to_cookie_and_callback_always_clears_pending_cookies() {
         let policy = Cookies::from_headers(&HeaderMap::new());
-        let jar = policy.set(CookieJar::new(), STATE, "expected".to_owned(), LOGIN_SECONDS);
+        let jar = policy.set(
+            CookieJar::new(),
+            STATE,
+            "expected".to_owned(),
+            LOGIN_SECONDS,
+        );
         assert!(policy.check_state(&jar, "expected").is_ok());
         assert!(policy.check_state(&jar, "other").is_err());
         assert!(policy.check_state(&jar, "").is_err());
@@ -135,15 +154,31 @@ mod tests {
         let injected = CookieJar::new().add(Cookie::new("wd40_oidc_state", "expected"));
         assert!(policy.check_state(&injected, "expected").is_err());
 
-        for status in [StatusCode::NO_CONTENT, StatusCode::BAD_REQUEST, StatusCode::SERVICE_UNAVAILABLE] {
+        for status in [
+            StatusCode::NO_CONTENT,
+            StatusCode::BAD_REQUEST,
+            StatusCode::SERVICE_UNAVAILABLE,
+        ] {
             let response = policy.finish_callback(status.into_response());
-            let deletions: Vec<_> = response.headers().get_all(header::SET_COOKIE).iter()
-                .filter_map(|value| value.to_str().ok()).collect();
+            let deletions: Vec<_> = response
+                .headers()
+                .get_all(header::SET_COOKIE)
+                .iter()
+                .filter_map(|value| value.to_str().ok())
+                .collect();
             assert_eq!(response.status(), status);
             assert_eq!(deletions.len(), 6);
-            assert!(deletions.iter().all(|value| value.contains("Max-Age=0") && value.contains("HttpOnly")));
+            assert!(
+                deletions
+                    .iter()
+                    .all(|value| value.contains("Max-Age=0") && value.contains("HttpOnly"))
+            );
             for kind in [STATE, NONCE, PKCE] {
-                assert!(deletions.iter().any(|value| value.starts_with(&format!("__Host-wd40_oidc_{kind}="))));
+                assert!(
+                    deletions
+                        .iter()
+                        .any(|value| value.starts_with(&format!("__Host-wd40_oidc_{kind}=")))
+                );
             }
         }
 

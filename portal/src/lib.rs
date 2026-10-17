@@ -7,5 +7,5 @@ mod assets;
 pub mod cli;
 mod portal;
 
-pub use portal::Portal;
 pub use api::auth::{CurrentUser, OidcConfig};
+pub use portal::Portal;

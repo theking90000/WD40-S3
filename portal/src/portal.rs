@@ -30,4 +30,3 @@ impl Portal {
         TowerToHyperService::new(self.router)
     }
 }
-

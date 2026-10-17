@@ -1,7 +1,13 @@
-use axum::{http::{HeaderMap, StatusCode}, response::{IntoResponse, Response}};
+use axum::{
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
+};
 use axum_extra::extract::cookie::CookieJar;
 
-use super::{AuthError, browser_request, cookies::{self, Cookies}};
+use super::{
+    AuthError, browser_request,
+    cookies::{self, Cookies},
+};
 
 pub(super) async fn handle(headers: HeaderMap, jar: CookieJar) -> Result<Response, AuthError> {
     browser_request(&headers)?;

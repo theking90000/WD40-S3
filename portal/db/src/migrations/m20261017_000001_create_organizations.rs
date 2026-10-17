@@ -10,7 +10,12 @@ impl MigrationTrait for Migration {
             .create_table(
                 Table::create()
                     .table(Organizations::Table)
-                    .col(ColumnDef::new(Organizations::Id).uuid().not_null().primary_key())
+                    .col(
+                        ColumnDef::new(Organizations::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(Organizations::Name).text().not_null())
                     .col(
                         ColumnDef::new(Organizations::CreatedAt)

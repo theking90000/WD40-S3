@@ -8,7 +8,11 @@ use axum::{
 use axum_extra::extract::cookie::CookieJar;
 use openidconnect::AccessToken;
 
-use super::{AuthError, cookies::{self, Cookies}, oidc::Oidc};
+use super::{
+    AuthError,
+    cookies::{self, Cookies},
+    oidc::Oidc,
+};
 
 pub(super) async fn authenticate(
     State(oidc): State<Arc<Oidc>>,
@@ -18,7 +22,9 @@ pub(super) async fn authenticate(
     let policy = Cookies::from_headers(request.headers());
     let jar = CookieJar::from_headers(request.headers());
     let user = match policy.get(&jar, cookies::ACCESS_TOKEN) {
-        Some(value) if !value.is_empty() => oidc.current_user(AccessToken::new(value.to_owned())).await,
+        Some(value) if !value.is_empty() => {
+            oidc.current_user(AccessToken::new(value.to_owned())).await
+        }
         _ => Err(AuthError::unauthorized()),
     };
     match user {

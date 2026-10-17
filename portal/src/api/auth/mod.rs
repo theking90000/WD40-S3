@@ -20,11 +20,9 @@ use serde::Serialize;
 pub use oidc::{CurrentUser, OidcConfig};
 
 pub(super) fn router(oidc: Arc<oidc::Oidc>) -> Router {
-    let protected = Router::new()
-        .route("/api/me", get(me::handle))
-        .route_layer(axum::middleware::from_fn_with_state(
-            oidc.clone(), middleware::authenticate,
-        ));
+    let protected = Router::new().route("/api/me", get(me::handle)).route_layer(
+        axum::middleware::from_fn_with_state(oidc.clone(), middleware::authenticate),
+    );
 
     Router::new()
         .route("/api/login", post(login::handle))
@@ -76,18 +74,25 @@ impl IntoResponse for AuthError {
 // Requiring a non-safelisted header prevents browser cross-origin form submissions.
 // Do not enable credentialed cross-origin access around these routes.
 pub(super) fn browser_request(headers: &HeaderMap) -> Result<(), AuthError> {
-    if headers.get("x-wd40-portal").and_then(|value| value.to_str().ok()) != Some("1") {
+    if headers
+        .get("x-wd40-portal")
+        .and_then(|value| value.to_str().ok())
+        != Some("1")
+    {
         return Err(AuthError::new(StatusCode::FORBIDDEN, "csrf_rejected"));
     }
-    if headers.get("sec-fetch-site").is_some_and(|value| {
-        value != "same-origin" && value != "none"
-    }) {
+    if headers
+        .get("sec-fetch-site")
+        .is_some_and(|value| value != "same-origin" && value != "none")
+    {
         return Err(AuthError::new(StatusCode::FORBIDDEN, "csrf_rejected"));
     }
     Ok(())
 }
 
 pub(super) fn no_cache(response: &mut Response) {
-    response.headers_mut().insert(header::CACHE_CONTROL,
-        axum::http::HeaderValue::from_static("no-store"));
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
 }

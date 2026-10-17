@@ -18,16 +18,23 @@ fn main() -> io::Result<()> {
         || basename.contains(['?', '#', '\\', '\n', '\r', '{', '}', '*', ':'])
         || basename.split('/').any(|part| matches!(part, "." | ".."))
     {
-        return Err(io::Error::other("WD40_PORTAL_BASE_PATH must be an absolute URL path ending with /"));
+        return Err(io::Error::other(
+            "WD40_PORTAL_BASE_PATH must be an absolute URL path ending with /",
+        ));
     }
     println!("cargo::rustc-env=WD40_PORTAL_BASE_PATH={basename}");
 
     let manifest = env::var_os("CARGO_MANIFEST_DIR")
         .ok_or_else(|| io::Error::other("CARGO_MANIFEST_DIR is missing"))?;
-    let output = env::var_os("OUT_DIR")
-        .ok_or_else(|| io::Error::other("OUT_DIR is missing"))?;
+    let output = env::var_os("OUT_DIR").ok_or_else(|| io::Error::other("OUT_DIR is missing"))?;
     let console = Path::new(&manifest).join("console");
-    for name in ["package.json", "package-lock.json", "vite.config.js", "react-router.config.js", "src"] {
+    for name in [
+        "package.json",
+        "package-lock.json",
+        "vite.config.js",
+        "react-router.config.js",
+        "src",
+    ] {
         println!("cargo::rerun-if-changed=console/{name}");
     }
 
@@ -42,10 +49,16 @@ fn main() -> io::Result<()> {
             .env("npm_config_cache", Path::new(&output).join("npm-cache"))
             .status()
             .map_err(|error| {
-                io::Error::new(error.kind(), format!("cannot run npm; install Node.js and npm: {error}"))
+                io::Error::new(
+                    error.kind(),
+                    format!("cannot run npm; install Node.js and npm: {error}"),
+                )
             })?;
         if !status.success() {
-            return Err(io::Error::other(format!("npm {} failed: {status}", args.join(" "))));
+            return Err(io::Error::other(format!(
+                "npm {} failed: {status}",
+                args.join(" ")
+            )));
         }
     }
     Ok(())
