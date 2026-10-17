@@ -7,6 +7,9 @@ mod entities;
 mod migrations;
 
 pub use entities::organization::{self, Model as Organization};
+pub use entities::organization_member::{
+    self, Model as OrganizationMember, OrganizationMemberAccess,
+};
 pub use migrations::Migrator;
 pub use sea_orm::{self, ConnectOptions, Database, DatabaseConnection, DbErr};
 pub use sea_orm_migration::MigratorTrait;

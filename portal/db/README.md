@@ -27,6 +27,25 @@ direct entity inserts must supply identifiers themselves. The database fills
 an omitted `created_at` with `CURRENT_TIMESTAMP`; updates leave it unchanged
 unless explicitly set. Names are not required to be unique.
 
+## Organization members
+
+`portal_db::OrganizationMember` is the persisted model;
+`portal_db::organization_member` exposes its SeaORM entity and active model.
+The `organization_members` table contains `organization_id: Uuid`,
+`email: String`, `access: OrganizationMemberAccess` and
+`created_at: DateTimeWithTimeZone`, all required.
+
+The primary key is `(organization_id, email)`. An email can belong to multiple
+organizations, once per organization. Emails are stored as supplied.
+`OrganizationMemberAccess::Member` and `OrganizationMemberAccess::Owner` are
+stored as `MEMBER` and `OWNER`. A database check constraint rejects other values;
+inserts must supply access explicitly. The database fills an omitted
+`created_at` with `CURRENT_TIMESTAMP`.
+
+SeaORM relations connect each member to its organization and each organization
+to its members. The foreign key references `organizations.id` with
+`ON DELETE CASCADE`, so deleting an organization removes its memberships.
+
 ## Code structure
 
 Add the following modules as the schema grows; do not create empty placeholders:
