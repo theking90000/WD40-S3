@@ -1,14 +1,19 @@
 # Portal
 
-Minimal portal service with a Vite and React Router framework console, prerendered
-during compilation. OIDC, organizations and WD40 RPC operations are not
-implemented yet. `GET /api/health` returns `ok`.
+Portal service with OIDC authentication and a Vite and React Router framework
+console, prerendered during compilation. The Rust authentication API is available;
+the console login flow, organizations API and WD40 RPC operations are not
+implemented yet. `GET /api/health` returns `ok` without authentication.
 
 ## Standalone
 
-Install Node.js 22.22+ with npm, then run from the repository root:
+Install Node.js 22.22+ with npm, configure a confidential OIDC client, then run
+from the repository root:
 
 ```sh
+export WD40_PORTAL_OIDC_ISSUER_URL=https://identity.example.com
+export WD40_PORTAL_OIDC_CLIENT_ID=wd40-portal
+# Supply WD40_PORTAL_OIDC_CLIENT_SECRET through your secret management.
 cargo run -p portal --features standalone
 ```
 
@@ -69,18 +74,174 @@ missing files and unknown routes return 404. There is no SPA navigation fallback
 
 ## Library
 
-`Portal::new()` constructs the service without opening a listener or starting tasks.
+`Portal::new(config).await` discovers the configured OIDC provider and fetches its
+public keys, without opening a listener or starting background tasks. Discovery
+and configuration failures return `std::io::Error`. The caller owns the runtime.
 `into_router()` returns an `axum::Router`; `into_service()` returns a
 `hyper_util::service::TowerToHyperService<axum::Router>` for Hyper integration.
 
 ```rust
-let portal = portal::Portal::new();
+let portal = portal::Portal::new(portal::OidcConfig {
+    issuer_url,
+    client_id,
+    client_secret,
+}).await?;
 let service = portal.into_service();
 ```
 
 Features default to empty. `cli` exposes composable `PortalArgs`. `embed-console`
 builds and embeds the console for library consumers too. `standalone` enables
 both features and the executable. Builds without `embed-console` do not run npm.
+
+## OIDC configuration
+
+The standalone server requires three OIDC environment variables, also available
+as `--oidc-issuer-url`, `--oidc-client-id` and `--oidc-client-secret`:
+
+| Variable | Value |
+| --- | --- |
+| `WD40_PORTAL_OIDC_ISSUER_URL` | Exact issuer advertised by the provider, including its path if any. |
+| `WD40_PORTAL_OIDC_CLIENT_ID` | Confidential client ID for this portal. |
+| `WD40_PORTAL_OIDC_CLIENT_SECRET` | Client secret, used only by Rust. |
+
+These are runtime settings. They never enter the console build. The client uses
+Authorization Code with PKCE S256 and requests `openid profile email`. Configure
+the client's allowed callback URLs and any additional default scopes in Rauthy.
+There is no portal redirect-URI environment variable: React supplies its public
+callback URL for each login, including the deployment prefix when applicable.
+The provider enforces its callback allowlist. The same URI must be supplied again
+when exchanging the code.
+
+Discovery must advertise token, UserInfo and introspection endpoints. Client
+authentication uses HTTP Basic. Issuer and endpoint URLs must use HTTPS, except
+for HTTP loopback development. The shared asynchronous HTTP client refuses
+redirects and uses a 5-second connection timeout and 10-second request timeout.
+Discovery keys are held for the life of the service; restart the portal to fetch
+new keys if the provider rotates signing keys.
+
+## Authentication API
+
+Console and API must share an origin. Every POST below requires the header
+`X-WD40-Portal: 1`. Login and callback also require `Content-Type: application/json`.
+Cross-origin browser requests are not supported: do not wrap these routes in a
+credentialed CORS policy allowing other origins. When present, `Sec-Fetch-Site`
+must be `same-origin` or `none`. All authentication responses use
+`Cache-Control: no-store`.
+
+### POST /api/login
+
+```json
+{ "redirect_uri": "https://console.example.com/portal/auth/callback" }
+```
+
+Returns `200` with `{ "url": "https://identity.example.com/..." }`. React navigates
+to that URL. Rust generates independent random state, nonce and PKCE verifier
+values and sets three temporary HttpOnly cookies, valid for five minutes. These
+cookies contain the random values directly; they are neither encrypted nor backed
+by server storage. The PKCE verifier stays out of the authorization URL.
+
+Callback URLs must be absolute HTTPS URLs, or HTTP loopback URLs for development,
+without credentials or fragments. The React callback page will be implemented
+separately and must be included in the console's prerendered routes.
+
+### POST /api/callback
+
+After Rauthy redirects to the React page with `code` and `state`, React sends:
+
+```json
+{
+  "code": "code-from-rauthy",
+  "state": "state-from-rauthy",
+  "redirect_uri": "https://console.example.com/portal/auth/callback"
+}
+```
+
+React does not generate or retain a nonce, PKCE verifier or challenge. The browser
+sends the HttpOnly cookies automatically. Rust compares the supplied state with
+the cookie, exchanges the code using the cookie's verifier, and validates the ID
+token's signature, issuer, audience, expiry and nonce. It also checks `azp` and
+`at_hash` when present, and introspects the access token to verify its subject and
+client binding before setting the authentication cookie.
+
+Success returns `204` and an HttpOnly cookie containing only the access token.
+No token appears in the response body. The temporary state, nonce and PKCE cookies
+are expired on every callback response, including malformed JSON, mismatched state
+and provider failures. React can then fetch `/api/me` and navigate to its desired
+page. If Rauthy returns an authorization error instead of a code, submitting that
+failure to this endpoint returns `400` and also clears the temporary cookies.
+
+Production cookies are named `__Host-wd40_oidc_state`, `__Host-wd40_oidc_nonce`,
+`__Host-wd40_oidc_pkce` and `__Host-wd40_oidc_access_token`. They use `Secure`,
+`HttpOnly`, `SameSite=Lax`, `Path=/` and no `Domain`. HTTP loopback development
+uses the same names without `__Host-` and permits cookies without `Secure`.
+Production never accepts these development cookies. Reverse proxies must
+preserve the public `Host`; forwarded headers are not trusted for this decision.
+All cookies belong to the origin, including when mounted under `/portal/`.
+Starting another login on the same origin replaces the pending login cookies.
+
+The access-token cookie lifetime is bounded by the provider's expiration. Tokens
+whose serialized cookie exceeds 4096 bytes are rejected. Refresh tokens are not
+stored; start another login when the access token expires.
+
+### GET /api/me
+
+Requires the access-token cookie. Authentication middleware performs an
+introspection request, checks token activity, expiry, subject and client binding,
+then fetches UserInfo and checks that its subject matches. No user or token cache
+is maintained. The provider must return `exp`, `sub`, and `client_id` or an audience
+containing the configured client ID. Any additional issuer, client ID or audience
+returned must also match. A token explicitly identified as a non-Bearer token is
+rejected.
+
+The handler returns the `CurrentUser` placed in request extensions:
+
+```json
+{
+  "issuer": "https://identity.example.com",
+  "subject": "user-subject",
+  "name": "Alice",
+  "email": "alice@example.com",
+  "email_verified": true,
+  "roles": [],
+  "groups": []
+}
+```
+
+`name`, `email` and `email_verified` may be null. Roles and groups are read when
+included in UserInfo; absent claims produce empty lists. They do not grant portal
+permissions automatically. Identity is the `(issuer, subject)` pair; email is
+display data. Profiles and memberships remain owned by the provider. Their
+freshness and revocation behavior depend on the provider's introspection and
+UserInfo implementations.
+
+Add protected routes to the same router group as `/api/me` in `api/auth/mod.rs`;
+handlers can extract `Extension<portal::CurrentUser>`. Assets and health remain
+public.
+
+### POST /api/logout
+
+Requires `X-WD40-Portal: 1`, including when no authentication cookie is present.
+Returns `204`, expires the access-token cookie and clears pending login cookies.
+It does not log out of Rauthy or revoke a copied token.
+
+### Errors
+
+Errors return JSON such as `{ "error": "unauthenticated" }`:
+
+| Status | Meaning |
+| --- | --- |
+| `400` | Malformed callback/login input, or invalid authorization code. |
+| `401` | Missing or mismatched state, invalid ID token, or missing/invalid access token. |
+| `403` | Missing browser-request header or rejected fetch origin context. |
+| `413` | Authentication request body exceeds 16 KiB. |
+| `502` | Invalid or unsupported provider response, including missing required claims. |
+| `503` | Provider request failed or timed out. |
+
+Invalid authentication cookies are expired on `401`. Provider outages preserve
+the access-token cookie. JSON extractor rejections on login retain Axum's status
+with a JSON error body; the callback normalizes malformed input to JSON `400` so
+it can always expire its temporary cookies. No authentication payload or provider
+error body is logged.
 
 ## Rust architecture
 

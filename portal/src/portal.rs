@@ -1,7 +1,10 @@
+use std::{io, sync::Arc};
+
 use axum::Router;
 use hyper_util::service::TowerToHyperService;
 
 use crate::api;
+use crate::api::auth::{OidcConfig, oidc::Oidc};
 #[cfg(feature = "embed-console")]
 use crate::assets;
 
@@ -11,11 +14,12 @@ pub struct Portal {
 }
 
 impl Portal {
-    pub fn new() -> Self {
-        let router = api::router();
+    pub async fn new(config: OidcConfig) -> io::Result<Self> {
+        let oidc = Arc::new(Oidc::new(config).await?);
+        let router = api::router(oidc);
         #[cfg(feature = "embed-console")]
         let router = router.merge(assets::router());
-        Self { router }
+        Ok(Self { router })
     }
 
     pub fn into_router(self) -> Router {
@@ -27,8 +31,3 @@ impl Portal {
     }
 }
 
-impl Default for Portal {
-    fn default() -> Self {
-        Self::new()
-    }
-}

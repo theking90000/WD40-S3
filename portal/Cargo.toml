@@ -15,7 +15,14 @@ path = "src/main.rs"
 required-features = ["standalone"]
 
 [dependencies]
-axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio"] }
+axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "json"] }
+axum-extra = { version = "0.12.6", default-features = false, features = ["cookie"] }
+openidconnect = "=4.0.1"
+serde = { version = "1", features = ["derive"] }
+base64 = "0.22"
+getrandom = "0.4"
+subtle = "2.6"
+time = { version = "0.3", default-features = false }
 hyper-util = { version = "0.1.21", features = ["service"] }
 clap = { version = "4.6.7", features = ["derive", "env"], optional = true }
 tokio = { version = "1.53.3", features = ["macros", "rt-multi-thread", "net", "signal"], optional = true }

@@ -8,3 +8,4 @@ pub mod cli;
 mod portal;
 
 pub use portal::Portal;
+pub use api::auth::{CurrentUser, OidcConfig};
