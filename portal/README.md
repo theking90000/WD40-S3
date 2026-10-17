@@ -82,6 +82,16 @@ Features default to empty. `cli` exposes composable `PortalArgs`. `embed-console
 builds and embeds the console for library consumers too. `standalone` enables
 both features and the executable. Builds without `embed-console` do not run npm.
 
+## Rust architecture
+
+- `lib.rs` declares modules and public exports; `portal.rs` assembles the service.
+- `api/mod.rs` assembles API routes. Group new features under `api/<feature>/`,
+  with routes in `mod.rs` and one file per operation as the feature grows.
+- Keep each handler, its request/response types and operation-specific logic together.
+  Extract shared logic within the feature only when needed; reuse existing WD40 crates.
+- Keep modules private by default. `assets.rs` serves the console; `cli.rs` and
+  `main.rs` handle CLI arguments and standalone startup.
+
 ## Deployment prefix
 
 The default public path is `/`. For a prefix, set `WD40_PORTAL_BASE_PATH` during
