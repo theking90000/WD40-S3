@@ -61,7 +61,9 @@ Dynamic routes require concrete URLs in React Router's `prerender` configuration
 `console/src/routes.ts` declares the login route, an authenticated session layout,
 and an organization layout. `/` selects or creates an organization; `/login`
 starts authentication. Application pages require an organization: `/{organization_id}/`
-is its home and `/{organization_id}/status` is the service status page.
+is its overview and `/{organization_id}/members` lists organization members.
+`/{organization_id}/status` remains available directly but is not linked from the
+navigation. Buckets, access keys and settings are visible but disabled.
 
 `npm run build` invokes the official `react-router build` command, which uses Vite
 to build and prerender the application. The default Web Streams rendering entry
@@ -84,7 +86,7 @@ require changing Rust routes. The temporary server build is not embedded.
 
 Hashed files under `assets/` use `Cache-Control: public, max-age=31536000, immutable`.
 Other files use `Cache-Control: no-cache`. A GET/HEAD fallback serves files after
-the API routes. Recognized organization URLs, with a UUID and an optional `/status`
+the API routes. Recognized organization URLs, with a UUID and an optional `/status` or `/members`
 suffix, serve React Router's SPA document for direct loads and refreshes. This is
 `__spa-fallback.html`, or the root `index.html` when building with a deployment
 prefix, whose prerendered pages live below that prefix.
@@ -550,7 +552,23 @@ The left navigation switches organizations above the workspace links and offers
 the same creation dialog, including in the mobile navigation drawer.
 Creation updates the shared cache from the POST response and opens the new
 organization without an immediate GET. Results from a previous session are ignored.
-The console does not expose member management yet.
+### Organization members in the console
+
+`/{organization_id}/members` uses the existing table, dialog and confirmation
+components. Members can search the list locally by email and see access levels
+and creation dates. Owners can add an email with `MEMBER` access or remove an
+ordinary member after confirmation. Owner removal and role changes are not offered.
+Adding a member grants access directly; no invitation email is sent.
+
+`organization-members.ts` defines the API calls and TanStack Query options. The
+query key includes the authenticated identity and organization ID, with a
+60-second freshness window and no polling. Successful mutations update the
+matching cached list after cancelling older reads; results from previous sessions
+are ignored. The sidebar observes the cached count without fetching members on
+other pages. The page handles loading, empty searches, request errors and refresh.
+Permission errors refresh the caller's organizations; an expired session returns
+to login and a lost organization membership returns to the chooser. The Rust
+fallback serves direct `/members` loads under the configured deployment prefix.
 
 The focused integration check is available from `portal/console/` with
 `node --test src/auth.test.ts`. Node.js strips the TypeScript types directly.

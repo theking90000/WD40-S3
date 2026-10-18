@@ -4,7 +4,8 @@ import { cn } from "~/lib/utils";
 
 interface ShellNavigationItem {
   label: string;
-  to: string;
+  to?: string;
+  disabled?: boolean;
   icon: LucideIcon;
   end?: boolean;
   count?: number;
@@ -28,9 +29,28 @@ export function ShellNavigation({ groups, onNavigate }: ShellNavigationProps) {
           <p className="px-2.5 pb-1.5 text-[10.5px] font-semibold text-muted-foreground">
             {group.label}
           </p>
-          {group.items.map((item) => (
-            <NavLink
-              key={item.to}
+          {group.items.map((item) => {
+            const content = (
+              <>
+                <item.icon aria-hidden="true" className="size-4 shrink-0 opacity-85" strokeWidth={1.6} />
+                <span className="min-w-0 truncate">{item.label}</span>
+                {item.count !== undefined && (
+                  <span className="ml-auto rounded-full bg-foreground-soft px-1.75 py-px text-[10px] font-semibold text-muted-foreground tabular-nums">
+                    {item.count}
+                  </span>
+                )}
+              </>
+            );
+            if (item.disabled || !item.to) {
+              return (
+                <span key={item.label} role="link" aria-disabled="true" title="Non disponible"
+                  className="flex min-h-9.5 cursor-not-allowed items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12.5px] text-muted-foreground opacity-45">
+                  {content}
+                </span>
+              );
+            }
+            return <NavLink
+              key={item.label}
               to={item.to}
               end={item.end}
               onClick={onNavigate}
@@ -41,15 +61,9 @@ export function ShellNavigation({ groups, onNavigate }: ShellNavigationProps) {
                   : "text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
             >
-              <item.icon aria-hidden="true" className="size-4 shrink-0 opacity-85" strokeWidth={1.6} />
-              <span className="min-w-0 truncate">{item.label}</span>
-              {item.count !== undefined && (
-                <span className="ml-auto rounded-full bg-foreground-soft px-1.75 py-px text-[10px] font-semibold text-muted-foreground tabular-nums">
-                  {item.count}
-                </span>
-              )}
-            </NavLink>
-          ))}
+              {content}
+            </NavLink>;
+          })}
         </div>
       ))}
     </nav>

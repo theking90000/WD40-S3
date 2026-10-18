@@ -24,7 +24,7 @@ fn organization_page(path: &str) -> bool {
     }
     match segments.next() {
         None => true,
-        Some("status") => segments.next().is_none(),
+        Some("status" | "members") => segments.next().is_none(),
         Some(_) => false,
     }
 }

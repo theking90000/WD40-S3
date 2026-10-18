@@ -1,6 +1,6 @@
 import { useOrganization } from "~/organization-router.ts";
 
-export const handle = { title: "Accueil" };
+export const handle = { title: "Vue d'ensemble" };
 
 export default function OrganizationHome() {
   const organization = useOrganization();

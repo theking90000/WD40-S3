@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef } from "react";
 import type { ReactNode } from "react";
 import { DatabaseIcon } from "lucide-react";
-import { useLocation } from "react-router";
+import { Link, useLocation } from "react-router";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { ShellNavigation } from "./navigation";
 import type { ShellNavigationGroup } from "./navigation";
@@ -16,6 +16,7 @@ interface SidebarContentProps {
 
 interface ConsoleShellProps extends Omit<SidebarContentProps, "onNavigate"> {
   title: string;
+  organizationId?: string;
   organizationName?: string;
   actions?: ReactNode;
   children: ReactNode;
@@ -50,6 +51,7 @@ export function ConsoleShell({
   title,
   navigation,
   organization,
+  organizationId,
   organizationName,
   account,
   actions,
@@ -83,11 +85,11 @@ export function ConsoleShell({
               )}
             </MobileNavigation>
             <nav aria-label="Fil d'Ariane" className="hidden min-w-0 items-center gap-1.75 text-[11.5px] text-muted-foreground min-[761px]:flex">
-              <span>Console</span>
+              <Link to="/" className="hover:text-foreground hover:underline underline-offset-4">Console</Link>
               <span aria-hidden="true">/</span>
-              {organizationName && (
+              {organizationName && organizationId && (
                 <>
-                  <span className="hidden truncate min-[961px]:inline">{organizationName}</span>
+                  <Link to={`/${organizationId}/`} className="hidden truncate hover:text-foreground hover:underline underline-offset-4 min-[961px]:inline">{organizationName}</Link>
                   <span aria-hidden="true" className="hidden min-[961px]:inline">/</span>
                 </>
               )}
