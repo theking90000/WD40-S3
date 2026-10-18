@@ -66,6 +66,7 @@ export async function createOrganization(user: CurrentUser, name: string) {
 export function organizationErrorMessage(error: unknown) {
   if (error instanceof AuthError) {
     if (error.code === "invalid_name") return "Le nom doit contenir entre 1 et 128 caractères.";
+    if (error.code === "organization_name_taken") return "Une organisation porte déjà ce nom.";
     if (error.code === "email_not_verified") return "Une adresse email vérifiée est nécessaire pour accéder aux organisations.";
     if (error.status === 401) return "Votre session a expiré. Reconnectez-vous pour continuer.";
   }

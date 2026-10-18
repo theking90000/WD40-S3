@@ -8,7 +8,7 @@ import { logout } from "../auth/session.ts";
 import type { CurrentUser } from "../auth/session.ts";
 import { authMiddleware, requireUserMiddleware, withUser } from "../auth/router.ts";
 import { organizationLoader, organizationMiddleware, selectionLoader } from "./router.ts";
-import { createOrganization, organizationsQuery, refreshOrganizations } from "./api.ts";
+import { createOrganization, organizationErrorMessage, organizationsQuery, refreshOrganizations } from "./api.ts";
 import type { Organization } from "./api.ts";
 import { currentUserKey, queryClient, resetQuerySession, setQueryUser } from "../../lib/query-client.ts";
 
@@ -42,6 +42,7 @@ test("organization cache and routing share requests and follow membership and se
   let listingError = false;
   let listingWait: Promise<void> | undefined;
   let creationWait: Promise<void> | undefined;
+  let nameTaken = false;
   t.mock.method(globalThis, "fetch", async (input: string | URL | Request, options: RequestInit = {}) => {
     const url = String(input);
     if (url === "/api/me") return currentUser ? Response.json(currentUser) : Response.json({ error: "unauthenticated" }, { status: 401 });
@@ -57,6 +58,7 @@ test("organization cache and routing share requests and follow membership and se
       assert.equal(new Headers(options.headers).get("X-WD40-Portal"), "1");
       assert.deepEqual(JSON.parse(String(options.body)), { name: "New" });
       await creationWait;
+      if (nameTaken) return Response.json({ error: "organization_name_taken" }, { status: 409 });
       return Response.json({ ...first, name: "New" }, { status: 201 });
     }
     listings += 1;
@@ -145,6 +147,20 @@ test("organization cache and routing share requests and follow membership and se
   assert.equal(listings, beforeCreation);
   assert.equal(queryClient.getQueryData(organizationsQuery(alice).queryKey)?.at(0)?.name, "New");
   await assert.rejects(createOrganization(alice, " "), (error) => error instanceof AuthError && error.code === "invalid_name");
+
+  nameTaken = true;
+  const cachedOrganizations = queryClient.getQueryData(organizationsQuery(alice).queryKey);
+  const locationBeforeConflict = router.state.location;
+  await assert.rejects(createOrganization(alice, "  New  "), (error) => {
+    assert.ok(error instanceof AuthError);
+    assert.equal(error.status, 409);
+    assert.equal(error.code, "organization_name_taken");
+    assert.equal(organizationErrorMessage(error), "Une organisation porte déjà ce nom.");
+    return true;
+  });
+  assert.equal(queryClient.getQueryData(organizationsQuery(alice).queryKey), cachedOrganizations);
+  assert.equal(router.state.location, locationBeforeConflict);
+  nameTaken = false;
 
   resetQuerySession();
   setQueryUser(alice);

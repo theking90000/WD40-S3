@@ -5,7 +5,7 @@ use sea_orm::{Set, entity::prelude::*};
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
-    #[sea_orm(column_type = "Text")]
+    #[sea_orm(column_type = "Text", unique)]
     pub name: String,
     pub created_at: DateTimeWithTimeZone,
 }

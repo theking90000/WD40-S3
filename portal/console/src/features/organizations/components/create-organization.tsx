@@ -47,7 +47,10 @@ function CreateOrganizationForm({ user, close }: { user: CurrentUser; close(): v
     }}>
       <Field data-invalid={mutation.isError}>
         <FieldLabel htmlFor={nameId}>Nom de l'organisation</FieldLabel>
-        <Input id={nameId} name="name" value={name} onChange={(event) => setName(event.target.value)}
+        <Input id={nameId} name="name" value={name} onChange={(event) => {
+          setName(event.target.value);
+          if (mutation.isError) mutation.reset();
+        }}
           placeholder="Mon organisation" autoComplete="organization" required disabled={mutation.isPending}
           aria-invalid={mutation.isError} aria-describedby={mutation.isError ? errorId : undefined} />
         {mutation.isError && <FieldError id={errorId}>{organizationErrorMessage(mutation.error)}</FieldError>}

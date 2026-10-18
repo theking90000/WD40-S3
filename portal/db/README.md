@@ -33,7 +33,9 @@ Inserting through `organization::ActiveModel::insert` or `save` generates a UUID
 v4 when `id` is unset. Random-source failures return a database error. Bulk or
 direct entity inserts must supply identifiers themselves. The database fills
 an omitted `created_at` with `CURRENT_TIMESTAMP`; updates leave it unchanged
-unless explicitly set. Names are not required to be unique.
+unless explicitly set. Names are globally unique and case-sensitive. The portal
+trims surrounding whitespace before insertion. The unique-name migration fails
+if existing rows contain duplicate names; it does not rename or delete them.
 
 ## Organization members
 

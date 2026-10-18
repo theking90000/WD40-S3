@@ -31,5 +31,8 @@ clap = { version = "4.6.7", features = ["derive", "env"], optional = true }
 tokio = { version = "1.53.3", features = ["macros", "rt-multi-thread", "net", "signal"], optional = true }
 rust-embed = { version = "8.13.0", default-features = false, features = ["debug-embed", "mime-guess"], optional = true }
 
+[dev-dependencies]
+tokio = { version = "1.53.3", features = ["macros", "rt"] }
+
 [lints.rust]
 unsafe_code = "forbid"
