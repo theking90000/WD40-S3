@@ -1,10 +1,7 @@
 use axum::{
     Extension, Json,
-    extract::{
-        Path, State,
-        rejection::{JsonRejection, PathRejection},
-    },
-    http::{HeaderMap, StatusCode},
+    extract::{State, rejection::JsonRejection},
+    http::StatusCode,
 };
 use portal_db::{
     DatabaseConnection, OrganizationMemberAccess, organization_member,
@@ -12,9 +9,7 @@ use portal_db::{
 };
 use serde::Deserialize;
 
-use crate::api::auth::{CurrentUser, browser_request};
-
-use super::{Error, MemberResponse, organization_id, require_owner};
+use super::{CurrentOrganization, Error, MemberResponse};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -24,15 +19,10 @@ pub(super) struct Request {
 
 pub(super) async fn handle(
     State(db): State<DatabaseConnection>,
-    Extension(user): Extension<CurrentUser>,
-    path: Result<Path<String>, PathRejection>,
-    headers: HeaderMap,
+    Extension(organization): Extension<CurrentOrganization>,
     payload: Result<Json<Request>, JsonRejection>,
 ) -> Result<(StatusCode, Json<MemberResponse>), Error> {
-    browser_request(&headers).map_err(|_| Error::new(StatusCode::FORBIDDEN, "csrf_rejected"))?;
-    let Path(id) = path?;
-    let id = organization_id(&id)?;
-    require_owner(&db, id, &user).await?;
+    organization.require_owner()?;
     let Json(request) = payload?;
     let email = request.email.trim();
     let has_parts = email.split_once('@').is_some_and(|(local, domain)| {
@@ -48,7 +38,7 @@ pub(super) async fn handle(
     }
 
     let member = organization_member::ActiveModel {
-        organization_id: Set(id),
+        organization_id: Set(organization.id),
         email: Set(email.to_owned()),
         access: Set(OrganizationMemberAccess::Member),
         ..Default::default()

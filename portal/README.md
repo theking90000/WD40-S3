@@ -334,6 +334,14 @@ plain-text content.
 ### Organization members
 
 Member routes check the caller's membership in the organization from the path.
+They are nested under `/api/organizations/{organization_id}`. After
+authentication, the middleware in `api/organizations/current.rs` checks CSRF for
+POST and DELETE, parses the UUID and loads the caller's membership once. It
+injects `CurrentOrganization { id, access }` into request extensions. Handlers
+extract `Extension<CurrentOrganization>` and use its `id` for their queries;
+write handlers call `organization.require_owner()` without another membership
+query. DELETE extracts only the named target `email` from the path.
+
 An absent membership or organization returns `404 organization_not_found`.
 Adding and removing members requires `OWNER`; ordinary members receive
 `403 owner_required` for these operations. Both `MEMBER` and `OWNER` can list

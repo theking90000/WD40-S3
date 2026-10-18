@@ -10,6 +10,6 @@ pub(super) fn router(oidc: Arc<auth::oidc::Oidc>, db: DatabaseConnection) -> Rou
     Router::new()
         .route("/api/health", get(health::handle))
         .merge(auth::router(oidc.clone()))
-        .merge(auth::protect(organizations::router(), oidc))
+        .merge(auth::protect(organizations::router(db.clone()), oidc))
         .with_state(db)
 }
