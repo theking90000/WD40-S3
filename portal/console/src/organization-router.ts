@@ -5,7 +5,7 @@ import { AuthError } from "./auth.ts";
 import type { CurrentUser } from "./auth.ts";
 import { requireUser, withUser } from "./auth-router.ts";
 import { isOrganizationId, organizationsQuery, refreshOrganizations } from "./organizations.ts";
-import { queryClient, resetQuerySession } from "./query-client.ts";
+import { queryClient } from "./query-client.ts";
 
 const organizationContext = createContext<string>();
 
@@ -21,7 +21,6 @@ async function loadOrganizations(args: LoaderFunctionArgs, user: CurrentUser) {
     return await queryClient.fetchQuery(organizationsQuery(user));
   } catch (error) {
     if (error instanceof AuthError && error.status === 401) {
-      resetQuerySession();
       const login = new URL(consolePath("login"), args.request.url);
       login.searchParams.set("returnTo", args.request.url);
       throw replace(login.href);

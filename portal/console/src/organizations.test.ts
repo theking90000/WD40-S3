@@ -9,7 +9,7 @@ import { authMiddleware, requireUserMiddleware, withUser } from "./auth-router.t
 import { organizationLoader, organizationMiddleware, selectionLoader } from "./organization-router.ts";
 import { createOrganization, organizationsQuery, refreshOrganizations } from "./organizations.ts";
 import type { Organization } from "./organizations.ts";
-import { queryClient, resetQuerySession, setQueryUser } from "./query-client.ts";
+import { currentUserKey, queryClient, resetQuerySession, setQueryUser } from "./query-client.ts";
 
 test("organization cache and routing share requests and follow membership and session changes", async (t) => {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
@@ -170,12 +170,14 @@ test("organization cache and routing share requests and follow membership and se
   await assert.rejects(refreshOrganizations(alice), (error) => error instanceof AuthError && error.status === 403);
   listingError = false;
   currentUser = { ...alice, email_verified: false };
+  await queryClient.invalidateQueries({ queryKey: currentUserKey, exact: true, refetchType: "none" });
   const beforeUnverified = listings;
   await router.navigate("/");
   assert.equal(listings, beforeUnverified);
   assert.ok(Object.values(router.state.errors ?? {}).some((error) => error instanceof AuthError && error.code === "email_not_verified"));
 
   currentUser = { ...alice, subject: "bob", email: "bob@example.org" };
+  await queryClient.invalidateQueries({ queryKey: currentUserKey, exact: true, refetchType: "none" });
   await router.navigate("/");
   assert.equal(queryClient.getQueryData(organizationsQuery(alice).queryKey), undefined);
   assert.equal(router.state.loaderData["layouts/session"].user.subject, "bob");
@@ -188,7 +190,8 @@ test("organization cache and routing share requests and follow membership and se
   await logout();
   releaseCreation();
   await assert.rejects(pendingCreation, (error) => error instanceof DOMException && error.name === "AbortError");
-  assert.equal(queryClient.getQueryCache().getAll().length, 0);
+  assert.equal(queryClient.getQueryData(currentUserKey), null);
+  assert.equal(queryClient.getQueryCache().getAll().length, 1);
   await router.navigate(`/${first.id}/`);
   assert.equal(router.state.location.pathname, "/login");
 });

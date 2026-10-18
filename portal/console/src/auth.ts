@@ -1,4 +1,4 @@
-import { resetQuerySession } from "./query-client.ts";
+import { expireQuerySession, querySession, resetQuerySession } from "./query-client.ts";
 
 const base = import.meta.env?.BASE_URL ?? "/";
 const pendingKey = `wd40.portal.oidc:${base}`;
@@ -46,12 +46,14 @@ let callback: CallbackAttempt | undefined;
 export class AuthError extends Error {
   readonly code: string;
   readonly status: number;
+  readonly session: number | undefined;
 
-  constructor(code: string, status: number) {
+  constructor(code: string, status: number, session?: number) {
     super(code);
     this.name = "AuthError";
     this.code = code;
     this.status = status;
+    this.session = session;
   }
 }
 
@@ -60,6 +62,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export async function api(path: string, { method = "GET", body, signal }: ApiOptions = {}) {
+  const session = querySession();
   const headers = new Headers();
   if (method === "POST" || method === "DELETE") headers.set("X-WD40-Portal", "1");
   if (body !== undefined) headers.set("Content-Type", "application/json");
@@ -76,6 +79,7 @@ export async function api(path: string, { method = "GET", body, signal }: ApiOpt
     throw new AuthError(
       isRecord(body) && typeof body.error === "string" ? body.error : "http_error",
       response.status,
+      session,
     );
   }
   return response;
@@ -136,10 +140,13 @@ export async function login(returnTo?: string) {
 }
 
 export async function completeCallback({ code, state, redirectUri }: CallbackInput) {
+  const session = querySession();
   // This exchange belongs to the login attempt, not to an abortable route loader.
   await api("callback", {
     method: "POST", body: { code, state, redirect_uri: redirectUri },
   });
+  if (session !== querySession()) throw new DOMException("Session changed", "AbortError");
+  resetQuerySession();
 }
 
 export async function getCurrentUser({ signal }: RequestOptions = {}): Promise<CurrentUser | null> {
@@ -159,8 +166,9 @@ export async function getCurrentUser({ signal }: RequestOptions = {}): Promise<C
 }
 
 export async function logout() {
+  const session = querySession();
   await api("logout", { method: "POST" });
-  resetQuerySession();
+  if (session === querySession()) expireQuerySession();
   window.sessionStorage.removeItem(pendingKey);
   callback = undefined;
 }

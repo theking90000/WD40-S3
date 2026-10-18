@@ -5,6 +5,7 @@ import type { RouteObject } from "react-router";
 import { AuthError, finishCallback, getLoginUrl, getReturnTo, logout } from "./auth.ts";
 import type { CurrentUser } from "./auth.ts";
 import { authMiddleware, loginLoader, optionalUser, requireUserMiddleware, withUser } from "./auth-router.ts";
+import { currentUserKey, queryClient, resetQuerySession } from "./query-client.ts";
 
 test("layout guards block loaders and actions, preserve login destinations, and handle callbacks before authentication", async (t) => {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
@@ -21,6 +22,7 @@ test("layout guards block loaders and actions, preserve login destinations, and 
     },
   });
   t.after(() => {
+    resetQuerySession();
     if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
     else Reflect.deleteProperty(globalThis, "window");
   });
@@ -129,6 +131,7 @@ test("layout guards block loaders and actions, preserve login destinations, and 
   assert.ok(calls.every(({ url }) => url === "/api/me"));
 
   unavailable = true;
+  await queryClient.invalidateQueries({ queryKey: currentUserKey, exact: true, refetchType: "none" });
   const unavailableCount = calls.length;
   await router.navigate("/private");
   await idle();
@@ -154,14 +157,17 @@ test("layout guards block loaders and actions, preserve login destinations, and 
   ]);
   assert.equal(storage.size, 0);
 
+  const cachedUserCalls = calls.filter(({ url }) => url === "/api/me").length;
   await router.navigate(`/login?returnTo=${encodeURIComponent("/private?view=a%20b#history")}`);
   await idle();
   assert.equal(router.state.errors, null);
   assert.equal(router.state.location.pathname, "/private");
   assert.equal(router.state.location.search, "?view=a%20b");
   assert.equal(router.state.location.hash, "#history");
+  assert.equal(calls.filter(({ url }) => url === "/api/me").length, cachedUserCalls);
 
   unavailable = true;
+  await queryClient.invalidateQueries({ queryKey: currentUserKey, exact: true, refetchType: "none" });
   await router.revalidate();
   await idle();
   assert.ok(Object.values(router.state.errors ?? {}).some((error) => (
@@ -171,6 +177,7 @@ test("layout guards block loaders and actions, preserve login destinations, and 
   unavailable = false;
 
   await logout();
+  const afterLogout = calls.length;
   await router.navigate("/optional");
   assert.equal(router.state.loaderData.optional, null);
   const logoutCount = calls.length;
@@ -178,6 +185,7 @@ test("layout guards block loaders and actions, preserve login destinations, and 
   await idle();
   assert.equal(router.state.location.pathname, "/login");
   assert.ok(calls.slice(logoutCount).every(({ url }) => url === "/api/me"));
+  assert.equal(calls.length, afterLogout);
   await router.navigate("/");
   const count = calls.length;
   await router.navigate("/?code=unsolicited&state=missing-context");

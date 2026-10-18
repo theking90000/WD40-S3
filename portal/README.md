@@ -436,7 +436,7 @@ React or React Router. It exports:
   The caller chooses the subsequent navigation, typically to a public route.
 
 Requests use the compiled base path, same-origin credentials and `no-store`.
-POSTs include `X-WD40-Portal: 1`; JSON bodies also set `Content-Type`.
+POSTs and DELETEs include `X-WD40-Portal: 1`; JSON bodies also set `Content-Type`.
 `AuthError` exposes an error `code` and HTTP `status`. Network errors propagate.
 `CurrentUser` describes the `/api/me` response; `getCurrentUser` returns
 `Promise<CurrentUser | null>`.
@@ -484,8 +484,29 @@ destination. The organization layout also checks membership before child loaders
 or actions run. Logout clears cookies and the browser query cache before opening `/login`.
 `auth-router.ts` provides `optionalUser(args)`, `requireUser(args)` and
 `withUser(loader?)` for routes that need identity. A fresh React Router context
-shares a lazy user promise during each navigation or
-fetcher call. There is no persistent user cache or React authentication provider.
+shares a lazy user promise during each navigation or fetcher call, backed by
+TanStack Query across navigations. There is no persistent browser cache or
+additional React authentication provider.
+
+`current-user.ts` defines the `current-user` query, keyed by the console base path,
+and `getSessionUser()` for the guards. `getCurrentUser()` remains the uncached HTTP
+operation. The cached result is a `CurrentUser` or `null` and stays fresh for
+60 seconds. Navigations reuse fresh data and share concurrent requests; the first
+navigation after expiration waits for a new check. The query owns its abort signal,
+so cancelling one navigation does not cancel another navigation's request. There
+is no polling, focus/reconnect refetch or automatic retry for this query.
+
+An identity change discards private queries and mutations while preserving the
+completed user query. Successful OIDC callbacks clear the previous session before
+the next lookup. Successful logout cancels reads, discards private data and caches
+`null`, so the login page needs no immediate `/api/me` request. Cache-level handlers
+apply the same expiration to `401` errors from protected queries and mutations.
+HTTP errors carry the local request's session generation so late failures cannot
+expire a newer session; login and callback failures do not expire the user cache.
+The session layout observes cached user changes without fetching and revalidates
+its guards before showing protected content for a different user or after logout.
+Network/provider failures remain errors rather than an anonymous result. Rust
+continues to authenticate protected API requests regardless of the browser cache.
 
 For a route with an optional user:
 
@@ -536,7 +557,8 @@ subject, email and email verification state. Lists stay fresh for 60 seconds;
 concurrent consumers share the same request. There is no polling or persistent
 browser storage. Stale lists can refresh on navigation, window focus or reconnect.
 Authentication failures are not retried automatically. Logout or an identity
-change cancels queries, drops their results and clears the cache.
+change cancels private queries and drops their results while preserving the
+corresponding authenticated or anonymous user result.
 
 `organization-router.ts` checks the URL's organization before child loaders run.
 An ID missing from a cached list triggers one refresh before access is refused.

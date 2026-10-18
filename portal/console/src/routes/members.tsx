@@ -1,13 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCwIcon, SearchIcon, UsersIcon } from "lucide-react";
-import { useNavigate } from "react-router";
-import { AuthError } from "~/auth.ts";
 import type { CurrentUser } from "~/auth.ts";
 import type { Organization } from "~/organizations.ts";
 import { useOrganization, useOrganizations } from "~/organization-router.ts";
 import { memberErrorMessage, organizationMembersQuery } from "~/organization-members.ts";
-import { resetQuerySession } from "~/query-client.ts";
 import { AddMemberDialog } from "~/components/organizations/add-member";
 import { RemoveMemberDialog } from "~/components/organizations/remove-member";
 import { Badge } from "~/components/ui/badge";
@@ -31,17 +28,7 @@ function MembersPage({ user, organization }: { user: CurrentUser; organization: 
   const [search, setSearch] = useState("");
   const [notice, setNotice] = useState("");
   const [mutationError, setMutationError] = useState<Error | null>(null);
-  const navigate = useNavigate();
   const owner = organization.access === "OWNER";
-  const sessionExpired = [error, mutationError].some((failure) => failure instanceof AuthError && failure.status === 401);
-
-  useEffect(() => {
-    if (sessionExpired) {
-      const returnTo = window.location.href;
-      resetQuerySession();
-      void navigate(`/login?returnTo=${encodeURIComponent(returnTo)}`, { replace: true });
-    }
-  }, [sessionExpired, navigate]);
 
   const needle = search.trim().toLocaleLowerCase("fr");
   const filtered = members?.filter(({ email }) => email.toLocaleLowerCase("fr").includes(needle)) ?? [];
