@@ -546,7 +546,8 @@ The chooser redirects automatically when exactly one organization is available.
 An empty list offers creation and manual refresh, and explains that a proprietor
 can add the user's verified email. Multiple organizations require an explicit
 selection. Unavailable organizations return to the chooser with a message.
-The top navbar switches organizations and offers the same creation dialog.
+The left navigation switches organizations above the workspace links and offers
+the same creation dialog, including in the mobile navigation drawer.
 Creation updates the shared cache from the POST response and opens the new
 organization without an immediate GET. Results from a previous session are ignored.
 The console does not expose member management yet.

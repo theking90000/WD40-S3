@@ -1,28 +1,27 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef } from "react";
 import type { ReactNode } from "react";
-import { DatabaseIcon, MenuIcon } from "lucide-react";
+import { DatabaseIcon } from "lucide-react";
 import { useLocation } from "react-router";
-import { Button } from "~/components/ui/button";
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "~/components/ui/sheet";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { ShellNavigation } from "./navigation";
 import type { ShellNavigationGroup } from "./navigation";
+import { MobileNavigation } from "./mobile-navigation";
 
 interface SidebarContentProps {
   navigation: readonly ShellNavigationGroup[];
+  organization?: ReactNode;
   account?: ReactNode;
   onNavigate?: () => void;
 }
 
 interface ConsoleShellProps extends Omit<SidebarContentProps, "onNavigate"> {
   title: string;
-  organization?: ReactNode;
   organizationName?: string;
   actions?: ReactNode;
   children: ReactNode;
 }
 
-function SidebarContent({ navigation, account, onNavigate }: SidebarContentProps) {
+function SidebarContent({ navigation, organization, account, onNavigate }: SidebarContentProps) {
   return (
     <>
       <div className="flex items-center gap-2.5 px-1.75 pt-0.75 pb-4.75">
@@ -34,6 +33,7 @@ function SidebarContent({ navigation, account, onNavigate }: SidebarContentProps
           <p className="mt-1 text-[10px] text-muted-foreground">Cloud console</p>
         </div>
       </div>
+      {organization}
       <div className="mt-5.5">
         <ShellNavigation groups={navigation} onNavigate={onNavigate} />
       </div>
@@ -55,32 +55,13 @@ export function ConsoleShell({
   actions,
   children,
 }: ConsoleShellProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const contentId = useId();
   const contentRef = useRef<HTMLElement>(null);
   const { pathname } = useLocation();
 
   useEffect(() => {
-    setMenuOpen(false);
     contentRef.current?.scrollTo({ top: 0 });
   }, [pathname]);
-
-  useEffect(() => {
-    const desktop = window.matchMedia("(min-width: 961px)");
-    function closeOnDesktop(event: MediaQueryListEvent) {
-      if (event.matches) setMenuOpen(false);
-    }
-    desktop.addEventListener("change", closeOnDesktop);
-    return () => desktop.removeEventListener("change", closeOnDesktop);
-  }, []);
-
-  const sidebar = (
-    <SidebarContent
-      navigation={navigation}
-      account={account}
-      onNavigate={() => setMenuOpen(false)}
-    />
-  );
 
   return (
     <TooltipProvider>
@@ -92,32 +73,15 @@ export function ConsoleShell({
       </a>
       <div className="grid h-dvh grid-cols-1 overflow-hidden bg-background min-[961px]:grid-cols-[252px_minmax(0,1fr)]">
         <aside className="hidden min-h-0 flex-col overflow-y-auto border-r bg-sidebar px-3.5 pt-4.5 pb-3.5 min-[961px]:flex">
-          {sidebar}
+          <SidebarContent navigation={navigation} organization={organization} account={account} />
         </aside>
         <div className="flex min-h-0 min-w-0 flex-col">
           <header className="flex min-h-14 shrink-0 items-center gap-2 border-b px-4 min-[761px]:min-h-15 min-[761px]:gap-4 min-[761px]:px-[clamp(20px,3vw,44px)]">
-            <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
-              <SheetTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="shrink-0 min-[961px]:hidden"
-                  aria-label="Ouvrir la navigation"
-                >
-                  <MenuIcon aria-hidden="true" strokeWidth={1.6} />
-                </Button>
-              </SheetTrigger>
-              <SheetContent
-                side="left"
-                aria-describedby={undefined}
-                className="max-w-[min(280px,calc(100vw-32px))] bg-sidebar px-3.5 pt-4.5 pb-3.5"
-              >
-                <SheetTitle className="sr-only">Navigation principale</SheetTitle>
-                {sidebar}
-              </SheetContent>
-            </Sheet>
-            {organization}
+            <MobileNavigation>
+              {(close) => (
+                <SidebarContent navigation={navigation} organization={organization} account={account} onNavigate={close} />
+              )}
+            </MobileNavigation>
             <nav aria-label="Fil d'Ariane" className="hidden min-w-0 items-center gap-1.75 text-[11.5px] text-muted-foreground min-[761px]:flex">
               <span>Console</span>
               <span aria-hidden="true">/</span>
