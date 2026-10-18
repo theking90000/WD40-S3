@@ -6,6 +6,10 @@ export default [
     index("routes/_index.tsx"),
     route(":organizationId", "layouts/console.tsx", [
       index("routes/organization.tsx"),
+      route("buckets", "routes/buckets.tsx"),
+      route("buckets/new", "routes/buckets-new.tsx"),
+      route("credentials", "routes/credentials.tsx"),
+      route("credentials/new", "routes/credentials-new.tsx"),
       route("members", "routes/members.tsx"),
       route("status", "routes/status.tsx"),
     ]),

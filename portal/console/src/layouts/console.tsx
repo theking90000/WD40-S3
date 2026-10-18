@@ -1,9 +1,9 @@
 import { useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import { DatabaseIcon, KeyRoundIcon, LayoutGridIcon, Settings2Icon, UsersIcon } from "lucide-react";
 import { Outlet, useMatches, useNavigate } from "react-router";
 import { organizationLoader, organizationMiddleware, useOrganization, useOrganizations } from "~/features/organizations/router.ts";
-import { organizationErrorMessage } from "~/features/organizations/api.ts";
+import { organizationErrorMessage, organizationsQuery } from "~/features/organizations/api.ts";
 import { organizationMembersQuery } from "~/features/organizations/members/api.ts";
 import { AuthFailure, AuthPending } from "~/features/auth/components/auth-screen";
 import { Account } from "~/features/auth/components/account";
@@ -19,9 +19,17 @@ export { ErrorBoundary } from "./session";
 export default function ConsoleLayout() {
   const { user, data, error, refetch, isFetching } = useOrganizations();
   const organization = useOrganization();
-  // Observe an already loaded count without fetching members for other pages.
+  // Observe cached lists without fetching them for other pages.
   const { data: members } = useQuery({
     ...organizationMembersQuery(user, organization?.id ?? ""), enabled: false,
+  });
+  const { data: buckets } = useQuery<readonly unknown[]>({
+    queryKey: [...organizationsQuery(user).queryKey, organization?.id ?? "", "buckets"],
+    queryFn: skipToken,
+  });
+  const { data: credentials } = useQuery<readonly unknown[]>({
+    queryKey: [...organizationsQuery(user).queryKey, organization?.id ?? "", "credentials"],
+    queryFn: skipToken,
   });
   const navigate = useNavigate();
   const matches = useMatches();
@@ -47,8 +55,8 @@ export default function ConsoleLayout() {
     {
       label: "Stockage",
       items: [
-        { label: "Buckets", icon: DatabaseIcon, disabled: true },
-        { label: "Clés d'accès", icon: KeyRoundIcon, disabled: true },
+        { label: "Buckets", to: `/${organization.id}/buckets`, icon: DatabaseIcon, count: buckets?.length },
+        { label: "Clés d'accès", to: `/${organization.id}/credentials`, icon: KeyRoundIcon, count: credentials?.length },
       ],
     },
     {
