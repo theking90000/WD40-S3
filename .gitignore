@@ -1,2 +1,4 @@
 /target/
 data/
+portal.db
+portal.db-*

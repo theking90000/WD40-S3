@@ -2,6 +2,7 @@ use std::{io, sync::Arc};
 
 use axum::Router;
 use hyper_util::service::TowerToHyperService;
+use portal_db::DatabaseConnection;
 
 use crate::api;
 use crate::api::auth::{OidcConfig, oidc::Oidc};
@@ -14,9 +15,10 @@ pub struct Portal {
 }
 
 impl Portal {
-    pub async fn new(config: OidcConfig) -> io::Result<Self> {
+    /// The caller supplies a migrated database and owns its shutdown.
+    pub async fn new(config: OidcConfig, db: DatabaseConnection) -> io::Result<Self> {
         let oidc = Arc::new(Oidc::new(config).await?);
-        let router = api::router(oidc);
+        let router = api::router(oidc, db);
         #[cfg(feature = "embed-console")]
         let router = router.merge(assets::router());
         Ok(Self { router })

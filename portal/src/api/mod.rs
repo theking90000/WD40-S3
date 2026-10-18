@@ -2,10 +2,12 @@ pub(crate) mod auth;
 mod health;
 
 use axum::{Router, routing::get};
+use portal_db::DatabaseConnection;
 use std::sync::Arc;
 
-pub(super) fn router(oidc: Arc<auth::oidc::Oidc>) -> Router {
+pub(super) fn router(oidc: Arc<auth::oidc::Oidc>, db: DatabaseConnection) -> Router {
     Router::new()
         .route("/api/health", get(health::handle))
         .merge(auth::router(oidc))
+        .with_state(db)
 }

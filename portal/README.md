@@ -21,6 +21,17 @@ cargo run -p portal --features standalone
 Open `http://127.0.0.1:8080/`. Use `-- --listen 127.0.0.1:8081` or
 `WD40_PORTAL_LISTEN` to change the address.
 
+The server opens the portal database and applies its versioned migrations before
+starting HTTP. `--database-url` or `WD40_PORTAL_DATABASE_URL` selects the database.
+The default, `sqlite://portal.db?mode=rwc`, opens or creates `portal.db` in the
+working directory. Connection or migration failures stop startup. The server
+closes the database after HTTP requests have drained on graceful shutdown, and
+also on startup or serving errors after connection setup.
+
+SQLite is enabled by default. To build for PostgreSQL only, use
+`--no-default-features --features standalone,postgres` and supply a PostgreSQL
+database URL at runtime. Both drivers can be enabled with `--features postgres`.
+
 Cargo runs `build.rs` to execute `npm ci` and `npm run build`. Vite and React Router
 generate the prerendered pages and browser assets under `console/build/client/`.
 `rust-embed` embeds that directory in debug and release builds. Build failures stop
@@ -79,22 +90,35 @@ missing files and unknown routes return 404. There is no SPA navigation fallback
 
 ## Library
 
-`Portal::new(config).await` discovers the configured OIDC provider and fetches its
-public keys, without opening a listener or starting background tasks. Discovery
-and configuration failures return `std::io::Error`. The caller owns the runtime.
+`Portal::new(config, db).await` accepts a migrated `portal_db::DatabaseConnection`
+and discovers the configured OIDC provider and its public keys. It does not open
+a listener. Discovery and configuration failures return `std::io::Error`.
+The caller owns the runtime, database connection setup, migrations and shutdown.
 `into_router()` returns an `axum::Router`; `into_service()` returns a
 `hyper_util::service::TowerToHyperService<axum::Router>` for Hyper integration.
 
 ```rust
-let portal = portal::Portal::new(portal::OidcConfig {
-    issuer_url,
-    client_id,
-    client_secret,
-}).await?;
+use portal_db::{Database, Migrator, MigratorTrait};
+
+let db = Database::connect(database_url).await?;
+Migrator::up(&db, None).await?;
+let portal = portal::Portal::new(
+    portal::OidcConfig {
+        issuer_url,
+        client_id,
+        client_secret,
+    },
+    db.clone(),
+).await?;
 let service = portal.into_service();
+// Serve requests, then call db.close().await after they have drained.
 ```
 
-Features default to empty. `cli` exposes composable `PortalArgs`. `embed-console`
+The API router supplies the connection as `State<portal_db::DatabaseConnection>`
+for database-backed handlers. Authentication routes retain their own OIDC state.
+
+Features default to `sqlite`; `postgres` enables the PostgreSQL driver.
+`cli` exposes composable `PortalArgs`. `embed-console`
 builds and embeds the console for library consumers too. `standalone` enables
 both features and the executable. Builds without `embed-console` do not run npm.
 

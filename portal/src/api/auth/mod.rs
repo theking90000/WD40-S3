@@ -19,7 +19,10 @@ use serde::Serialize;
 
 pub use oidc::{CurrentUser, OidcConfig};
 
-pub(super) fn router(oidc: Arc<oidc::Oidc>) -> Router {
+pub(super) fn router<S>(oidc: Arc<oidc::Oidc>) -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
     let protected = Router::new().route("/api/me", get(me::handle)).route_layer(
         axum::middleware::from_fn_with_state(oidc.clone(), middleware::authenticate),
     );

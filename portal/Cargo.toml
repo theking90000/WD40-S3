@@ -4,7 +4,9 @@ version.workspace = true
 edition.workspace = true
 
 [features]
-default = []
+default = ["sqlite"]
+sqlite = ["portal-db/sqlite"]
+postgres = ["portal-db/postgres"]
 cli = ["dep:clap"]
 embed-console = ["dep:rust-embed"]
 standalone = ["cli", "embed-console", "dep:tokio"]
@@ -15,6 +17,7 @@ path = "src/main.rs"
 required-features = ["standalone"]
 
 [dependencies]
+portal-db = { path = "db", default-features = false }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "json"] }
 axum-extra = { version = "0.12.6", default-features = false, features = ["cookie"] }
 openidconnect = "=4.0.1"

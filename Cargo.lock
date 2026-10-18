@@ -2939,6 +2939,7 @@ dependencies = [
  "getrandom 0.4.3",
  "hyper-util",
  "openidconnect",
+ "portal-db",
  "rust-embed",
  "serde",
  "subtle",

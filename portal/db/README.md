@@ -12,8 +12,16 @@ The caller opens the connection with `portal_db::Database::connect`, optionally
 using `portal_db::ConnectOptions`, and owns its shutdown. No connection is opened
 implicitly.
 
-This crate is not yet wired into portal. Apply migrations explicitly with
-`Migrator::up(&db, None).await?`, importing `portal_db::{Migrator, MigratorTrait}`.
+The standalone portal opens the database selected by `WD40_PORTAL_DATABASE_URL`,
+applies migrations before serving HTTP and closes the connection on shutdown.
+Its default URL is `sqlite://portal.db?mode=rwc`, creating `portal.db` in the
+working directory when absent.
+
+Library callers apply migrations explicitly with `Migrator::up(&db, None).await?`,
+importing `portal_db::{Migrator, MigratorTrait}`, then pass a connection clone to
+`portal::Portal::new(config, db.clone()).await?`. They close their retained
+connection after requests have drained. The portal API exposes the connection
+to its handlers through Axum state.
 
 ## Organizations
 
