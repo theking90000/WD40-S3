@@ -1,8 +1,8 @@
 # Portal
 
 Portal service with OIDC authentication and a Vite and React Router framework
-console, prerendered during compilation. The authentication API and console routing
-integration are available without a login UI. The organizations API and WD40 RPC
+console, prerendered during compilation. The home page provides login and logout
+controls through the authentication API. The organizations API and WD40 RPC
 operations are not implemented yet. `GET /api/health` returns `ok` without
 authentication.
 
@@ -331,7 +331,9 @@ UI is built. No component effect or dedicated callback page is involved.
 
 ### Public and protected routes
 
-The existing home and status pages remain public and do not call `/api/me`.
+The home and status pages remain public. The home page uses `optionalUser` to
+call `/api/me` and display login or logout controls. Logout revalidates its loader
+to update the displayed user. The status page does not fetch a user.
 `auth-router.ts` provides `optionalUser(args)`, `requireUser(args)` and
 `withUser(loader?)` for routes that need identity. A fresh React Router context
 shares a lazy user promise and a lazy login promise during each navigation or
