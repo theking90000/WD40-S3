@@ -19,9 +19,10 @@ working directory when absent.
 
 Library callers apply migrations explicitly with `Migrator::up(&db, None).await?`,
 importing `portal_db::{Migrator, MigratorTrait}`, then pass a connection clone to
-`portal::Portal::new(config, db.clone()).await?`. They close their retained
-connection after requests have drained. The portal API exposes the connection
-to its handlers through Axum state.
+`portal::Portal::new(config, db.clone(), credentials, policies).await?`, together
+with already opened S3 credentials and policy registry handles. They close their
+retained connection after requests have drained. The portal API exposes the
+connection to its handlers through Axum state.
 
 ## Organizations
 

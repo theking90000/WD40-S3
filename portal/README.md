@@ -28,6 +28,32 @@ working directory. Connection or migration failures stop startup. The server
 closes the database after HTTP requests have drained on graceful shutdown, and
 also on startup or serving errors after connection setup.
 
+The standalone server also opens the S3 credentials and policy registries using
+their existing CLI configurations:
+
+| Argument | Environment variable | Default |
+| --- | --- | --- |
+| `--s3-credentials-registry-path` | `WD40_S3_CREDENTIALS_REGISTRY_PATH` | `./data/s3-credentials-registry` |
+| `--policy-registry-path` | `WD40_POLICY_REGISTRY_PATH` | `./data/policy-registry` |
+
+Build with `--features standalone,grpc-client` to select a remote registry using
+`--s3-credentials-registry-endpoint` or `--policy-registry-endpoint`, also available
+as `WD40_S3_CREDENTIALS_REGISTRY_ENDPOINT` and `WD40_POLICY_REGISTRY_ENDPOINT`.
+Each endpoint takes precedence over its local path without opening that local
+database. The registries can independently use Local or Remote mode.
+Opening or connecting to either registry can fail startup; there is no fallback.
+
+`grpc-tls` includes `grpc-client` and enables HTTPS with native certificate roots.
+The existing `--s3-credentials-registry-ca` and `--policy-registry-ca` options,
+or `WD40_S3_CREDENTIALS_REGISTRY_CA` and `WD40_POLICY_REGISTRY_CA`, supply additional
+CA certificates and require HTTPS endpoints. gRPC builds require `protoc`.
+
+When the portal and S3 adapter run in one process, pass clones of the same
+registry handles to both. Separate processes connect to shared registry services
+over gRPC instead of opening the same Sled directories simultaneously.
+Opening registries and injecting their handles does not synchronize policies,
+credentials or bindings, and starts no background task.
+
 SQLite is enabled by default. To build for PostgreSQL only, use
 `--no-default-features --features standalone,postgres` and supply a PostgreSQL
 database URL at runtime. Both drivers can be enabled with `--features postgres`.
@@ -95,10 +121,14 @@ before application pages load. Missing files, API paths and unknown routes retur
 
 ## Library
 
-`Portal::new(config, db).await` accepts a migrated `portal_db::DatabaseConnection`
-and discovers the configured OIDC provider and its public keys. It does not open
-a listener. Discovery and configuration failures return `std::io::Error`.
-The caller owns the runtime, database connection setup, migrations and shutdown.
+`Portal::new(config, db, credentials, policies).await` accepts a migrated
+`portal_db::DatabaseConnection`, an opened
+`s3_credentials_registry::S3CredentialRegistry` and an opened
+`policy_registry::PolicyRegistry`. It discovers the configured OIDC provider and
+its public keys. Construction performs no registry operations and opens no
+listener. Discovery and configuration failures return `std::io::Error`.
+The caller owns the runtime, database connection setup, migrations, registry
+construction and shutdown.
 `into_router()` returns an `axum::Router`; `into_service()` returns a
 `hyper_util::service::TowerToHyperService<axum::Router>` for Hyper integration.
 
@@ -107,6 +137,7 @@ use portal_db::{Database, Migrator, MigratorTrait};
 
 let db = Database::connect(database_url).await?;
 Migrator::up(&db, None).await?;
+// credentials and policies are already opened registry enum handles.
 let portal = portal::Portal::new(
     portal::OidcConfig {
         issuer_url,
@@ -114,16 +145,23 @@ let portal = portal::Portal::new(
         client_secret,
     },
     db.clone(),
+    credentials,
+    policies,
 ).await?;
 let service = portal.into_service();
 // Serve requests, then call db.close().await after they have drained.
 ```
 
 The API router supplies the connection as `State<portal_db::DatabaseConnection>`
-for database-backed handlers. Authentication routes retain their own OIDC state.
+for database-backed handlers. Organization routes also receive
+`Extension<s3_credentials_registry::S3CredentialRegistry>` and
+`Extension<policy_registry::PolicyRegistry>`, available to handlers independently
+of registry mode. Authentication routes retain their own OIDC state.
 
 Features default to `sqlite`; `postgres` enables the PostgreSQL driver.
-`cli` exposes composable `PortalArgs`. `embed-console`
+`cli` exposes composable `PortalArgs` and enables both registries' CLI configs.
+`grpc-client` forwards client support to both registries; `grpc-tls` adds TLS.
+`embed-console`
 builds and embeds the console for library consumers too. `standalone` enables
 both features and the executable. Builds without `embed-console` do not run npm.
 

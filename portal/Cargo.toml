@@ -7,7 +7,9 @@ edition.workspace = true
 default = ["sqlite"]
 sqlite = ["portal-db/sqlite"]
 postgres = ["portal-db/postgres"]
-cli = ["dep:clap"]
+cli = ["dep:clap", "s3-credentials-registry/cli", "policy-registry/cli"]
+grpc-client = ["s3-credentials-registry/grpc-client", "policy-registry/grpc-client"]
+grpc-tls = ["grpc-client", "s3-credentials-registry/grpc-tls", "policy-registry/grpc-tls"]
 embed-console = ["dep:rust-embed"]
 standalone = ["cli", "embed-console", "dep:tokio"]
 
@@ -18,6 +20,8 @@ required-features = ["standalone"]
 
 [dependencies]
 portal-db = { path = "db", default-features = false }
+s3-credentials-registry = { path = "../crates/s3-credentials-registry", default-features = false }
+policy-registry = { path = "../crates/policy-registry", default-features = false }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "json"] }
 axum-extra = { version = "0.12.6", default-features = false, features = ["cookie"] }
 openidconnect = "=4.0.1"
