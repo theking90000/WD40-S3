@@ -440,6 +440,80 @@ use `{ "error": "code" }`:
 
 Authentication provider errors retain the authentication API's status and code.
 
+### Organization buckets
+
+Bucket routes are nested under `/api/organizations/{organization_id}` and use
+the same authentication and organization membership middleware as member routes.
+It loads membership once and injects `CurrentOrganization { id, access }` into
+request extensions. Handlers use its organization ID for every read and update.
+An absent organization or membership returns `404 organization_not_found`.
+Responses, including errors, use `Cache-Control: no-store`.
+
+Bucket names are unique across all organizations and cannot be changed. Access
+is one of these exact values:
+
+- `PRIVATE`: authentication is required for every S3 operation.
+- `PUBLIC`: GET and HEAD object require no key; other operations require
+  authentication.
+- `PUBLIC_LIST`: GET and HEAD object, and LIST objects in the bucket, require no
+  key; other operations require authentication.
+
+These values are stored metadata. Enforcement in the S3 access layer remains
+separate. Every portal bucket management endpoint requires authentication and
+organization membership, regardless of the bucket's access value.
+
+### POST /api/organizations/{organization_id}/buckets
+
+Requires `OWNER`, `Content-Type: application/json` and `X-WD40-Portal: 1`:
+
+```json
+{ "name": "my-bucket", "access": "PRIVATE" }
+```
+
+Both fields are required; unknown fields are rejected. The creation handler
+validates the name against general-purpose AWS bucket naming rules without
+trimming or lowercasing it. Reserved prefixes and suffixes are rejected,
+including `-an`; periods are allowed. The database guarantees name uniqueness
+but does not validate name syntax.
+
+Returns `201` with the created bucket:
+
+```json
+{
+  "organization_id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "my-bucket",
+  "created_at": "2026-10-18T12:00:00+00:00",
+  "access": "PRIVATE"
+}
+```
+
+Invalid names return `400 invalid_bucket_name`. An existing name, including a
+concurrent duplicate creation, returns `409 bucket_already_exists`.
+
+### GET /api/organizations/{organization_id}/buckets
+
+Both `MEMBER` and `OWNER` can list the selected organization's buckets. Returns
+`200` with an array of the objects above, sorted by name, or an empty array.
+
+### PATCH /api/organizations/{organization_id}/buckets/{bucket_name}
+
+Requires `OWNER`, `Content-Type: application/json` and `X-WD40-Portal: 1`:
+
+```json
+{ "access": "PUBLIC_LIST" }
+```
+
+Only `access` is accepted and required. Returns `200` with the updated bucket;
+requesting the existing access also succeeds. The name, organization and creation
+date remain unchanged. A missing bucket or a bucket belonging to another
+organization returns `404 bucket_not_found`. The route never creates a bucket.
+
+Ordinary members receive `403 owner_required` for POST and PATCH. Malformed JSON,
+missing fields, unknown fields and invalid access values return
+`400 invalid_request`. Existing organization errors also apply, including CSRF,
+content-type, body-limit and database errors, with the same `{ "error": "code" }`
+response format.
+
 ## Console architecture
 
 Group console code by feature under `console/src/features/`:

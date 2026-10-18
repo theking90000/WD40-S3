@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 
 use super::{Error, current::CurrentOrganization};
 
-// Mount under the organization membership middleware when enabling these routes.
 pub(super) fn router() -> Router<DatabaseConnection> {
     Router::new()
         .route("/buckets", get(list::handle).post(create::handle))

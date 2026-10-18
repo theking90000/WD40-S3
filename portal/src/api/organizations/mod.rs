@@ -23,8 +23,9 @@ use serde::Serialize;
 use super::auth::CurrentUser;
 
 pub(super) fn router(db: DatabaseConnection) -> Router<DatabaseConnection> {
-    let organization =
-        members::router().route_layer(axum::middleware::from_fn_with_state(db, current::resolve));
+    let organization = members::router()
+        .merge(buckets::router())
+        .route_layer(axum::middleware::from_fn_with_state(db, current::resolve));
 
     Router::new()
         .route("/api/organizations", get(list::handle).post(create::handle))

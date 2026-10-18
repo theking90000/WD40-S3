@@ -86,8 +86,9 @@ not represented here. Periods are allowed; Transfer Acceleration is not enabled.
 
 The handlers and local router are in `portal/src/api/organizations/buckets/`.
 They support creation, listing and access updates, with owner checks for writes
-and organization-scoped queries. The bucket router is not mounted yet; mounting
-must place it under the existing organization membership middleware. Bucket names,
+and organization-scoped queries. The bucket router is mounted under
+`/api/organizations/{organization_id}` with the existing organization membership
+middleware. Bucket names,
 organization identifiers and creation timestamps cannot be changed by these
 handlers.
 
