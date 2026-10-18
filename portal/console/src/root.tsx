@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration, useRouteError } from "react-router";
 import { authMiddleware } from "./auth-router.ts";
 import { AuthFailure } from "~/components/auth/auth-screen";
 import "./style.css";
+import { queryClient } from "./query-client.ts";
 
 export const clientMiddleware = [authMiddleware];
 
@@ -27,7 +29,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <Links />
       </head>
       <body>
-        {children}
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
         <ScrollRestoration />
         <Scripts />
       </body>

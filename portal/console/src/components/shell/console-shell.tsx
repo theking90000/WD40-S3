@@ -10,19 +10,19 @@ import type { ShellNavigationGroup } from "./navigation";
 
 interface SidebarContentProps {
   navigation: readonly ShellNavigationGroup[];
-  organization?: ReactNode;
   account?: ReactNode;
   onNavigate?: () => void;
 }
 
 interface ConsoleShellProps extends Omit<SidebarContentProps, "onNavigate"> {
   title: string;
+  organization?: ReactNode;
   organizationName?: string;
   actions?: ReactNode;
   children: ReactNode;
 }
 
-function SidebarContent({ navigation, organization, account, onNavigate }: SidebarContentProps) {
+function SidebarContent({ navigation, account, onNavigate }: SidebarContentProps) {
   return (
     <>
       <div className="flex items-center gap-2.5 px-1.75 pt-0.75 pb-4.75">
@@ -34,7 +34,6 @@ function SidebarContent({ navigation, organization, account, onNavigate }: Sideb
           <p className="mt-1 text-[10px] text-muted-foreground">Cloud console</p>
         </div>
       </div>
-      {organization}
       <div className="mt-5.5">
         <ShellNavigation groups={navigation} onNavigate={onNavigate} />
       </div>
@@ -78,7 +77,6 @@ export function ConsoleShell({
   const sidebar = (
     <SidebarContent
       navigation={navigation}
-      organization={organization}
       account={account}
       onNavigate={() => setMenuOpen(false)}
     />
@@ -119,7 +117,8 @@ export function ConsoleShell({
                 {sidebar}
               </SheetContent>
             </Sheet>
-            <nav aria-label="Fil d'Ariane" className="hidden min-w-0 items-center gap-1.75 text-[11.5px] text-muted-foreground min-[621px]:flex">
+            {organization}
+            <nav aria-label="Fil d'Ariane" className="hidden min-w-0 items-center gap-1.75 text-[11.5px] text-muted-foreground min-[761px]:flex">
               <span>Console</span>
               <span aria-hidden="true">/</span>
               {organizationName && (

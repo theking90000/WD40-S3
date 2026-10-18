@@ -2,6 +2,7 @@ import { createContext, replace } from "react-router";
 import type { LoaderFunctionArgs, MiddlewareFunction } from "react-router";
 import { finishCallback, getCurrentUser, getReturnTo } from "./auth.ts";
 import type { CurrentUser } from "./auth.ts";
+import { setQueryUser } from "./query-client.ts";
 
 interface AuthContext {
   getUser(): Promise<CurrentUser | null>;
@@ -36,7 +37,10 @@ export const authMiddleware: MiddlewareFunction = async ({ request, context }, n
 
   let user: Promise<CurrentUser | null> | undefined;
   context.set(authContext, {
-    getUser: () => user ??= getCurrentUser({ signal: request.signal }),
+    getUser: () => user ??= getCurrentUser({ signal: request.signal }).then((current) => {
+      if (!request.signal.aborted) setQueryUser(current);
+      return current;
+    }),
   });
   return next();
 };
@@ -48,7 +52,8 @@ export function optionalUser({ context }: Pick<LoaderFunctionArgs, "context">) {
 export async function requireUser(args: LoaderFunctionArgs) {
   const user = await optionalUser(args);
   if (user) return user;
-  const target = new URL(args.url?.href ?? args.request.url);
+  const target = new URL(args.request.url);
+  target.hash = args.url?.hash ?? "";
   const current = new URL(window.location.href);
   if (!target.hash && documentUrl(target) === documentUrl(current)) target.hash = current.hash;
   const login = new URL("login", new URL(import.meta.env?.BASE_URL ?? "/", target));

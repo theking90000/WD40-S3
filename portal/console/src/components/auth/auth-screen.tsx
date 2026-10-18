@@ -32,16 +32,18 @@ export function AuthPending() {
   );
 }
 
-export function AuthFailure({ title = "Authentification indisponible", description = "Impossible de vérifier votre session. Réessayez dans un instant." }: {
+export function AuthFailure({ title = "Authentification indisponible", description = "Impossible de vérifier votre session. Réessayez dans un instant.", retry, busy = false }: {
   title?: string;
   description?: string;
+  retry?: () => void;
+  busy?: boolean;
 }) {
   const revalidator = useRevalidator();
   return (
     <AuthScreen title={title} description={description}>
       <div role="alert" className="flex flex-wrap gap-2">
-        <Button onClick={() => revalidator.revalidate()} disabled={revalidator.state !== "idle"}>
-          {revalidator.state !== "idle" ? "En cours…" : "Réessayer"}
+        <Button onClick={retry ?? (() => revalidator.revalidate())} disabled={busy || revalidator.state !== "idle"}>
+          {busy || revalidator.state !== "idle" ? "En cours…" : "Réessayer"}
         </Button>
         <Button asChild variant="outline">
           <Link to="/login" replace>Page de connexion</Link>

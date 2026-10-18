@@ -14,6 +14,21 @@ pub(crate) fn router() -> Router {
     Router::new().fallback_service(get(file))
 }
 
+fn organization_page(path: &str) -> bool {
+    let mut segments = path.split('/');
+    let Some(id) = segments.next() else {
+        return false;
+    };
+    if id.len() != 36 || portal_db::sea_orm::entity::prelude::Uuid::parse_str(id).is_err() {
+        return false;
+    }
+    match segments.next() {
+        None => true,
+        Some("status") => segments.next().is_none(),
+        Some(_) => false,
+    }
+}
+
 async fn file(uri: Uri) -> Response {
     let path = uri.path().trim_matches('/');
     if path == "api" || path.starts_with("api/") {
@@ -27,6 +42,22 @@ async fn file(uri: Uri) -> Response {
     let basename = env!("WD40_PORTAL_BASE_PATH").trim_matches('/');
     let file = [path, index.as_str()].into_iter().find_map(|path| {
         ConsoleAssets::get(&format!("{basename}/{path}")).or_else(|| ConsoleAssets::get(path))
+    }).or_else(|| {
+        if organization_page(path) {
+            ConsoleAssets::get(&format!("{basename}/__spa-fallback.html"))
+                .or_else(|| ConsoleAssets::get("__spa-fallback.html"))
+                .or_else(|| {
+                    // With a basename, React Router writes static pages below
+                    // that prefix and renames the root SPA document to index.html.
+                    if basename.is_empty() {
+                        None
+                    } else {
+                        ConsoleAssets::get("index.html")
+                    }
+                })
+        } else {
+            None
+        }
     });
     let Some(file) = file else {
         return StatusCode::NOT_FOUND.into_response();
@@ -49,7 +80,12 @@ async fn file(uri: Uri) -> Response {
 #[cfg(all(test, feature = "standalone"))]
 #[tokio::test]
 async fn serves_prerendered_pages_and_returns_404_for_missing_paths() {
-    for path in ["/", "/status", "/status/"] {
+    for path in [
+        "/", "/login", "/login/",
+        "/e2b219e2-f69d-41cd-83b2-e3e791133b24/",
+        "/e2b219e2-f69d-41cd-83b2-e3e791133b24/status",
+        "/e2b219e2-f69d-41cd-83b2-e3e791133b24/status/",
+    ] {
         let response = file(Uri::from_static(path)).await;
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
@@ -60,7 +96,11 @@ async fn serves_prerendered_pages_and_returns_404_for_missing_paths() {
             Some("text/html"),
         );
     }
-    for path in ["/missing", "/api/missing", "/assets/missing.js"] {
+    for path in [
+        "/missing", "/status", "/api/missing", "/assets/missing.js",
+        "/e2b219e2-f69d-41cd-83b2-e3e791133b24/missing",
+        "/e2b219e2-f69d-41cd-83b2-e3e791133b24/status/missing.js",
+    ] {
         assert_eq!(
             file(Uri::from_static(path)).await.status(),
             StatusCode::NOT_FOUND

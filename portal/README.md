@@ -1,8 +1,8 @@
 # Portal
 
 Portal service with OIDC authentication and a Vite and React Router framework
-console, prerendered during compilation. The home page provides login and logout
-controls through the authentication API. The organizations API lists memberships
+console, with static pages prerendered during compilation. After login, the home
+page selects or creates an organization. The organizations API lists memberships
 and creates organizations. WD40 RPC operations are not implemented yet.
 `GET /api/health` returns `ok` without authentication.
 
@@ -53,16 +53,15 @@ production.
 ## Pages and prerendering
 
 The console uses React 19.3.1, React Router 8.4.0 and Vite 8.3.4.
-`console/react-router.config.ts` sets `ssr: false` and `prerender: true`, following
+`console/react-router.config.ts` sets `ssr: false` and `prerender: ["/", "/login"]`, following
 the [React Router prerendering guide](https://reactrouter.com/how-to/pre-rendering).
-The framework prerenders all static paths and generates browser hydration code.
+The framework prerenders these static paths and generates browser hydration code.
 Dynamic routes require concrete URLs in React Router's `prerender` configuration.
 
-`console/src/routes.ts` uses the official `@react-router/fs-routes` package to
-discover pages under `console/src/routes/`. `_index.tsx` maps to `/` and
-`status.tsx` to `/status`. Adding `settings.tsx` generates `/settings/index.html`
-on the next Cargo build, without editing the route configuration. Nested and
-dynamic routes follow the [file route conventions](https://reactrouter.com/how-to/file-route-conventions).
+`console/src/routes.ts` declares the login route, an authenticated session layout,
+and an organization layout. `/` selects or creates an organization; `/login`
+starts authentication. Application pages require an organization: `/{organization_id}/`
+is its home and `/{organization_id}/status` is the service status page.
 
 `npm run build` invokes the official `react-router build` command, which uses Vite
 to build and prerender the application. The default Web Streams rendering entry
@@ -84,9 +83,13 @@ and served by path with MIME metadata from `rust-embed`. Adding generated files 
 require changing Rust routes. The temporary server build is not embedded.
 
 Hashed files under `assets/` use `Cache-Control: public, max-age=31536000, immutable`.
-Other files use `Cache-Control: no-cache`. `/status` and `/status/` both serve
-`status/index.html`. A GET/HEAD fallback serves files after the API routes;
-missing files and unknown routes return 404. There is no SPA navigation fallback.
+Other files use `Cache-Control: no-cache`. A GET/HEAD fallback serves files after
+the API routes. Recognized organization URLs, with a UUID and an optional `/status`
+suffix, serve React Router's SPA document for direct loads and refreshes. This is
+`__spa-fallback.html`, or the root `index.html` when building with a deployment
+prefix, whose prerendered pages live below that prefix.
+Organization IDs are checked against the caller's memberships in the browser
+before application pages load. Missing files, API paths and unknown routes return 404.
 
 ## Library
 
@@ -473,12 +476,13 @@ UI is built. No component effect or dedicated callback page is involved.
 
 ### Public and protected routes
 
-The home and status pages remain public. The home page uses `optionalUser` to
-call `/api/me` and display login or logout controls. Logout revalidates its loader
-to update the displayed user. The status page does not fetch a user.
+Only the login page is public. The session layout guards the organization chooser
+and application routes, sending unauthenticated users to `/login` with their return
+destination. The organization layout also checks membership before child loaders
+or actions run. Logout clears cookies and the browser query cache before opening `/login`.
 `auth-router.ts` provides `optionalUser(args)`, `requireUser(args)` and
 `withUser(loader?)` for routes that need identity. A fresh React Router context
-shares a lazy user promise and a lazy login promise during each navigation or
+shares a lazy user promise during each navigation or
 fetcher call. There is no persistent user cache or React authentication provider.
 
 For a route with an optional user:
@@ -509,17 +513,43 @@ export function HydrateFallback() { return null; }
 
 `withUser()` without an argument returns `{ user }`. The wrapper runs during
 initial hydration and only calls the supplied loader after obtaining a user.
-Without a user it starts one login and uses `redirectDocument` to navigate to the
-provider. Provider outages and other errors propagate instead of triggering a
-login. Every child loader that depends on identity needs its own guard; parent
-and child loaders can run in parallel. Client actions can call `requireUser(args)`
-before their mutations. Rust remains responsible for API access control.
+Without a user it redirects to `/login`. Provider outages and other errors
+propagate instead of triggering a login. Layout middleware runs before child
+loaders and actions; a parent loader alone cannot guard parallel child loaders.
+Client actions can also call `requireUser(args)` before their mutations.
+Rust remains responsible for API access control.
 
 Components can consume the result through `loaderData` or `useLoaderData` when
 the UI is added. No authenticated content or user lookup runs during prerendering.
-Any route used for a document callback must be served by Rust. Dynamic paths not
-included in prerendering currently return `404`; they need explicit prerendered
-paths or a future server fallback before they can receive an OIDC return.
+Any route used for a document callback must be served by Rust. Recognized dynamic
+organization routes use the embedded SPA fallback, including when mounted under
+a deployment prefix.
+
+### Organization state
+
+`query-client.ts` owns one TanStack Query client shared by router middleware and
+React's `QueryClientProvider`. `organizations.ts` defines the API calls, response
+types and shared query options. Query keys include the console base path, issuer,
+subject, email and email verification state. Lists stay fresh for 60 seconds;
+concurrent consumers share the same request. There is no polling or persistent
+browser storage. Stale lists can refresh on navigation, window focus or reconnect.
+Authentication failures are not retried automatically. Logout or an identity
+change cancels queries, drops their results and clears the cache.
+
+`organization-router.ts` checks the URL's organization before child loaders run.
+An ID missing from a cached list triggers one refresh before access is refused.
+Components use `useOrganizations()` and `useOrganization()` to read that same cache;
+the URL determines the active organization. The session loader revalidates on
+navigation so components follow any change of authenticated identity.
+
+The chooser redirects automatically when exactly one organization is available.
+An empty list offers creation and manual refresh, and explains that a proprietor
+can add the user's verified email. Multiple organizations require an explicit
+selection. Unavailable organizations return to the chooser with a message.
+The top navbar switches organizations and offers the same creation dialog.
+Creation updates the shared cache from the POST response and opens the new
+organization without an immediate GET. Results from a previous session are ignored.
+The console does not expose member management yet.
 
 The focused integration check is available from `portal/console/` with
 `node --test src/auth.test.ts`. Node.js strips the TypeScript types directly.

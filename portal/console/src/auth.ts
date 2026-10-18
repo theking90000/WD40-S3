@@ -1,3 +1,5 @@
+import { resetQuerySession } from "./query-client.ts";
+
 const base = import.meta.env?.BASE_URL ?? "/";
 const pendingKey = `wd40.portal.oidc:${base}`;
 const callbackParams = [
@@ -57,7 +59,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-async function api(path: string, { method = "GET", body, signal }: ApiOptions = {}) {
+export async function api(path: string, { method = "GET", body, signal }: ApiOptions = {}) {
   const headers = new Headers();
   if (method === "POST") headers.set("X-WD40-Portal", "1");
   if (body !== undefined) headers.set("Content-Type", "application/json");
@@ -158,6 +160,7 @@ export async function getCurrentUser({ signal }: RequestOptions = {}): Promise<C
 
 export async function logout() {
   await api("logout", { method: "POST" });
+  resetQuerySession();
   window.sessionStorage.removeItem(pendingKey);
   callback = undefined;
 }
