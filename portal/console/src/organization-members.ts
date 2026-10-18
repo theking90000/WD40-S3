@@ -93,6 +93,22 @@ export async function removeOrganizationMember(user: CurrentUser, organizationId
   await updateMembers(user, organizationId, session, (members) => members.filter((member) => member.email !== email));
 }
 
+export async function updateOrganizationMemberAccess(
+  user: CurrentUser,
+  organizationId: string,
+  email: string,
+  access: OrganizationMember["access"],
+) {
+  const session = querySession();
+  const response = await membersRequest(user, organizationId, `/${encodeURIComponent(email)}`, {
+    method: "PATCH", body: { access },
+  });
+  const member: unknown = await response.json();
+  if (!isMember(member) || member.email !== email) throw new AuthError("invalid_members_response", 502);
+  await updateMembers(user, organizationId, session, (members) => members.map((item) => item.email === email ? member : item));
+  return member;
+}
+
 export function memberErrorMessage(error: unknown) {
   if (error instanceof AuthError) {
     switch (error.code) {
@@ -100,7 +116,8 @@ export function memberErrorMessage(error: unknown) {
       case "member_already_exists": return "Cette adresse email est déjà membre de l'organisation.";
       case "member_not_found": return "Ce membre a déjà été retiré. La liste a été actualisée.";
       case "owner_removal_forbidden": return "Un propriétaire ne peut pas être retiré de l'organisation.";
-      case "owner_required": return "Seul un propriétaire peut ajouter ou retirer des membres.";
+      case "owner_required": return "Seul un propriétaire peut ajouter ou retirer des membres et modifier leur rôle.";
+      case "self_update_forbidden": return "Vous ne pouvez pas modifier votre propre rôle.";
       case "organization_not_found": return "Cette organisation n'existe pas ou vous n'y avez plus accès.";
       case "email_not_verified": return "Une adresse email vérifiée est nécessaire pour consulter les membres.";
     }

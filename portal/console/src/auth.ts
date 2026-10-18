@@ -20,7 +20,7 @@ interface RequestOptions {
 }
 
 interface ApiOptions extends RequestOptions {
-  method?: "GET" | "POST" | "DELETE";
+  method?: "GET" | "POST" | "DELETE" | "PATCH";
   body?: unknown;
 }
 
@@ -64,7 +64,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export async function api(path: string, { method = "GET", body, signal }: ApiOptions = {}) {
   const session = querySession();
   const headers = new Headers();
-  if (method === "POST" || method === "DELETE") headers.set("X-WD40-Portal", "1");
+  if (method === "POST" || method === "DELETE" || method === "PATCH") headers.set("X-WD40-Portal", "1");
   if (body !== undefined) headers.set("Content-Type", "application/json");
   const response = await fetch(`${base}api/${path}`, {
     method,

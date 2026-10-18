@@ -598,8 +598,12 @@ organization without an immediate GET. Results from a previous session are ignor
 
 `/{organization_id}/members` uses the existing table, dialog and confirmation
 components. Members can search the list locally by email and see access levels
-and creation dates. Owners can add an email with `MEMBER` access or remove an
-ordinary member after confirmation. Owner removal and role changes are not offered.
+and creation dates. Owners can add an email with `MEMBER` access, remove an
+ordinary member after confirmation, or change another member's role. The role
+dialog shows the current role and offers `MEMBER` and `OWNER`; saving is disabled
+until the selection changes and while the request is pending. The edit action is
+hidden on the caller's own row and for ordinary members. Owners must be demoted
+by another owner before they can be removed.
 Adding a member grants access directly; no invitation email is sent.
 
 `organization-members.ts` defines the API calls and TanStack Query options. The

@@ -6,6 +6,7 @@ import type { Organization } from "~/organizations.ts";
 import { useOrganization, useOrganizations } from "~/organization-router.ts";
 import { memberErrorMessage, organizationMembersQuery } from "~/organization-members.ts";
 import { AddMemberDialog } from "~/components/organizations/add-member";
+import { EditMemberDialog } from "~/components/organizations/edit-member";
 import { RemoveMemberDialog } from "~/components/organizations/remove-member";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -115,8 +116,13 @@ function MembersPage({ user, organization }: { user: CurrentUser; organization: 
                     <time dateTime={member.created_at}>{dateFormat.format(new Date(member.created_at))}</time>
                   </TableCell>
                   {owner && <TableCell className="text-right">
-                    {member.access === "MEMBER" && <RemoveMemberDialog user={user} organizationId={organization.id} member={member}
-                      onRemoved={(email) => showNotice(`${email} a été retiré de l'organisation.`)} onError={setMutationError} />}
+                    <div className="flex items-center justify-end gap-1">
+                      {member.email !== user.email && <EditMemberDialog user={user} organizationId={organization.id} member={member} disabled={!!error}
+                        onUpdated={(updated) => showNotice(`${updated.email} est maintenant ${updated.access === "OWNER" ? "propriétaire" : "membre"} de l'organisation.`)}
+                        onError={setMutationError} />}
+                      {member.access === "MEMBER" && <RemoveMemberDialog user={user} organizationId={organization.id} member={member}
+                        onRemoved={(email) => showNotice(`${email} a été retiré de l'organisation.`)} onError={setMutationError} />}
+                    </div>
                   </TableCell>}
                 </TableRow>
               ))}
@@ -125,7 +131,7 @@ function MembersPage({ user, organization }: { user: CurrentUser; organization: 
         ) : null}
         {members && <div className="flex flex-wrap items-center justify-between gap-2 border-t px-3.5 py-3 text-[10px] text-muted-foreground">
           <span>{members.length} membre{members.length > 1 ? "s" : ""}</span>
-          <span>Seuls les propriétaires peuvent ajouter ou retirer des membres.</span>
+          <span>Seuls les propriétaires peuvent ajouter ou retirer des membres et modifier leur rôle.</span>
         </div>}
       </div>
     </section>
