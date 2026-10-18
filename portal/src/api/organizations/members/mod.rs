@@ -1,6 +1,7 @@
 mod create;
 mod delete;
 mod list;
+mod update;
 
 use axum::{
     Router,
@@ -14,7 +15,10 @@ use super::{Error, current::CurrentOrganization};
 pub(super) fn router() -> Router<DatabaseConnection> {
     Router::new()
         .route("/members", get(list::handle).post(create::handle))
-        .route("/members/{email}", delete(delete::handle))
+        .route(
+            "/members/{email}",
+            delete(delete::handle).patch(update::handle),
+        )
 }
 
 #[derive(Serialize)]

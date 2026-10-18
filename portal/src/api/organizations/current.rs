@@ -45,7 +45,10 @@ pub(super) async fn resolve(
     mut request: Request,
     next: Next,
 ) -> Result<Response, Error> {
-    if request.method() == Method::POST || request.method() == Method::DELETE {
+    if request.method() == Method::POST
+        || request.method() == Method::DELETE
+        || request.method() == Method::PATCH
+    {
         browser_request(request.headers())
             .map_err(|_| Error::new(StatusCode::FORBIDDEN, "csrf_rejected"))?;
     }

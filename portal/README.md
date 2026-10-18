@@ -341,14 +341,14 @@ plain-text content.
 Member routes check the caller's membership in the organization from the path.
 They are nested under `/api/organizations/{organization_id}`. After
 authentication, the middleware in `api/organizations/current.rs` checks CSRF for
-POST and DELETE, parses the UUID and loads the caller's membership once. It
+POST, DELETE and PATCH, parses the UUID and loads the caller's membership once. It
 injects `CurrentOrganization { id, access }` into request extensions. Handlers
 extract `Extension<CurrentOrganization>` and use its `id` for their queries;
 write handlers call `organization.require_owner()` without another membership
-query. DELETE extracts only the named target `email` from the path.
+query. DELETE and PATCH extract only the named target `email` from the path.
 
 An absent membership or organization returns `404 organization_not_found`.
-Adding and removing members requires `OWNER`; ordinary members receive
+Adding, removing and changing member access requires `OWNER`; ordinary members receive
 `403 owner_required` for these operations. Both `MEMBER` and `OWNER` can list
 members.
 
@@ -392,16 +392,35 @@ Requires `OWNER` access and `X-WD40-Portal: 1`. Encode the target email as a URL
 path segment, for example `alice%2Bteam%40example.org`. There is no request body.
 
 Returns `204` after removing the membership, or `404 member_not_found` if it does
-not exist. Removing an `OWNER` returns `409 owner_removal_forbidden`; ownership
-transfer and owner removal are not supported by these endpoints. The deletion
+not exist. Removing an `OWNER` returns `409 owner_removal_forbidden`. Another
+owner must first change that member's access to `MEMBER` using PATCH. The deletion
 also filters by `MEMBER` access in SQL to avoid removing an owner.
+
+### PATCH /api/organizations/{id}/members/{email}
+
+Requires `OWNER` access, `Content-Type: application/json` and `X-WD40-Portal: 1`.
+Encode the target email as a URL path segment, as for DELETE, and send:
+
+```json
+{ "access": "OWNER" }
+```
+
+Only `access` is accepted, with the exact value `MEMBER` or `OWNER`. An owner can
+promote or demote another member in the selected organization. Changing their own
+access is forbidden, including requests that keep the current role, and returns
+`403 self_update_forbidden`. Identity uses the same exact verified email as
+organization membership lookup.
+
+Returns `200` with the updated member object, preserving its email and creation
+date. Requesting the existing role also succeeds. A missing target membership
+returns `404 member_not_found`; the route never creates a membership.
 
 Organization responses use `Cache-Control: no-store`, including errors. Errors
 use `{ "error": "code" }`:
 
 | Status | Code | Meaning |
 | --- | --- | --- |
-| `400` | `invalid_request` | Malformed JSON, missing fields, wrong type or unknown fields. |
+| `400` | `invalid_request` | Malformed JSON, missing fields, wrong type, unknown fields or invalid access value. |
 | `400` | `invalid_name` | Trimmed name is empty or exceeds 128 Unicode characters. |
 | `400` | `invalid_email` | Email does not meet the address rules above. |
 | `400` | `invalid_organization_id` | Organization identifier is not a UUID. |
@@ -410,6 +429,7 @@ use `{ "error": "code" }`:
 | `403` | `email_not_verified` | Email is absent, empty or not verified. |
 | `403` | `csrf_rejected` | Missing or invalid custom header, or rejected fetch context. |
 | `403` | `owner_required` | Caller is a member but not an owner. |
+| `403` | `self_update_forbidden` | Caller attempted to change their own member access. |
 | `404` | `organization_not_found` | Organization is absent or caller is not a member. |
 | `404` | `member_not_found` | Target membership does not exist. |
 | `409` | `member_already_exists` | Email is already a member of this organization. |
