@@ -1,0 +1,35 @@
+import { useState } from "react";
+import { useLoaderData } from "react-router";
+import { login } from "~/auth.ts";
+import { loginLoader } from "~/auth-router.ts";
+import { AuthScreen } from "~/components/auth/auth-screen";
+import { Button } from "~/components/ui/button";
+
+export { loginLoader as clientLoader };
+export { AuthPending as HydrateFallback, AuthFailure as ErrorBoundary } from "~/components/auth/auth-screen";
+
+export default function Login() {
+  const { returnTo } = useLoaderData<typeof loginLoader>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function connect() {
+    setBusy(true);
+    setError(null);
+    try {
+      await login(returnTo);
+    } catch {
+      setError("Impossible de démarrer la connexion. Réessayez dans un instant.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <AuthScreen title="Connexion à la console" description="Connectez-vous avec votre compte pour accéder à WD40-S3.">
+      <Button className="w-full" onClick={connect} disabled={busy} aria-busy={busy}>
+        {busy ? "Connexion en cours…" : "Se connecter"}
+      </Button>
+      {error && <p role="alert" className="text-sm text-destructive-strong">{error}</p>}
+    </AuthScreen>
+  );
+}

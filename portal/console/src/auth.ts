@@ -89,6 +89,21 @@ function consoleUrl(value: string | URL) {
   return url;
 }
 
+export function getReturnTo(value?: string | null) {
+  const root = new URL(base, window.location.href);
+  try {
+    const target = consoleUrl(value ?? root.href);
+    const loginPath = new URL("login", root).pathname;
+    if (decodeURIComponent(target.pathname).replace(/\/+$/, "").toLowerCase() === loginPath.toLowerCase()
+      || callbackParams.some((name) => target.searchParams.has(name))) {
+      return root.href;
+    }
+    return target.href;
+  } catch {
+    return root.href;
+  }
+}
+
 export async function getLoginUrl(returnTo = window.location.href, { signal }: RequestOptions = {}) {
   const target = consoleUrl(returnTo);
   if (callbackParams.some((name) => target.searchParams.has(name))) {

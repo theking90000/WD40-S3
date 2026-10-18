@@ -1,11 +1,10 @@
-import { createContext, redirectDocument, replace } from "react-router";
+import { createContext, replace } from "react-router";
 import type { LoaderFunctionArgs, MiddlewareFunction } from "react-router";
-import { finishCallback, getCurrentUser, getLoginUrl } from "./auth.ts";
+import { finishCallback, getCurrentUser, getReturnTo } from "./auth.ts";
 import type { CurrentUser } from "./auth.ts";
 
 interface AuthContext {
   getUser(): Promise<CurrentUser | null>;
-  getLogin(returnTo: string): Promise<string>;
 }
 
 type UserLoaderArgs = LoaderFunctionArgs & { user: CurrentUser };
@@ -36,10 +35,8 @@ export const authMiddleware: MiddlewareFunction = async ({ request, context }, n
   }
 
   let user: Promise<CurrentUser | null> | undefined;
-  let login: Promise<string> | undefined;
   context.set(authContext, {
     getUser: () => user ??= getCurrentUser({ signal: request.signal }),
-    getLogin: (returnTo) => login ??= getLoginUrl(returnTo, { signal: request.signal }),
   });
   return next();
 };
@@ -53,9 +50,23 @@ export async function requireUser(args: LoaderFunctionArgs) {
   if (user) return user;
   const target = new URL(args.url?.href ?? args.request.url);
   const current = new URL(window.location.href);
-  if (documentUrl(target) === documentUrl(current)) target.hash = current.hash;
-  throw redirectDocument(await args.context.get(authContext).getLogin(target.href));
+  if (!target.hash && documentUrl(target) === documentUrl(current)) target.hash = current.hash;
+  const login = new URL("login", new URL(import.meta.env?.BASE_URL ?? "/", target));
+  login.searchParams.set("returnTo", getReturnTo(target.href));
+  throw replace(login.href);
 }
+
+export const requireUserMiddleware: MiddlewareFunction = async (args, next) => {
+  await requireUser(args);
+  return next();
+};
+
+export async function loginLoader(args: LoaderFunctionArgs) {
+  const returnTo = getReturnTo(new URL(args.request.url).searchParams.get("returnTo"));
+  if (await optionalUser(args)) throw replace(returnTo);
+  return { returnTo };
+}
+loginLoader.hydrate = true as const;
 
 export function withUser(): GuardedLoader<{ user: CurrentUser }>;
 export function withUser<T>(load: (args: UserLoaderArgs) => T): GuardedLoader<Awaited<T>>;

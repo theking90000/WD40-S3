@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createMemoryRouter } from "react-router";
 import type { RouteObject } from "react-router";
-import { AuthError, finishCallback, getLoginUrl, logout } from "./auth.ts";
+import { AuthError, finishCallback, getLoginUrl, getReturnTo, logout } from "./auth.ts";
 import type { CurrentUser } from "./auth.ts";
-import { authMiddleware, optionalUser, withUser } from "./auth-router.ts";
+import { authMiddleware, loginLoader, optionalUser, requireUserMiddleware, withUser } from "./auth-router.ts";
 
-test("callbacks precede guarded loaders, public routes skip user lookup, and failures do not log in", async (t) => {
+test("layout guards block loaders and actions, preserve login destinations, and handle callbacks before authentication", async (t) => {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   const storage = new Map<string, string>();
   Object.defineProperty(globalThis, "window", {
@@ -67,14 +67,21 @@ test("callbacks precede guarded loaders, public routes skip user lookup, and fai
     loader: rootLoader,
     children: [
       { id: "public", index: true },
+      { id: "login", path: "login", loader: loginLoader },
       {
-        id: "private", path: "private", loader: withUser(),
+        id: "private", path: "private", middleware: [requireUserMiddleware], loader: withUser(),
         children: [{
           id: "private-index", index: true,
-          loader: withUser(({ user }) => {
+          loader: async (args) => {
+            const user = await optionalUser(args);
+            assert.ok(user);
             calls.push({ url: "business-loader" });
             return user;
-          }),
+          },
+          action: () => {
+            calls.push({ url: "business-action" });
+            return null;
+          },
         }],
       },
       { id: "optional", path: "optional", loader: optionalUser },
@@ -99,6 +106,39 @@ test("callbacks precede guarded loaders, public routes skip user lookup, and fai
   await idle();
   assert.deepEqual(calls, []);
 
+  for (const target of [
+    "https://outside.example/private", "//outside.example/private",
+    "http://alice:secret@localhost/private", "javascript:alert(1)",
+    "/login?returnTo=/private", "/login/", "/LOGIN", "/%6cogin", "/private?code=unsolicited",
+  ]) {
+    assert.equal(getReturnTo(target), "http://localhost/");
+  }
+  assert.equal(getReturnTo("/private?view=a%20b#history"), "http://localhost/private?view=a%20b#history");
+
+  await router.navigate("/private?view=a%20b#history");
+  await idle();
+  assert.equal(router.state.errors, null);
+  assert.equal(router.state.location.pathname, "/login");
+  assert.equal(new URLSearchParams(router.state.location.search).get("returnTo"), "http://localhost/private?view=a%20b#history");
+  assert.deepEqual(router.state.loaderData.login, { returnTo: "http://localhost/private?view=a%20b#history" });
+  assert.ok(calls.every(({ url }) => url === "/api/me"));
+
+  await router.navigate("/private", { formMethod: "post", formData: new FormData() });
+  await idle();
+  assert.equal(router.state.location.pathname, "/login");
+  assert.ok(calls.every(({ url }) => url === "/api/me"));
+
+  unavailable = true;
+  const unavailableCount = calls.length;
+  await router.navigate("/private");
+  await idle();
+  assert.ok(Object.values(router.state.errors ?? {}).some((error) => (
+    error instanceof AuthError && error.status === 503
+  )));
+  assert.deepEqual(calls.slice(unavailableCount).map(({ url }) => url), ["/api/me"]);
+  unavailable = false;
+
+  const callbackCount = calls.length;
   await getLoginUrl("http://localhost/private?view=a%20b#history");
   const callback = "http://localhost/private?view=a%20b&code=one&state=expected";
   const first = finishCallback(callback);
@@ -109,10 +149,17 @@ test("callbacks precede guarded loaders, public routes skip user lookup, and fai
   assert.equal(router.state.location.search, "?view=a%20b");
   assert.equal(router.state.location.hash, "#history");
   assert.deepEqual(router.state.loaderData.private, { user });
-  assert.deepEqual(calls.map(({ url }) => url), [
+  assert.deepEqual(calls.slice(callbackCount).map(({ url }) => url), [
     "/api/login", "/api/callback", "/api/me", "business-loader",
   ]);
   assert.equal(storage.size, 0);
+
+  await router.navigate(`/login?returnTo=${encodeURIComponent("/private?view=a%20b#history")}`);
+  await idle();
+  assert.equal(router.state.errors, null);
+  assert.equal(router.state.location.pathname, "/private");
+  assert.equal(router.state.location.search, "?view=a%20b");
+  assert.equal(router.state.location.hash, "#history");
 
   unavailable = true;
   await router.revalidate();
@@ -126,6 +173,11 @@ test("callbacks precede guarded loaders, public routes skip user lookup, and fai
   await logout();
   await router.navigate("/optional");
   assert.equal(router.state.loaderData.optional, null);
+  const logoutCount = calls.length;
+  await router.navigate("/private");
+  await idle();
+  assert.equal(router.state.location.pathname, "/login");
+  assert.ok(calls.slice(logoutCount).every(({ url }) => url === "/api/me"));
   await router.navigate("/");
   const count = calls.length;
   await router.navigate("/?code=unsolicited&state=missing-context");

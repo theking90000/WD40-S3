@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
+import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration, useRouteError } from "react-router";
 import { authMiddleware } from "./auth-router.ts";
+import { AuthFailure } from "~/components/auth/auth-screen";
 import "./style.css";
 
 export const clientMiddleware = [authMiddleware];
@@ -36,4 +37,12 @@ export function Layout({ children }: { children: ReactNode }) {
 
 export default function App() {
   return <Outlet />;
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  if (isRouteErrorResponse(error) && error.status === 404) {
+    return <AuthFailure title="Page introuvable" description="Cette page n'existe pas." />;
+  }
+  return <AuthFailure />;
 }

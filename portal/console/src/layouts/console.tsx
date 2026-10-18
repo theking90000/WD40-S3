@@ -1,16 +1,19 @@
 import { useState } from "react";
 import { ActivityIcon, LayoutGridIcon, UserRoundIcon } from "lucide-react";
 import {
-  isRouteErrorResponse, Link, Outlet, useLoaderData, useMatches,
-  useRevalidator, useRouteError,
+  isRouteErrorResponse, Outlet, useLoaderData, useMatches,
+  useNavigate, useRouteError,
 } from "react-router";
-import type { LoaderFunctionArgs } from "react-router";
-import { login, logout } from "~/auth.ts";
-import { optionalUser } from "~/auth-router.ts";
+import { logout } from "~/auth.ts";
+import { requireUserMiddleware, withUser } from "~/auth-router.ts";
+import { AuthFailure } from "~/components/auth/auth-screen";
 import { ConsoleShell } from "~/components/shell/console-shell";
 import type { ShellNavigationGroup } from "~/components/shell/navigation";
 import { Button } from "~/components/ui/button";
-import { Skeleton } from "~/components/ui/skeleton";
+
+export const clientMiddleware = [requireUserMiddleware];
+export const clientLoader = withUser();
+export { AuthPending as HydrateFallback } from "~/components/auth/auth-screen";
 
 const navigation: readonly ShellNavigationGroup[] = [
   {
@@ -21,16 +24,6 @@ const navigation: readonly ShellNavigationGroup[] = [
     ],
   },
 ];
-
-export async function clientLoader(args: LoaderFunctionArgs) {
-  try {
-    return { user: await optionalUser(args), error: null };
-  } catch (error) {
-    if (args.request.signal.aborted) throw error;
-    return { user: null, error: "Authentification indisponible." };
-  }
-}
-clientLoader.hydrate = true as const;
 
 function usePageTitle() {
   const matches = useMatches();
@@ -44,44 +37,21 @@ function usePageTitle() {
   return title;
 }
 
-export function HydrateFallback() {
-  const title = usePageTitle();
-  return (
-    <ConsoleShell
-      title={title}
-      navigation={navigation}
-      account={<p className="text-[10.5px] text-muted-foreground">Chargement du compte…</p>}
-    >
-      <div role="status" className="space-y-4">
-        <span className="sr-only">Chargement de la console…</span>
-        <Skeleton aria-hidden="true" className="h-8 w-48" />
-        <Skeleton aria-hidden="true" className="h-4 w-64 max-w-full" />
-      </div>
-    </ConsoleShell>
-  );
-}
-
 export default function ConsoleLayout() {
-  const { user, error: sessionError } = useLoaderData<typeof clientLoader>();
+  const { user } = useLoaderData<typeof clientLoader>();
   const title = usePageTitle();
-  const revalidator = useRevalidator();
+  const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function authenticate() {
+  async function disconnect() {
     setBusy(true);
     setError(null);
     try {
-      if (sessionError) {
-        await revalidator.revalidate();
-      } else if (user) {
-        await logout();
-        await revalidator.revalidate();
-      } else {
-        await login();
-      }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Authentification indisponible");
+      await logout();
+      await navigate("/login", { replace: true });
+    } catch {
+      setError("Impossible de vous déconnecter. Réessayez dans un instant.");
     } finally {
       setBusy(false);
     }
@@ -95,9 +65,9 @@ export default function ConsoleLayout() {
         </span>
         <div className="min-w-0">
           <p className="truncate text-[11px] font-semibold">
-            {user ? user.name ?? user.email ?? user.subject : sessionError ? "Compte indisponible" : "Non connecté"}
+            {user.name ?? user.email ?? user.subject}
           </p>
-          {user?.name && user.email && (
+          {user.name && user.email && (
             <p className="truncate text-[9.5px] text-muted-foreground">{user.email}</p>
           )}
         </div>
@@ -107,14 +77,14 @@ export default function ConsoleLayout() {
         variant="outline"
         size="sm"
         className="w-full"
-        onClick={authenticate}
-        disabled={busy || revalidator.state !== "idle"}
+        onClick={disconnect}
+        disabled={busy}
         aria-busy={busy}
       >
-        {busy ? "En cours…" : sessionError ? "Réessayer" : user ? "Se déconnecter" : "Se connecter"}
+        {busy ? "En cours…" : "Se déconnecter"}
       </Button>
-      {(error || sessionError) && (
-        <p role="alert" className="text-[10.5px] text-destructive-strong">{error || sessionError}</p>
+      {error && (
+        <p role="alert" className="text-[10.5px] text-destructive-strong">{error}</p>
       )}
     </div>
   );
@@ -128,19 +98,10 @@ export default function ConsoleLayout() {
 
 export function ErrorBoundary() {
   const error = useRouteError();
-  const title = isRouteErrorResponse(error) && error.status === 404
-    ? "Page introuvable"
-    : "Page indisponible";
-
+  if (isRouteErrorResponse(error) && error.status === 404) {
+    return <AuthFailure title="Page introuvable" description="Cette page n'existe pas." />;
+  }
   return (
-    <ConsoleShell title={title} navigation={navigation}>
-      <section className="space-y-4">
-        <h1 className="text-page-title">{title}</h1>
-        <p className="text-muted-foreground">Impossible d'afficher cette page pour le moment.</p>
-        <Button asChild variant="outline">
-          <Link to="/">Retour à l'accueil</Link>
-        </Button>
-      </section>
-    </ConsoleShell>
+    <AuthFailure title="Console indisponible" description="Impossible d'accéder à la console. Réessayez dans un instant." />
   );
 }
