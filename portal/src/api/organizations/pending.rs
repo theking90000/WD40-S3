@@ -127,6 +127,34 @@ pub(super) async fn advance_credential(
     Ok(generation)
 }
 
+pub(super) async fn delete_credential(
+    transaction: &DatabaseTransaction,
+    key_id: &str,
+) -> Result<(), Error> {
+    let state = ensure_credential(transaction, key_id).await?;
+    if state.delete_requested {
+        return Ok(());
+    }
+    let generation = next_generation(state.generation)?;
+    let result = credential_sync::Entity::update_many()
+        .set(credential_sync::ActiveModel {
+            generation: Set(generation),
+            delete_requested: Set(true),
+            last_error: Set(None),
+            ..Default::default()
+        })
+        .filter(credential_sync::Column::KeyId.eq(key_id.to_owned()))
+        .filter(credential_sync::Column::PrincipalId.eq(state.principal_id))
+        .filter(credential_sync::Column::Generation.eq(state.generation))
+        .filter(credential_sync::Column::DeleteRequested.eq(false))
+        .exec(transaction)
+        .await?;
+    if result.rows_affected != 1 {
+        return Err(Error::new(StatusCode::CONFLICT, "sync_state_changed"));
+    }
+    Ok(())
+}
+
 pub(super) async fn selected_buckets(
     transaction: &DatabaseTransaction,
     organization_id: Uuid,

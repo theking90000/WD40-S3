@@ -134,8 +134,10 @@ alphanumeric secrets with `getrandom`. Secrets appear only in the creation
 response. They are stored only in the WD40 credentials registry, never in this
 database. POST returns the secret after the registry confirms registration and
 the synchronization routine acknowledges application. PATCH synchronizes policy
-bindings without generating or replacing a secret. Deletion currently removes
-portal metadata only; HTTP integration of WD40 revocation remains a separate step.
+bindings without generating or replacing a secret. DELETE persists a deletion
+request, revokes the WD40 key and removes its managed bindings before deleting
+the credential, associations and sync record in a final SQL transaction.
+Failures retain the metadata and deletion request for an explicit retry.
 
 ## Synchronization state
 

@@ -227,7 +227,8 @@ The database exposes `BucketSync` and `CredentialSync` for stable WD40 IDs,
 desired/applied generations, the last error and deletion requests. Their schema
 is documented in `db/README.md`. Bucket and credential POST/PATCH handlers prepare
 these records in their SQL transaction, commit and explicitly await the relevant
-coroutine before returning success. DELETE integration remains a separate step.
+coroutine before returning success. Credential DELETE persists its deletion
+request and awaits revocation and cleanup before returning `204`.
 There is no automatic synchronization at startup or on a timer, and no
 synchronization endpoint.
 
@@ -661,8 +662,8 @@ grants no access when S3 enforcement is connected. Composite foreign keys on
 
 POST registers keys with the WD40 credentials registry and prepares private
 policy bindings before returning a secret. PATCH updates those bindings without
-rotating the key. DELETE currently removes portal metadata only; wiring WD40
-revocation into that handler remains a separate step.
+rotating the key. DELETE revokes the WD40 key and removes its managed policy
+bindings before deleting portal metadata.
 
 ### POST /api/organizations/{organization_id}/credentials
 
@@ -735,8 +736,21 @@ PATCH never recreates it or generates a secret.
 
 ### DELETE /api/organizations/{organization_id}/credentials/{key_id}
 
-Requires `OWNER` and no request body. Returns `204` after removing the metadata
-and its bucket associations. Deleting a bucket also removes its associations;
+Requires `OWNER` and no request body. The handler checks membership and ownership
+of the target credential, persists a deletion request and advances its desired
+generation in a SQL transaction. After commit, it awaits `delete_credential`:
+the key is revoked first, managed bindings are detached, and metadata, bucket
+associations and the sync record are deleted in one final SQL transaction.
+
+Returns `204` only after cleanup succeeds. A failure returns
+`503 synchronization_failed` with `resource_id` and `sync_error`; the credential
+and its deletion request remain available for a later explicit DELETE retry.
+Repeated pending deletion requests retain the same generation. PATCH cannot
+change a credential pending deletion and returns `409 resource_deleting`.
+An already absent WD40 key does not block cleanup; a principal mismatch prevents
+revoking a different credential. No automatic retry is scheduled.
+
+Deleting a bucket also removes its associations;
 recreating it with the same name does not restore the old selection.
 
 PATCH and DELETE validate a 20-byte ASCII alphanumeric key ID, returning
