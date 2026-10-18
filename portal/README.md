@@ -165,6 +165,21 @@ Features default to `sqlite`; `postgres` enables the PostgreSQL driver.
 builds and embeds the console for library consumers too. `standalone` enables
 both features and the executable. Builds without `embed-console` do not run npm.
 
+## Synchronization foundation
+
+`portal::sync::SyncContext::new(db, credentials, policies)` groups existing SQL
+and registry handles for explicitly called synchronization operations. It is
+cloneable and exposes the handles directly. Construction performs no I/O and
+starts no tasks. `portal::sync::Error` preserves database and registry error
+causes without defining an HTTP response.
+
+The database exposes `BucketSync` and `CredentialSync` for stable WD40 IDs,
+desired/applied generations, the last error and deletion requests. Their schema
+is documented in `db/README.md`. The context and schema are foundations only;
+bucket and credential coroutines and their integration into HTTP handlers are
+not implemented yet. There is no automatic synchronization at startup or on a
+timer, and no synchronization endpoint.
+
 ## OIDC configuration
 
 The standalone server requires three OIDC environment variables, also available

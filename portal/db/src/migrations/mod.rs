@@ -7,6 +7,7 @@ mod m20261018_000004_unique_organizations_name;
 mod m20261018_000005_create_buckets;
 mod m20261019_000006_create_credentials;
 mod m20261019_000007_create_credential_buckets;
+mod m20261019_000008_create_sync_state;
 
 pub struct Migrator;
 
@@ -21,6 +22,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261018_000005_create_buckets::Migration),
             Box::new(m20261019_000006_create_credentials::Migration),
             Box::new(m20261019_000007_create_credential_buckets::Migration),
+            Box::new(m20261019_000008_create_sync_state::Migration),
         ]
     }
 }

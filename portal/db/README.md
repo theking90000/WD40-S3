@@ -135,6 +135,38 @@ response. They are not stored in this database or the WD40 credentials registry.
 This tranche manages metadata and generation; these credentials do not yet
 authenticate S3 requests. Deletion removes portal metadata only.
 
+## Synchronization state
+
+`portal_db::BucketSync` and `portal_db::bucket_sync` expose the `bucket_sync`
+table. Its key is `bucket_name`; `public_policy_id` and `private_policy_id` are
+stable UUIDs for the two WD40 policies. Each column is unique, and the two IDs
+must differ within a record. `portal_db::CredentialSync` and
+`portal_db::credential_sync` expose `credential_sync`, keyed by `key_id`, with a
+unique UUID `principal_id`. Convert these UUIDs with `as_u128()` when calling
+WD40. No secret is stored in either table.
+
+Inserting through either entity's active model generates unset identifiers with
+`getrandom`. Random-source failures return `DbErr`; direct and bulk inserts must
+supply their own IDs. Updates retain identifiers unless explicitly replaced.
+
+Both tables contain `generation: i64`, `applied_generation: i64`,
+`last_error: Option<String>` and `delete_requested: bool`. Database defaults are
+generation 1, applied generation 0, no error and no deletion request. Constraints
+require a positive desired generation and an applied generation between zero and
+the desired generation. A fresh record therefore represents pending work.
+Application is complete when the generations match, no error remains and no
+deletion is requested. Generations belong to the portal and are independent of
+the policy registry's global revision.
+
+These tables have no foreign keys to business entities, so their identifiers
+survive resource or organization deletion for later WD40 cleanup. The caller
+must retain these records until cleanup succeeds and prevent reuse of their
+resource names or key IDs while cleanup is pending.
+
+Migration `000008` creates the tables without backfilling existing resources.
+Current HTTP handlers do not create or update synchronization records yet.
+No synchronization is triggered by this schema.
+
 ## Code structure
 
 Add the following modules as the schema grows; do not create empty placeholders:
