@@ -5,6 +5,7 @@ mod m20261017_000002_create_organization_members;
 mod m20261018_000003_index_organization_members_email;
 mod m20261018_000004_unique_organizations_name;
 mod m20261018_000005_create_buckets;
+mod m20261019_000006_create_credentials;
 
 pub struct Migrator;
 
@@ -17,6 +18,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261018_000003_index_organization_members_email::Migration),
             Box::new(m20261018_000004_unique_organizations_name::Migration),
             Box::new(m20261018_000005_create_buckets::Migration),
+            Box::new(m20261019_000006_create_credentials::Migration),
         ]
     }
 }

@@ -7,6 +7,7 @@ mod entities;
 mod migrations;
 
 pub use entities::bucket::{self, BucketAccess, Model as Bucket};
+pub use entities::credential::{self, CredentialAccessType, Model as Credential};
 pub use entities::organization::{self, Model as Organization};
 pub use entities::organization_member::{
     self, Model as OrganizationMember, OrganizationMemberAccess,

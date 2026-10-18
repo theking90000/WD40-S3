@@ -514,6 +514,75 @@ missing fields, unknown fields and invalid access values return
 content-type, body-limit and database errors, with the same `{ "error": "code" }`
 response format.
 
+### Organization credentials
+
+Credential routes are nested under `/api/organizations/{organization_id}` with
+the existing authentication and organization membership middleware. Handlers
+reuse `Extension<CurrentOrganization>` and filter every operation by its ID.
+All responses, including the secret-bearing POST response, use
+`Cache-Control: no-store`. Writes require `OWNER` and `X-WD40-Portal: 1`; POST
+and PATCH also require `Content-Type: application/json`.
+
+`access_type` is either `ALL`, describing access to every bucket of the
+organization including future buckets, or `RESTRICTED`, describing access only
+to explicitly selected buckets. Selection and its join table are deferred.
+Without associations, `RESTRICTED` must grant no access when enforcement is
+connected.
+
+This API stores metadata and generates keys. It does not register secrets with
+the WD40 credentials registry or enforce S3 access. Generated credentials cannot
+yet authenticate S3 requests; DELETE removes portal metadata only.
+
+### POST /api/organizations/{organization_id}/credentials
+
+Requires `OWNER` and a JSON body containing only the required access type:
+
+```json
+{ "access_type": "ALL" }
+```
+
+The server generates an ASCII alphanumeric `key_id` of exactly 20 bytes and an
+independent ASCII alphanumeric `secret` of exactly 40 bytes using `getrandom`,
+without modulo bias. It retries a key ID collision up to three insertion
+attempts; the database primary key also protects concurrent creations.
+
+Returns `201` with `organization_id`, `key_id`, `access_type`, `created_at` in
+RFC 3339 format, and `secret`. The secret is returned only by this request and
+is never stored or logged by these handlers. It cannot be recovered later.
+The client cannot supply a key ID, secret, organization ID or creation date.
+
+### GET /api/organizations/{organization_id}/credentials
+
+Both `MEMBER` and `OWNER` can list credentials. Returns `200` with an array of
+`organization_id`, `key_id`, `access_type` and `created_at` objects sorted by
+key ID, or an empty array. No secrets are included.
+
+### PATCH /api/organizations/{organization_id}/credentials/{key_id}
+
+Requires `OWNER` and a JSON body containing only the required access type:
+
+```json
+{ "access_type": "RESTRICTED" }
+```
+
+Returns `200` with the updated metadata, without a secret. Requesting the
+existing access type also succeeds. The key ID, organization and creation
+timestamp cannot be changed. This endpoint does not rotate or regenerate keys.
+
+### DELETE /api/organizations/{organization_id}/credentials/{key_id}
+
+Requires `OWNER` and no request body. Returns `204` after removing the metadata.
+
+PATCH and DELETE validate a 20-byte ASCII alphanumeric key ID, returning
+`400 invalid_key_id` for other formats. A missing credential or one belonging
+to another organization returns `404 credential_not_found`.
+Missing fields, unknown fields and invalid access types return
+`400 invalid_request`; ordinary members receive `403 owner_required` on writes.
+Random-source failure or exhaustion of collision retries returns
+`500 key_generation_failed`. Other database failures return
+`500 database_error`. Existing authentication, organization, CSRF, content-type
+and body-limit errors retain their status and `{ "error": "code" }` format.
+
 ## Console architecture
 
 Group console code by feature under `console/src/features/`:

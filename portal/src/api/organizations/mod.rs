@@ -1,5 +1,6 @@
 mod buckets;
 mod create;
+mod credentials;
 mod current;
 mod list;
 mod members;
@@ -25,6 +26,7 @@ use super::auth::CurrentUser;
 pub(super) fn router(db: DatabaseConnection) -> Router<DatabaseConnection> {
     let organization = members::router()
         .merge(buckets::router())
+        .merge(credentials::router())
         .route_layer(axum::middleware::from_fn_with_state(db, current::resolve));
 
     Router::new()

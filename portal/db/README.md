@@ -92,6 +92,31 @@ middleware. Bucket names,
 organization identifiers and creation timestamps cannot be changed by these
 handlers.
 
+## Credentials
+
+`portal_db::Credential` is the persisted model; `portal_db::credential` exposes
+its SeaORM entity and active model. The `credentials` table contains
+`key_id: String`, `organization_id: Uuid`, `access_type: CredentialAccessType`
+and `created_at: DateTimeWithTimeZone`, all required. The key ID is the primary
+key and is unique across all organizations. The database fills an omitted
+creation timestamp with `CURRENT_TIMESTAMP`. An index on `organization_id`
+supports organization lists, and the organization foreign key uses
+`ON DELETE CASCADE`.
+
+Access types are stored as text with a database check constraint:
+
+- `ALL` describes access to every bucket of the organization, including future
+  buckets.
+- `RESTRICTED` describes access only to explicitly selected buckets. The join
+  table and bucket selection are deferred; without associations, this access
+  type must grant no access when S3 enforcement is connected.
+
+The portal generates 20-byte ASCII alphanumeric key IDs and 40-byte ASCII
+alphanumeric secrets with `getrandom`. Secrets appear only in the creation
+response. They are not stored in this database or the WD40 credentials registry.
+This tranche manages metadata and generation; these credentials do not yet
+authenticate S3 requests. Deletion removes portal metadata only.
+
 ## Code structure
 
 Add the following modules as the schema grows; do not create empty placeholders:
