@@ -1,6 +1,7 @@
 mod create;
 mod delete;
 mod list;
+mod selection;
 mod update;
 
 use axum::{
@@ -22,20 +23,11 @@ pub(super) fn router() -> Router<DatabaseConnection> {
         )
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub(super) enum AccessType {
     All,
     Restricted,
-}
-
-impl From<AccessType> for CredentialAccessType {
-    fn from(access_type: AccessType) -> Self {
-        match access_type {
-            AccessType::All => Self::All,
-            AccessType::Restricted => Self::Restricted,
-        }
-    }
 }
 
 impl From<CredentialAccessType> for AccessType {
@@ -47,21 +39,57 @@ impl From<CredentialAccessType> for AccessType {
     }
 }
 
+#[derive(Deserialize)]
+#[serde(
+    tag = "access_type",
+    rename_all = "SCREAMING_SNAKE_CASE",
+    deny_unknown_fields
+)]
+pub(super) enum Request {
+    All {},
+    Restricted { bucket_names: Vec<String> },
+}
+
+impl Request {
+    fn into_selection(self) -> Result<(CredentialAccessType, Vec<String>), Error> {
+        match self {
+            Self::All {} => Ok((CredentialAccessType::All, Vec::new())),
+            Self::Restricted { mut bucket_names } => {
+                bucket_names.sort_unstable();
+                let count = bucket_names.len();
+                bucket_names.dedup();
+                if bucket_names.len() != count {
+                    return Err(Error::new(
+                        StatusCode::BAD_REQUEST,
+                        "invalid_bucket_selection",
+                    ));
+                }
+                Ok((CredentialAccessType::Restricted, bucket_names))
+            }
+        }
+    }
+}
+
 #[derive(Serialize)]
 pub(super) struct CredentialResponse {
     organization_id: String,
     key_id: String,
     access_type: AccessType,
     created_at: String,
+    bucket_names: Vec<String>,
 }
 
-impl From<Credential> for CredentialResponse {
-    fn from(credential: Credential) -> Self {
+impl CredentialResponse {
+    fn new(credential: Credential, bucket_names: Vec<String>) -> Self {
         Self {
             organization_id: credential.organization_id.to_string(),
             key_id: credential.key_id,
             access_type: credential.access_type.into(),
             created_at: credential.created_at.to_rfc3339(),
+            bucket_names: match credential.access_type {
+                CredentialAccessType::All => Vec::new(),
+                CredentialAccessType::Restricted => bucket_names,
+            },
         }
     }
 }

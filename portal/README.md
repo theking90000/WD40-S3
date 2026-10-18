@@ -525,9 +525,9 @@ and PATCH also require `Content-Type: application/json`.
 
 `access_type` is either `ALL`, describing access to every bucket of the
 organization including future buckets, or `RESTRICTED`, describing access only
-to explicitly selected buckets. Selection and its join table are deferred.
-Without associations, `RESTRICTED` must grant no access when enforcement is
-connected.
+to explicitly selected buckets in the same organization. An empty selection
+grants no access when S3 enforcement is connected. Composite foreign keys on
+`credential_buckets` also enforce the shared organization in the database.
 
 This API stores metadata and generates keys. It does not register secrets with
 the WD40 credentials registry or enforce S3 access. Generated credentials cannot
@@ -535,43 +535,69 @@ yet authenticate S3 requests; DELETE removes portal metadata only.
 
 ### POST /api/organizations/{organization_id}/credentials
 
-Requires `OWNER` and a JSON body containing only the required access type:
+Requires `OWNER` and a JSON body with the required access type:
 
 ```json
 { "access_type": "ALL" }
 ```
+
+For `RESTRICTED`, `bucket_names` is required:
+
+```json
+{ "access_type": "RESTRICTED", "bucket_names": ["photos", "documents"] }
+```
+
+The list may be empty. Every name must match an existing bucket in the selected
+organization, without trimming or normalization. Duplicates, unknown buckets
+and buckets from another organization return `400 invalid_bucket_selection`.
+`ALL` refuses the `bucket_names` field. Unknown fields, a missing list for
+`RESTRICTED`, nulls and wrong types return `400 invalid_request`.
 
 The server generates an ASCII alphanumeric `key_id` of exactly 20 bytes and an
 independent ASCII alphanumeric `secret` of exactly 40 bytes using `getrandom`,
 without modulo bias. It retries a key ID collision up to three insertion
 attempts; the database primary key also protects concurrent creations.
 
+Creation validates the buckets and inserts the credential and its selection in
+one transaction. Collision retries each use a fresh transaction. No response
+containing the secret is returned before commit.
+
 Returns `201` with `organization_id`, `key_id`, `access_type`, `created_at` in
-RFC 3339 format, and `secret`. The secret is returned only by this request and
+RFC 3339 format, `bucket_names` and `secret`. Names are sorted for `RESTRICTED`;
+`ALL` returns an empty list. The secret is returned only by this request and
 is never stored or logged by these handlers. It cannot be recovered later.
 The client cannot supply a key ID, secret, organization ID or creation date.
 
 ### GET /api/organizations/{organization_id}/credentials
 
 Both `MEMBER` and `OWNER` can list credentials. Returns `200` with an array of
-`organization_id`, `key_id`, `access_type` and `created_at` objects sorted by
-key ID, or an empty array. No secrets are included.
+`organization_id`, `key_id`, `access_type`, `created_at` and `bucket_names`
+objects sorted by key ID, or an empty array. Selected bucket names are sorted;
+`ALL` returns an empty selection. One joined query loads credentials and their
+associations, without a query per credential. No secrets are included.
 
 ### PATCH /api/organizations/{organization_id}/credentials/{key_id}
 
-Requires `OWNER` and a JSON body containing only the required access type:
+Requires `OWNER` and the same body rules as POST:
 
 ```json
-{ "access_type": "RESTRICTED" }
+{ "access_type": "RESTRICTED", "bucket_names": ["photos"] }
 ```
 
-Returns `200` with the updated metadata, without a secret. Requesting the
-existing access type also succeeds. The key ID, organization and creation
+The supplied list replaces the full selection. Switching to `ALL` clears all
+associations. Updating the credential and replacing the selection happen in one
+transaction; concurrent updates to the same credential are serialized before
+changing associations. Invalid selections roll back the entire change.
+
+Returns `200` with the updated metadata and selection, without a secret.
+Requesting the existing access type and selection also succeeds. The key ID, organization and creation
 timestamp cannot be changed. This endpoint does not rotate or regenerate keys.
 
 ### DELETE /api/organizations/{organization_id}/credentials/{key_id}
 
-Requires `OWNER` and no request body. Returns `204` after removing the metadata.
+Requires `OWNER` and no request body. Returns `204` after removing the metadata
+and its bucket associations. Deleting a bucket also removes its associations;
+recreating it with the same name does not restore the old selection.
 
 PATCH and DELETE validate a 20-byte ASCII alphanumeric key ID, returning
 `400 invalid_key_id` for other formats. A missing credential or one belonging

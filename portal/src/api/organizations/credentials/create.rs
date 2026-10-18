@@ -4,18 +4,12 @@ use axum::{
     http::StatusCode,
 };
 use portal_db::{
-    CredentialAccessType, DatabaseConnection, credential,
-    sea_orm::{ActiveModelTrait, Set, SqlErr},
+    DatabaseConnection, credential,
+    sea_orm::{ActiveModelTrait, Set, SqlErr, TransactionTrait},
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
-use super::{AccessType, CredentialResponse, CurrentOrganization, Error};
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct Request {
-    access_type: AccessType,
-}
+use super::{CredentialResponse, CurrentOrganization, Error, Request, selection};
 
 // The secret exists only in the creation response, never in the persisted model.
 #[derive(Serialize)]
@@ -32,34 +26,48 @@ pub(super) async fn handle(
 ) -> Result<(StatusCode, Json<Response>), Error> {
     organization.require_owner()?;
     let Json(request) = payload?;
-    let access_type: CredentialAccessType = request.access_type.into();
+    let (access_type, bucket_names) = request.into_selection()?;
     let secret = random_key(40)?;
 
     for _ in 0..3 {
         let key_id = random_key(20)?;
+        let transaction = db.begin().await?;
+        selection::validate(&transaction, organization.id, &bucket_names).await?;
         let result = credential::ActiveModel {
             key_id: Set(key_id),
             organization_id: Set(organization.id),
             access_type: Set(access_type),
             ..Default::default()
         }
-        .insert(&db)
+        .insert(&transaction)
         .await;
 
         match result {
             Ok(credential) => {
+                selection::replace(
+                    &transaction,
+                    organization.id,
+                    &credential.key_id,
+                    &bucket_names,
+                )
+                .await?;
+                transaction.commit().await?;
                 return Ok((
                     StatusCode::CREATED,
                     Json(Response {
-                        credential: CredentialResponse::from(credential),
+                        credential: CredentialResponse::new(credential, bucket_names),
                         secret,
                     }),
                 ));
             }
-            Err(error) => match error.sql_err() {
-                Some(SqlErr::UniqueConstraintViolation(_)) => continue,
-                _ => return Err(Error::from(error)),
-            },
+            Err(error) => {
+                // PostgreSQL aborts the transaction on a collision; retry a fresh one.
+                transaction.rollback().await?;
+                match error.sql_err() {
+                    Some(SqlErr::UniqueConstraintViolation(_)) => continue,
+                    _ => return Err(Error::from(error)),
+                }
+            }
         }
     }
 

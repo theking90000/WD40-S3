@@ -107,9 +107,26 @@ Access types are stored as text with a database check constraint:
 
 - `ALL` describes access to every bucket of the organization, including future
   buckets.
-- `RESTRICTED` describes access only to explicitly selected buckets. The join
-  table and bucket selection are deferred; without associations, this access
-  type must grant no access when S3 enforcement is connected.
+- `RESTRICTED` describes access only to buckets selected through
+  `credential_buckets`. An empty selection grants no access when S3 enforcement
+  is connected.
+
+`portal_db::CredentialBucket` and `portal_db::credential_bucket` expose that
+join table. Its required fields are `organization_id: Uuid`, `key_id: String`
+and `bucket_name: String`, with primary key `(key_id, bucket_name)`. Composite
+foreign keys reference `credentials(organization_id, key_id)` and
+`buckets(organization_id, name)`, backed by unique indexes on those parent
+columns. This enforces that both records belong to the same organization.
+Both foreign keys use `ON DELETE CASCADE`; removing a credential or bucket
+removes its associations. Recreating a bucket with the same name does not
+restore associations.
+
+SQLite connections must retain `PRAGMA foreign_keys = ON`, which the SQLx
+driver enables by default. Creation and access updates validate the selection
+and write the credential and associations in one transaction. Switching to
+`ALL` clears the selection; switching to `RESTRICTED` or updating its selection
+requires an explicit list. Existing restricted credentials start with an empty
+selection.
 
 The portal generates 20-byte ASCII alphanumeric key IDs and 40-byte ASCII
 alphanumeric secrets with `getrandom`. Secrets appear only in the creation

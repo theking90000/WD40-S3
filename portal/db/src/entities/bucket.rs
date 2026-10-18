@@ -28,6 +28,8 @@ pub enum BucketAccess {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
+    #[sea_orm(has_many = "super::credential_bucket::Entity")]
+    CredentialBucket,
     #[sea_orm(
         belongs_to = "super::organization::Entity",
         from = "Column::OrganizationId",
@@ -35,6 +37,12 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     Organization,
+}
+
+impl Related<super::credential_bucket::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::CredentialBucket.def()
+    }
 }
 
 impl Related<super::organization::Entity> for Entity {
