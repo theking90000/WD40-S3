@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLoaderData } from "react-router";
 import { login } from "~/auth.ts";
 import { loginLoader } from "~/auth-router.ts";
@@ -12,6 +12,15 @@ export default function Login() {
   const { returnTo } = useLoaderData<typeof loginLoader>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    function restore(event: PageTransitionEvent) {
+      // A history restore preserves the state from before the OIDC redirect.
+      if (event.persisted) setBusy(false);
+    }
+    window.addEventListener("pageshow", restore);
+    return () => window.removeEventListener("pageshow", restore);
+  }, []);
 
   async function connect() {
     setBusy(true);
