@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { Button } from "~/components/ui/button";
+
+export const handle = { title: "État du service" };
 
 export default function Status() {
   const [status, setStatus] = useState("Non vérifié");
@@ -15,9 +18,9 @@ export default function Status() {
   }
 
   return (
-    <section>
-      <h2>État du service</h2>
-      <button type="button" onClick={check}>Vérifier le service</button>
+    <section className="space-y-4">
+      <h1 className="text-page-title">État du service</h1>
+      <Button type="button" onClick={check}>Vérifier le service</Button>
       <p role="status">{status}</p>
     </section>
   );

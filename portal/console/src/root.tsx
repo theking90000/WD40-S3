@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Link, Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
+import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
 import { authMiddleware } from "./auth-router.ts";
 import "./style.css";
 
@@ -35,14 +35,5 @@ export function Layout({ children }: { children: ReactNode }) {
 }
 
 export default function App() {
-  return (
-    <main>
-      <h1>WD40 Portal</h1>
-      <nav aria-label="Navigation principale">
-        <Link to="/">Accueil</Link>{" · "}
-        <Link to="/status">État du service</Link>
-      </nav>
-      <Outlet />
-    </main>
-  );
+  return <Outlet />;
 }
