@@ -4,12 +4,15 @@ use axum::{
     http::StatusCode,
 };
 use portal_db::{
-    DatabaseConnection, credential,
-    sea_orm::{ActiveModelTrait, Set, SqlErr, TransactionTrait},
+    DatabaseConnection, credential, credential_sync,
+    sea_orm::{ActiveModelTrait, EntityTrait, Set, SqlErr, TransactionTrait},
 };
+use s3_credentials_registry::KeySecret;
 use serde::Serialize;
 
+use super::super::pending;
 use super::{CredentialResponse, CurrentOrganization, Error, Request, selection};
+use crate::sync::{self, SyncContext};
 
 // The secret exists only in the creation response, never in the persisted model.
 #[derive(Serialize)]
@@ -22,17 +25,25 @@ pub(super) struct Response {
 pub(super) async fn handle(
     State(db): State<DatabaseConnection>,
     Extension(organization): Extension<CurrentOrganization>,
+    Extension(sync): Extension<SyncContext>,
     payload: Result<Json<Request>, JsonRejection>,
 ) -> Result<(StatusCode, Json<Response>), Error> {
     organization.require_owner()?;
     let Json(request) = payload?;
     let (access_type, bucket_names) = request.into_selection()?;
-    let secret = random_key(40)?;
 
     for _ in 0..3 {
         let key_id = random_key(20)?;
         let transaction = db.begin().await?;
         selection::validate(&transaction, organization.id, &bucket_names).await?;
+        if credential_sync::Entity::find_by_id(key_id.clone())
+            .one(&transaction)
+            .await?
+            .is_some()
+        {
+            transaction.rollback().await?;
+            continue;
+        }
         let result = credential::ActiveModel {
             key_id: Set(key_id),
             organization_id: Set(organization.id),
@@ -51,7 +62,24 @@ pub(super) async fn handle(
                     &bucket_names,
                 )
                 .await?;
+                pending::selected_buckets(
+                    &transaction,
+                    organization.id,
+                    access_type,
+                    &bucket_names,
+                )
+                .await?;
+                let state = pending::ensure_credential(&transaction, &credential.key_id).await?;
                 transaction.commit().await?;
+
+                let secret =
+                    random_key(40).map_err(|error| error.for_resource(&credential.key_id))?;
+                let signing_secret = KeySecret::new(secret.clone())
+                    .map_err(|error| Error::synchronization(error.into(), &credential.key_id))?;
+                let applied = sync::register_credential(&sync, &credential.key_id, signing_secret)
+                    .await
+                    .map_err(|error| Error::synchronization(error, &credential.key_id))?;
+                pending::require_applied(applied, state.generation, &credential.key_id)?;
                 return Ok((
                     StatusCode::CREATED,
                     Json(Response {

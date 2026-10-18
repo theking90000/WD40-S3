@@ -4,6 +4,7 @@ mod credentials;
 mod current;
 mod list;
 mod members;
+mod pending;
 
 use axum::{
     Json, Router,
@@ -72,11 +73,33 @@ fn verified_email(user: &CurrentUser) -> Result<&str, Error> {
 pub(super) struct Error {
     status: StatusCode,
     code: &'static str,
+    resource_id: Option<String>,
+    sync_error: Option<&'static str>,
 }
 
 impl Error {
     fn new(status: StatusCode, code: &'static str) -> Self {
-        Self { status, code }
+        Self {
+            status,
+            code,
+            resource_id: None,
+            sync_error: None,
+        }
+    }
+
+    fn for_resource(mut self, resource_id: &str) -> Self {
+        self.resource_id = Some(resource_id.to_owned());
+        self
+    }
+
+    fn synchronization(error: crate::sync::Error, resource_id: &str) -> Self {
+        eprintln!("Synchronization failed for {resource_id}: {}", error.code());
+        Self {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code: "synchronization_failed",
+            resource_id: Some(resource_id.to_owned()),
+            sync_error: Some(error.code()),
+        }
     }
 }
 
@@ -112,7 +135,19 @@ impl IntoResponse for Error {
         #[derive(Serialize)]
         struct Body {
             error: &'static str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            resource_id: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            sync_error: Option<&'static str>,
         }
-        (self.status, Json(Body { error: self.code })).into_response()
+        (
+            self.status,
+            Json(Body {
+                error: self.code,
+                resource_id: self.resource_id,
+                sync_error: self.sync_error,
+            }),
+        )
+            .into_response()
     }
 }

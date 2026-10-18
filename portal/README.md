@@ -225,9 +225,30 @@ supported; a principal mismatch prevents revocation.
 
 The database exposes `BucketSync` and `CredentialSync` for stable WD40 IDs,
 desired/applied generations, the last error and deletion requests. Their schema
-is documented in `db/README.md`. Integration of these operations into the
-POST/PATCH/DELETE handlers is not implemented yet. There is no automatic
-synchronization at startup or on a timer, and no synchronization endpoint.
+is documented in `db/README.md`. Bucket and credential POST/PATCH handlers prepare
+these records in their SQL transaction, commit and explicitly await the relevant
+coroutine before returning success. DELETE integration remains a separate step.
+There is no automatic synchronization at startup or on a timer, and no
+synchronization endpoint.
+
+After a SQL commit, an application failure returns `503` with, for example:
+
+```json
+{
+  "error": "synchronization_failed",
+  "resource_id": "my-bucket",
+  "sync_error": "registry_timeout"
+}
+```
+
+The desired SQL data remains saved, including failed POST resources; no automatic
+deletion or retry is performed. A credential error never includes a secret.
+Validation failures before commit roll back the SQL changes and retain the usual
+error format. A conflicting pending deletion returns `409 resource_deleting`.
+Generation advancement uses checked arithmetic; exhaustion returns
+`500 sync_generation_overflow`. Conditional updates can return
+`409 sync_state_changed` before commit, or a synchronization failure after commit
+if another desired generation superseded the request.
 
 ## OIDC configuration
 
@@ -560,8 +581,8 @@ is one of these exact values:
 - `PUBLIC_LIST`: GET and HEAD object, and LIST objects in the bucket, require no
   key; other operations require authentication.
 
-These values are stored metadata. Enforcement in the S3 access layer remains
-separate. Every portal bucket management endpoint requires authentication and
+POST and PATCH apply these choices to the WD40 policy registry before returning
+success. Every portal bucket management endpoint requires authentication and
 organization membership, regardless of the bucket's access value.
 
 ### POST /api/organizations/{organization_id}/buckets
@@ -591,6 +612,10 @@ Returns `201` with the created bucket:
 
 Invalid names return `400 invalid_bucket_name`. An existing name, including a
 concurrent duplicate creation, returns `409 bucket_already_exists`.
+Creation stores the bucket and its stable policy IDs in one SQL transaction and
+marks existing ALL credentials as pending in that same transaction. After commit,
+it waits for both bucket policies and the affected credentials' bindings to be
+applied. A name reserved by a retained sync record cannot be reused.
 
 ### GET /api/organizations/{organization_id}/buckets
 
@@ -609,6 +634,9 @@ Only `access` is accepted and required. Returns `200` with the updated bucket;
 requesting the existing access also succeeds. The name, organization and creation
 date remain unchanged. A missing bucket or a bucket belonging to another
 organization returns `404 bucket_not_found`. The route never creates a bucket.
+The access change and next desired generation are committed together before
+calling `sync_bucket`. A visibility update of an already applied bucket does not
+rewrite credentials. An initial application also prepares ALL credentials.
 
 Ordinary members receive `403 owner_required` for POST and PATCH. Malformed JSON,
 missing fields, unknown fields and invalid access values return
@@ -631,9 +659,10 @@ to explicitly selected buckets in the same organization. An empty selection
 grants no access when S3 enforcement is connected. Composite foreign keys on
 `credential_buckets` also enforce the shared organization in the database.
 
-This API stores metadata and generates keys. It does not register secrets with
-the WD40 credentials registry or enforce S3 access. Generated credentials cannot
-yet authenticate S3 requests; DELETE removes portal metadata only.
+POST registers keys with the WD40 credentials registry and prepares private
+policy bindings before returning a secret. PATCH updates those bindings without
+rotating the key. DELETE currently removes portal metadata only; wiring WD40
+revocation into that handler remains a separate step.
 
 ### POST /api/organizations/{organization_id}/credentials
 
@@ -660,14 +689,19 @@ independent ASCII alphanumeric `secret` of exactly 40 bytes using `getrandom`,
 without modulo bias. It retries a key ID collision up to three insertion
 attempts; the database primary key also protects concurrent creations.
 
-Creation validates the buckets and inserts the credential and its selection in
-one transaction. Collision retries each use a fresh transaction. No response
-containing the secret is returned before commit.
+Creation validates the buckets and inserts the credential, selection and stable
+principal sync record in one transaction. Missing sync records for selected
+buckets are initialized in that transaction too. Collision retries each use a
+fresh transaction and also avoid IDs reserved by retained sync records.
+After commit, the handler generates the secret in memory and calls
+`register_credential`, which prepares bindings and registers the key. No response
+containing the secret is returned before WD40 and SQL application acknowledgement.
 
 Returns `201` with `organization_id`, `key_id`, `access_type`, `created_at` in
 RFC 3339 format, `bucket_names` and `secret`. Names are sorted for `RESTRICTED`;
 `ALL` returns an empty list. The secret is returned only by this request and
-is never stored or logged by these handlers. It cannot be recovered later.
+is never stored in SQL or logged by these handlers. It is stored only by the WD40
+credentials registry and is never exposed by later portal responses.
 The client cannot supply a key ID, secret, organization ID or creation date.
 
 ### GET /api/organizations/{organization_id}/credentials
@@ -694,6 +728,10 @@ changing associations. Invalid selections roll back the entire change.
 Returns `200` with the updated metadata and selection, without a secret.
 Requesting the existing access type and selection also succeeds. The key ID, organization and creation
 timestamp cannot be changed. This endpoint does not rotate or regenerate keys.
+The desired generation is advanced in the same transaction as the access change
+and selection. After commit, the handler waits for `sync_credential` before
+returning `200`. A missing WD40 key is reported as a synchronization failure;
+PATCH never recreates it or generates a secret.
 
 ### DELETE /api/organizations/{organization_id}/credentials/{key_id}
 

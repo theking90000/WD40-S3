@@ -131,9 +131,11 @@ selection.
 
 The portal generates 20-byte ASCII alphanumeric key IDs and 40-byte ASCII
 alphanumeric secrets with `getrandom`. Secrets appear only in the creation
-response. They are not stored in this database or the WD40 credentials registry.
-This tranche manages metadata and generation; these credentials do not yet
-authenticate S3 requests. Deletion removes portal metadata only.
+response. They are stored only in the WD40 credentials registry, never in this
+database. POST returns the secret after the registry confirms registration and
+the synchronization routine acknowledges application. PATCH synchronizes policy
+bindings without generating or replacing a secret. Deletion currently removes
+portal metadata only; HTTP integration of WD40 revocation remains a separate step.
 
 ## Synchronization state
 
@@ -169,8 +171,14 @@ must retain these records until cleanup succeeds and prevent reuse of their
 resource names or key IDs while cleanup is pending.
 
 Migration `000008` creates the tables without backfilling existing resources.
-Current HTTP handlers do not create or update synchronization records yet.
-No synchronization is triggered by this schema.
+Bucket and credential POST/PATCH handlers prepare sync records in the same SQL
+transaction as their business data and advance desired generations on updates.
+Selected legacy buckets receive missing sync records on demand. A bucket's
+first application also prepares the ALL credentials and their selected bucket
+states, preserving existing IDs. Concurrent initialization uses insert-on-conflict
+without replacing another transaction's identifiers. After commit, the handlers
+explicitly await the synchronization coroutines. This schema triggers no
+automatic synchronization at startup or on a timer.
 
 ## Code structure
 

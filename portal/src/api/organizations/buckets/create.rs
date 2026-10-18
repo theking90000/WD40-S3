@@ -4,12 +4,14 @@ use axum::{
     http::StatusCode,
 };
 use portal_db::{
-    DatabaseConnection, bucket,
-    sea_orm::{ActiveModelTrait, Set, SqlErr},
+    DatabaseConnection, bucket, bucket_sync,
+    sea_orm::{ActiveModelTrait, EntityTrait, Set, SqlErr, TransactionTrait},
 };
 use serde::Deserialize;
 
+use super::super::pending;
 use super::{Access, BucketResponse, CurrentOrganization, Error};
+use crate::sync::{self, SyncContext};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -21,19 +23,28 @@ pub(super) struct Request {
 pub(super) async fn handle(
     State(db): State<DatabaseConnection>,
     Extension(organization): Extension<CurrentOrganization>,
+    Extension(sync): Extension<SyncContext>,
     payload: Result<Json<Request>, JsonRejection>,
 ) -> Result<(StatusCode, Json<BucketResponse>), Error> {
     organization.require_owner()?;
     let Json(request) = payload?;
     validate_name(&request.name)?;
 
+    let transaction = db.begin().await?;
+    if bucket_sync::Entity::find_by_id(request.name.clone())
+        .one(&transaction)
+        .await?
+        .is_some()
+    {
+        return Err(Error::new(StatusCode::CONFLICT, "bucket_already_exists"));
+    }
     let bucket = bucket::ActiveModel {
         name: Set(request.name),
         organization_id: Set(organization.id),
         access: Set(request.access.into()),
         ..Default::default()
     }
-    .insert(&db)
+    .insert(&transaction)
     .await
     .map_err(|error| match error.sql_err() {
         Some(SqlErr::UniqueConstraintViolation(_)) => {
@@ -41,6 +52,14 @@ pub(super) async fn handle(
         }
         _ => Error::from(error),
     })?;
+    let state = pending::ensure_bucket(&transaction, &bucket.name).await?;
+    pending::all_credentials(&transaction, organization.id).await?;
+    transaction.commit().await?;
+
+    let applied = sync::sync_bucket(&sync, &bucket.name)
+        .await
+        .map_err(|error| Error::synchronization(error, &bucket.name))?;
+    pending::require_applied(applied, state.generation, &bucket.name)?;
 
     Ok((StatusCode::CREATED, Json(BucketResponse::from(bucket))))
 }
