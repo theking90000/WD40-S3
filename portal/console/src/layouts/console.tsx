@@ -1,10 +1,12 @@
 import { useEffect } from "react";
-import { skipToken, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { DatabaseIcon, KeyRoundIcon, LayoutGridIcon, Settings2Icon, UsersIcon } from "lucide-react";
 import { Outlet, useMatches, useNavigate } from "react-router";
 import { organizationLoader, organizationMiddleware, useOrganization, useOrganizations } from "~/features/organizations/router.ts";
-import { organizationErrorMessage, organizationsQuery } from "~/features/organizations/api.ts";
+import { organizationErrorMessage } from "~/features/organizations/api.ts";
 import { organizationMembersQuery } from "~/features/organizations/members/api.ts";
+import { organizationBucketsQuery } from "~/features/organizations/buckets/api.ts";
+import { organizationCredentialsQuery } from "~/features/organizations/credentials/api.ts";
 import { AuthFailure, AuthPending } from "~/features/auth/components/auth-screen";
 import { Account } from "~/features/auth/components/account";
 import { OrganizationSwitcher } from "~/features/organizations/components/organization-switcher";
@@ -23,13 +25,11 @@ export default function ConsoleLayout() {
   const { data: members } = useQuery({
     ...organizationMembersQuery(user, organization?.id ?? ""), enabled: false,
   });
-  const { data: buckets } = useQuery<readonly unknown[]>({
-    queryKey: [...organizationsQuery(user).queryKey, organization?.id ?? "", "buckets"],
-    queryFn: skipToken,
+  const { data: buckets } = useQuery({
+    ...organizationBucketsQuery(user, organization?.id ?? ""), enabled: false,
   });
-  const { data: credentials } = useQuery<readonly unknown[]>({
-    queryKey: [...organizationsQuery(user).queryKey, organization?.id ?? "", "credentials"],
-    queryFn: skipToken,
+  const { data: credentials } = useQuery({
+    ...organizationCredentialsQuery(user, organization?.id ?? ""), enabled: false,
   });
   const navigate = useNavigate();
   const matches = useMatches();
