@@ -23,18 +23,31 @@ pub(super) fn router<S>(oidc: Arc<oidc::Oidc>) -> Router<S>
 where
     S: Clone + Send + Sync + 'static,
 {
-    let protected = Router::new().route("/api/me", get(me::handle)).route_layer(
-        axum::middleware::from_fn_with_state(oidc.clone(), middleware::authenticate),
+    let protected = protect(
+        Router::new().route("/api/me", get(me::handle)),
+        oidc.clone(),
     );
 
     Router::new()
         .route("/api/login", post(login::handle))
         .route("/api/callback", post(callback::handle))
         .route("/api/logout", post(logout::handle))
+        .layer(axum::middleware::from_fn(middleware::no_store))
         .merge(protected)
         .layer(DefaultBodyLimit::max(16 * 1024))
-        .layer(axum::middleware::from_fn(middleware::no_store))
         .with_state(oidc)
+}
+
+pub(super) fn protect<S>(router: Router<S>, oidc: Arc<oidc::Oidc>) -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
+    router
+        .route_layer(axum::middleware::from_fn_with_state(
+            oidc,
+            middleware::authenticate,
+        ))
+        .layer(axum::middleware::from_fn(middleware::no_store))
 }
 
 pub(super) struct AuthError {

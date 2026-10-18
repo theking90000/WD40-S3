@@ -44,7 +44,8 @@ The `organization_members` table contains `organization_id: Uuid`,
 `created_at: DateTimeWithTimeZone`, all required.
 
 The primary key is `(organization_id, email)`. An email can belong to multiple
-organizations, once per organization. Emails are stored as supplied.
+organizations, once per organization. Emails are stored as supplied. A separate
+index on `email` supports listing memberships across organizations.
 `OrganizationMemberAccess::Member` and `OrganizationMemberAccess::Owner` are
 stored as `MEMBER` and `OWNER`. A database check constraint rejects other values;
 inserts must supply access explicitly. The database fills an omitted
