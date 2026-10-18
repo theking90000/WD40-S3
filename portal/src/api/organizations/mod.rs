@@ -1,9 +1,13 @@
 mod create;
 mod list;
+mod members;
 
 use axum::{
     Json, Router,
-    extract::{DefaultBodyLimit, rejection::JsonRejection},
+    extract::{
+        DefaultBodyLimit,
+        rejection::{JsonRejection, PathRejection},
+    },
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::get,
@@ -19,6 +23,7 @@ use super::auth::CurrentUser;
 pub(super) fn router() -> Router<DatabaseConnection> {
     Router::new()
         .route("/api/organizations", get(list::handle).post(create::handle))
+        .merge(members::router())
         .layer(DefaultBodyLimit::max(16 * 1024))
 }
 
@@ -85,6 +90,12 @@ impl From<JsonRejection> for Error {
             }
             _ => Self::new(StatusCode::BAD_REQUEST, "invalid_request"),
         }
+    }
+}
+
+impl From<PathRejection> for Error {
+    fn from(error: PathRejection) -> Self {
+        Self::new(error.status(), "invalid_path")
     }
 }
 
