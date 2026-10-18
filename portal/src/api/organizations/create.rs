@@ -97,7 +97,9 @@ mod tests {
             .await?;
         }
         if Migrator::up(&db, None).await.is_ok() {
-            return Err(DbErr::Custom("migration accepted duplicate names".to_owned()));
+            return Err(DbErr::Custom(
+                "migration accepted duplicate names".to_owned(),
+            ));
         }
         if organization::Entity::find().count(&db).await? != 2 {
             return Err(DbErr::Custom("migration changed existing rows".to_owned()));
@@ -197,7 +199,9 @@ mod tests {
         match duplicate_id {
             Err(error) => {
                 if insert_error(error).status != StatusCode::INTERNAL_SERVER_ERROR {
-                    return Err(DbErr::Custom("UUID conflict was not an internal error".to_owned()));
+                    return Err(DbErr::Custom(
+                        "UUID conflict was not an internal error".to_owned(),
+                    ));
                 }
             }
             Ok(_) => return Err(DbErr::Custom("duplicate UUID was accepted".to_owned())),

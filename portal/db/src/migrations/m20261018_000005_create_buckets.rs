@@ -24,9 +24,7 @@ impl MigrationTrait for Migration {
                             .default(Expr::current_timestamp()),
                     )
                     .col(ColumnDef::new(Buckets::Access).text().not_null())
-                    .check(
-                        Expr::col(Buckets::Access).is_in(["PRIVATE", "PUBLIC", "PUBLIC_LIST"]),
-                    )
+                    .check(Expr::col(Buckets::Access).is_in(["PRIVATE", "PUBLIC", "PUBLIC_LIST"]))
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk-buckets-organizations")

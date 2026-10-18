@@ -48,15 +48,22 @@ pub(super) async fn handle(
 fn validate_name(name: &str) -> Result<(), Error> {
     let bytes = name.as_bytes();
     let alphanumeric = |byte: &u8| byte.is_ascii_lowercase() || byte.is_ascii_digit();
-    let ip_address = name.split('.').count() == 4
-        && name.split('.').all(|part| part.parse::<u8>().is_ok());
+    let ip_address =
+        name.split('.').count() == 4 && name.split('.').all(|part| part.parse::<u8>().is_ok());
     let reserved_prefix = ["xn--", "sthree-", "amzn-s3-demo-"]
         .into_iter()
         .any(|prefix| name.starts_with(prefix));
     // Account-regional AWS namespaces are not represented by the portal.
-    let reserved_suffix = ["-s3alias", "--ol-s3", ".mrap", "--x-s3", "--table-s3", "-an"]
-        .into_iter()
-        .any(|suffix| name.ends_with(suffix));
+    let reserved_suffix = [
+        "-s3alias",
+        "--ol-s3",
+        ".mrap",
+        "--x-s3",
+        "--table-s3",
+        "-an",
+    ]
+    .into_iter()
+    .any(|suffix| name.ends_with(suffix));
 
     if !(3..=63).contains(&bytes.len())
         || !bytes.first().is_some_and(alphanumeric)
