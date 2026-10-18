@@ -57,6 +57,40 @@ SeaORM relations connect each member to its organization and each organization
 to its members. The foreign key references `organizations.id` with
 `ON DELETE CASCADE`, so deleting an organization removes its memberships.
 
+## Buckets
+
+`portal_db::Bucket` is the persisted model; `portal_db::bucket` exposes its
+SeaORM entity and active model. The `buckets` table contains `name: String`,
+`organization_id: Uuid`, `created_at: DateTimeWithTimeZone` and
+`access: BucketAccess`, all required. The name is the primary key and is unique
+across all organizations. The database fills an omitted `created_at` with
+`CURRENT_TIMESTAMP`. An index on `organization_id` supports organization lists.
+SeaORM relations connect buckets and organizations; the foreign key uses
+`ON DELETE CASCADE`.
+
+Access is stored as text with a database check constraint:
+
+- `PRIVATE`: authentication is required for every S3 operation.
+- `PUBLIC`: GET and HEAD object require no key; every other operation requires
+  authentication.
+- `PUBLIC_LIST`: GET and HEAD object, and LIST objects in the bucket, require no
+  key; every other operation requires authentication.
+
+These values describe S3 access, not access to the portal management API. This
+change stores the policy; enforcement in the S3 access layer remains separate.
+
+The database does not validate bucket name syntax. The creation handler checks
+the general-purpose AWS naming rules without trimming or lowercasing the input.
+It rejects the reserved `-an` suffix because account-regional AWS namespaces are
+not represented here. Periods are allowed; Transfer Acceleration is not enabled.
+
+The handlers and local router are in `portal/src/api/organizations/buckets/`.
+They support creation, listing and access updates, with owner checks for writes
+and organization-scoped queries. The bucket router is not mounted yet; mounting
+must place it under the existing organization membership middleware. Bucket names,
+organization identifiers and creation timestamps cannot be changed by these
+handlers.
+
 ## Code structure
 
 Add the following modules as the schema grows; do not create empty placeholders:
