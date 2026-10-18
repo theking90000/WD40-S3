@@ -74,11 +74,22 @@ impl S3Adapter {
     /// producer task. See the body module's TODO(s3-body-progress) for the planned
     /// replacement of that task/channel bridge by integrated transport polling.
     pub fn into_service(self) -> s3s::service::S3Service {
+        self.service_builder().build()
+    }
+
+    /// Builds an authenticated service with caller-supplied virtual-host parsing.
+    pub fn into_service_with_host(self, host: impl s3s::host::S3Host) -> s3s::service::S3Service {
+        let mut builder = self.service_builder();
+        builder.set_host(host);
+        builder.build()
+    }
+
+    fn service_builder(self) -> s3s::service::S3ServiceBuilder {
         let auth = auth::RegistryAuth::new(self.credentials.clone());
         let access = access::S3Access::new(self.credentials.clone(), self.access.clone());
         let mut builder = s3s::service::S3ServiceBuilder::new(self);
         builder.set_auth(auth);
         builder.set_access(access);
-        builder.build()
+        builder
     }
 }

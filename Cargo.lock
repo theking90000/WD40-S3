@@ -2932,21 +2932,33 @@ dependencies = [
 name = "portal"
 version = "0.1.0"
 dependencies = [
+ "access-controller",
  "axum",
  "axum-extra",
+ "backends",
  "base64 0.22.1",
+ "blob-registry",
+ "blob-system",
  "clap",
+ "file-registry",
  "getrandom 0.4.3",
+ "hyper",
  "hyper-util",
+ "object-registry",
  "openidconnect",
  "policy-registry",
  "portal-db",
  "rust-embed",
+ "s3-adapter",
  "s3-credentials-registry",
+ "s3-multipart-registry",
  "serde",
+ "stream-registry",
  "subtle",
  "time",
  "tokio",
+ "tokio-tcp-pool",
+ "webpki-roots",
 ]
 
 [[package]]

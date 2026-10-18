@@ -6,6 +6,9 @@ use portal::{OidcConfig, Portal, cli::PortalArgs};
 use portal_db::{Database, DatabaseConnection, Migrator, MigratorTrait};
 use s3_credentials_registry::cli::S3CredentialsRegistryConfig;
 
+#[cfg(feature = "embedded-s3")]
+mod embedded_s3;
+
 #[derive(Parser)]
 #[command(version, about = "WD40 portal proof of concept")]
 struct Args {
@@ -15,6 +18,9 @@ struct Args {
     credentials: S3CredentialsRegistryConfig,
     #[command(flatten)]
     policies: PolicyRegistryConfig,
+    #[cfg(feature = "embedded-s3")]
+    #[command(flatten)]
+    embedded_s3: embedded_s3::EmbeddedS3Args,
 }
 
 #[tokio::main]
@@ -43,6 +49,16 @@ async fn serve(args: Args, db: &DatabaseConnection) -> io::Result<()> {
         .open()
         .await
         .map_err(|error| io::Error::other(format!("Cannot open policy registry: {error}")))?;
+    #[cfg(feature = "embedded-s3")]
+    let s3 = if args.embedded_s3.embedded_s3 {
+        Some(
+            args.embedded_s3
+                .build(credentials.clone(), policies.clone())
+                .await?,
+        )
+    } else {
+        None
+    };
     let args = args.portal;
     let router = Portal::new(
         OidcConfig {
@@ -68,6 +84,10 @@ async fn serve(args: Args, db: &DatabaseConnection) -> io::Result<()> {
         listener.local_addr()?,
         basename
     );
+    #[cfg(feature = "embedded-s3")]
+    if let Some(s3) = s3 {
+        return s3.serve(listener, router).await;
+    }
     axum::serve(listener, router)
         .with_graceful_shutdown(async {
             if let Err(error) = tokio::signal::ctrl_c().await {
