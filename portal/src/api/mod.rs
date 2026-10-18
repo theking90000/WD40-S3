@@ -3,24 +3,19 @@ mod health;
 mod organizations;
 
 use axum::{Extension, Router, routing::get};
-use policy_registry::PolicyRegistry;
-use portal_db::DatabaseConnection;
-use s3_credentials_registry::S3CredentialRegistry;
 use std::sync::Arc;
 
-pub(super) fn router(
-    oidc: Arc<auth::oidc::Oidc>,
-    db: DatabaseConnection,
-    credentials: S3CredentialRegistry,
-    policies: PolicyRegistry,
-) -> Router {
-    let organizations = organizations::router(db.clone())
-        .layer(Extension(credentials))
-        .layer(Extension(policies));
+use crate::sync::SyncContext;
+
+pub(super) fn router(oidc: Arc<auth::oidc::Oidc>, sync: SyncContext) -> Router {
+    let organizations = organizations::router(sync.db.clone())
+        .layer(Extension(sync.credentials.clone()))
+        .layer(Extension(sync.policies.clone()))
+        .layer(Extension(sync.clone()));
 
     Router::new()
         .route("/api/health", get(health::handle))
         .merge(auth::router(oidc.clone()))
         .merge(auth::protect(organizations, oidc))
-        .with_state(db)
+        .with_state(sync.db)
 }

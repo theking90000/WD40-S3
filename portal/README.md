@@ -156,7 +156,8 @@ The API router supplies the connection as `State<portal_db::DatabaseConnection>`
 for database-backed handlers. Organization routes also receive
 `Extension<s3_credentials_registry::S3CredentialRegistry>` and
 `Extension<policy_registry::PolicyRegistry>`, available to handlers independently
-of registry mode. Authentication routes retain their own OIDC state.
+of registry mode. They also receive the shared `Extension<portal::sync::SyncContext>`.
+Authentication routes retain their own OIDC state.
 
 Features default to `sqlite`; `postgres` enables the PostgreSQL driver.
 `cli` exposes composable `PortalArgs` and enables both registries' CLI configs.
@@ -165,20 +166,68 @@ Features default to `sqlite`; `postgres` enables the PostgreSQL driver.
 builds and embeds the console for library consumers too. `standalone` enables
 both features and the executable. Builds without `embed-console` do not run npm.
 
-## Synchronization foundation
+## Explicit synchronization
 
 `portal::sync::SyncContext::new(db, credentials, policies)` groups existing SQL
 and registry handles for explicitly called synchronization operations. It is
-cloneable and exposes the handles directly. Construction performs no I/O and
-starts no tasks. `portal::sync::Error` preserves database and registry error
-causes without defining an HTTP response.
+cloneable and exposes the handles directly. Clones share one semaphore that
+serializes synchronization operations in this process. Construction performs no
+I/O and starts no tasks. The portal builds one context for its organization
+routes; clone `portal.sync_context()` before consuming the portal to use that
+same semaphore from other code. Independently constructed contexts do not
+coordinate with each other.
+
+`portal::sync` exposes these asynchronous functions:
+
+| Function | Operation |
+| --- | --- |
+| `sync_bucket(&context, bucket_name)` | Applies the public and private policies and the Everyone binding. First application also reconciles the organization's ALL credentials. |
+| `sync_credential(&context, key_id)` | Verifies the registered key's principal and reconciles private policy bindings. Never creates a key or a secret. |
+| `register_credential(&context, key_id, secret)` | Prepares private policy bindings, then registers the caller's in-memory `KeySecret`. |
+| `delete_credential(&context, key_id)` | Requires a deletion request, revokes the key, removes managed bindings and deletes SQL metadata in one final SQL transaction. |
+
+The first three return `Applied { generation }`; deletion returns `()`.
+Callers are responsible for authorization and for persisting the desired
+business data and sync records together before invoking a function. The states
+of selected buckets must also exist. Updating desired data must advance its
+generation, including credentials affected by a new bucket. No IDs are allocated
+by the synchronization functions.
+
+Bucket policies use `Prefix("<bucket>/")`. The public policy is empty for
+PRIVATE, allows READ for PUBLIC, and READ | LIST for PUBLIC_LIST. The private
+policy allows ALL. Private bindings are selected from the credential's ALL or
+RESTRICTED metadata and are attached to its stable principal. Public policy
+updates preserve existing bindings. Obsolete managed bindings are removed before
+new ones are added; unrelated policies are left alone. The S3 adapter's separate
+multipart admission rules still need to distinguish public object listing.
+
+Each operation reads a coherent SQL snapshot and ends that transaction before
+contacting WD40. Registry calls have a ten-second timeout and require a Tokio
+runtime with time enabled. The shared semaphore is acquired only at public
+entry points, so nested synchronization does not reacquire it. Use one shared
+context for the application's writers; this is not cross-process coordination.
+
+An attempt first records `sync_incomplete`, which remains after cancellation.
+Completion clears that marker and conditionally acknowledges only the generation
+and IDs read by the attempt. A concurrent state change returns `sync_state_changed`
+instead of acknowledging newer data. Failure preserves a stable error code in
+SQL and does not roll back operations already applied to WD40. Timeouts can have
+uncertain registry outcomes; these functions do not provide a distributed
+transaction or cancel an already accepted remote mutation.
+
+`portal::sync::Error` preserves database and registry causes and exposes `code()`
+for diagnostics without defining an HTTP response. A missing key reports
+`credential_missing`; a different principal reports `principal_mismatch`.
+Registration can be repeated with the same secret and principal after a lost
+response, but never overwrites an existing different credential. No secret is
+stored in SQL or synchronization diagnostics. Deleting an already absent key is
+supported; a principal mismatch prevents revocation.
 
 The database exposes `BucketSync` and `CredentialSync` for stable WD40 IDs,
 desired/applied generations, the last error and deletion requests. Their schema
-is documented in `db/README.md`. The context and schema are foundations only;
-bucket and credential coroutines and their integration into HTTP handlers are
-not implemented yet. There is no automatic synchronization at startup or on a
-timer, and no synchronization endpoint.
+is documented in `db/README.md`. Integration of these operations into the
+POST/PATCH/DELETE handlers is not implemented yet. There is no automatic
+synchronization at startup or on a timer, and no synchronization endpoint.
 
 ## OIDC configuration
 

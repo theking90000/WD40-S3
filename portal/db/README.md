@@ -158,6 +158,11 @@ Application is complete when the generations match, no error remains and no
 deletion is requested. Generations belong to the portal and are independent of
 the policy registry's global revision.
 
+Explicit synchronization records `sync_incomplete` before contacting WD40,
+replaces it with an error code on failure and clears it on successful application.
+Acknowledgements check the generation and stable identifiers to avoid confirming
+a newer desired state. A cancelled operation leaves its incomplete marker.
+
 These tables have no foreign keys to business entities, so their identifiers
 survive resource or organization deletion for later WD40 cleanup. The caller
 must retain these records until cleanup succeeds and prevent reuse of their

@@ -1,19 +1,33 @@
 //! Explicit synchronization dependencies and errors.
 //!
 //! Constructing or cloning the context performs no I/O and starts no tasks.
-//! Synchronization operations will be called explicitly by their callers.
+//! All operations are explicit; clones share a single application semaphore.
 
-use std::fmt;
+mod bucket;
+mod credential;
+
+use std::{fmt, future::Future, sync::Arc, time::Duration};
 
 use policy_registry::PolicyRegistry;
 use portal_db::DatabaseConnection;
 use s3_credentials_registry::S3CredentialRegistry;
+use tokio::sync::{Semaphore, SemaphorePermit};
+
+pub use bucket::sync_bucket;
+pub use credential::{delete_credential, register_credential, sync_credential};
+
+/// The portal generation confirmed by a completed application.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Applied {
+    pub generation: i64,
+}
 
 #[derive(Clone)]
 pub struct SyncContext {
     pub db: DatabaseConnection,
     pub credentials: S3CredentialRegistry,
     pub policies: PolicyRegistry,
+    gate: Arc<Semaphore>,
 }
 
 impl SyncContext {
@@ -26,7 +40,26 @@ impl SyncContext {
             db,
             credentials,
             policies,
+            gate: Arc::new(Semaphore::new(1)),
         }
+    }
+
+    async fn acquire(&self) -> Result<SemaphorePermit<'_>, Error> {
+        self.gate.acquire().await.map_err(|_| Error::Closed)
+    }
+
+    async fn call<T, E>(
+        &self,
+        operation: &'static str,
+        future: impl Future<Output = Result<T, E>>,
+    ) -> Result<T, Error>
+    where
+        Error: From<E>,
+    {
+        tokio::time::timeout(Duration::from_secs(10), future)
+            .await
+            .map_err(|_| Error::Timeout(operation))?
+            .map_err(Error::from)
     }
 }
 
@@ -35,6 +68,37 @@ pub enum Error {
     Database(portal_db::DbErr),
     Credentials(s3_credentials_registry::Error),
     Policies(policy_registry::Error),
+    MissingState(&'static str),
+    BucketNotFound,
+    CredentialNotFound,
+    CredentialMissing,
+    PrincipalMismatch,
+    DeletionRequested,
+    DeletionNotRequested,
+    StateChanged,
+    Closed,
+    Timeout(&'static str),
+}
+
+impl Error {
+    /// Stable codes are persisted instead of registry or database diagnostics.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Database(_) => "database_error",
+            Self::Credentials(_) => "credentials_registry_error",
+            Self::Policies(_) => "policy_registry_error",
+            Self::MissingState(_) => "sync_state_missing",
+            Self::BucketNotFound => "bucket_not_found",
+            Self::CredentialNotFound => "credential_not_found",
+            Self::CredentialMissing => "credential_missing",
+            Self::PrincipalMismatch => "principal_mismatch",
+            Self::DeletionRequested => "deletion_requested",
+            Self::DeletionNotRequested => "deletion_not_requested",
+            Self::StateChanged => "sync_state_changed",
+            Self::Closed => "sync_closed",
+            Self::Timeout(_) => "registry_timeout",
+        }
+    }
 }
 
 impl fmt::Display for Error {
@@ -43,6 +107,24 @@ impl fmt::Display for Error {
             Self::Database(error) => write!(formatter, "synchronization database error: {error}"),
             Self::Credentials(error) => write!(formatter, "credentials registry error: {error}"),
             Self::Policies(error) => write!(formatter, "policy registry error: {error}"),
+            Self::MissingState(resource) => {
+                write!(formatter, "missing {resource} synchronization state")
+            }
+            Self::BucketNotFound => formatter.write_str("bucket not found"),
+            Self::CredentialNotFound => formatter.write_str("credential not found"),
+            Self::CredentialMissing => formatter.write_str("credential is absent from WD40"),
+            Self::PrincipalMismatch => formatter.write_str("credential principal does not match"),
+            Self::DeletionRequested => formatter.write_str("resource is pending deletion"),
+            Self::DeletionNotRequested => {
+                formatter.write_str("credential deletion was not requested")
+            }
+            Self::StateChanged => {
+                formatter.write_str("synchronization state changed during application")
+            }
+            Self::Closed => formatter.write_str("synchronization semaphore is closed"),
+            Self::Timeout(operation) => {
+                write!(formatter, "registry operation timed out: {operation}")
+            }
         }
     }
 }
@@ -53,6 +135,7 @@ impl std::error::Error for Error {
             Self::Database(error) => Some(error),
             Self::Credentials(error) => Some(error),
             Self::Policies(error) => Some(error),
+            _ => None,
         }
     }
 }

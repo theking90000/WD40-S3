@@ -11,7 +11,7 @@ cli = ["dep:clap", "s3-credentials-registry/cli", "policy-registry/cli"]
 grpc-client = ["s3-credentials-registry/grpc-client", "policy-registry/grpc-client"]
 grpc-tls = ["grpc-client", "s3-credentials-registry/grpc-tls", "policy-registry/grpc-tls"]
 embed-console = ["dep:rust-embed"]
-standalone = ["cli", "embed-console", "dep:tokio"]
+standalone = ["cli", "embed-console", "tokio/macros", "tokio/rt-multi-thread", "tokio/net", "tokio/signal"]
 
 [[bin]]
 name = "portal"
@@ -32,7 +32,7 @@ subtle = "2.6"
 time = { version = "0.3", default-features = false }
 hyper-util = { version = "0.1.21", features = ["service"] }
 clap = { version = "4.6.7", features = ["derive", "env"], optional = true }
-tokio = { version = "1.53.3", features = ["macros", "rt-multi-thread", "net", "signal"], optional = true }
+tokio = { version = "1.53.3", default-features = false, features = ["sync", "time"] }
 rust-embed = { version = "8.13.0", default-features = false, features = ["debug-embed", "mime-guess"], optional = true }
 
 [dev-dependencies]
