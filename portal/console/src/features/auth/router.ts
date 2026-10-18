@@ -1,8 +1,8 @@
 import { createContext, replace } from "react-router";
 import type { LoaderFunctionArgs, MiddlewareFunction } from "react-router";
-import { finishCallback, getReturnTo } from "./auth.ts";
-import type { CurrentUser } from "./auth.ts";
-import { getSessionUser } from "./current-user.ts";
+import { finishCallback, getReturnTo } from "./session.ts";
+import type { CurrentUser } from "./session.ts";
+import { getSessionUser } from "./queries.ts";
 
 interface AuthContext {
   getUser(): Promise<CurrentUser | null>;

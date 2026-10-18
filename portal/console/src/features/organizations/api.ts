@@ -1,7 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
-import { api, AuthError } from "./auth.ts";
-import type { CurrentUser } from "./auth.ts";
-import { queryClient, querySession } from "./query-client.ts";
+import { api, AuthError } from "../../lib/api.ts";
+import type { CurrentUser } from "../auth/session.ts";
+import { queryClient, querySession } from "../../lib/query-client.ts";
 
 export interface Organization {
   id: string;

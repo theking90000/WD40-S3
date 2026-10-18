@@ -2,18 +2,18 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { DatabaseIcon, KeyRoundIcon, LayoutGridIcon, Settings2Icon, UsersIcon } from "lucide-react";
 import { Outlet, useMatches, useNavigate } from "react-router";
-import { organizationLoader, organizationMiddleware, useOrganization, useOrganizations } from "~/organization-router.ts";
-import { organizationErrorMessage } from "~/organizations.ts";
-import { organizationMembersQuery } from "~/organization-members.ts";
-import { AuthFailure, AuthPending } from "~/components/auth/auth-screen";
-import { Account } from "~/components/auth/account";
-import { OrganizationSwitcher } from "~/components/organizations/organization-switcher";
+import { organizationLoader, organizationMiddleware, useOrganization, useOrganizations } from "~/features/organizations/router.ts";
+import { organizationErrorMessage } from "~/features/organizations/api.ts";
+import { organizationMembersQuery } from "~/features/organizations/members/api.ts";
+import { AuthFailure, AuthPending } from "~/features/auth/components/auth-screen";
+import { Account } from "~/features/auth/components/account";
+import { OrganizationSwitcher } from "~/features/organizations/components/organization-switcher";
 import { ConsoleShell } from "~/components/shell/console-shell";
 import type { ShellNavigationGroup } from "~/components/shell/navigation";
 
 export const clientMiddleware = [organizationMiddleware];
 export { organizationLoader as clientLoader };
-export { AuthPending as HydrateFallback } from "~/components/auth/auth-screen";
+export { AuthPending as HydrateFallback } from "~/features/auth/components/auth-screen";
 export { ErrorBoundary } from "./session";
 
 export default function ConsoleLayout() {

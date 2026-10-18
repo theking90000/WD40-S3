@@ -1,8 +1,8 @@
 import { useId, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { PlusIcon } from "lucide-react";
-import type { CurrentUser } from "~/auth.ts";
-import { addOrganizationMember, memberErrorMessage } from "~/organization-members.ts";
+import type { CurrentUser } from "~/features/auth/session.ts";
+import { addOrganizationMember, memberErrorMessage } from "~/features/organizations/members/api.ts";
 import { Button } from "~/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "~/components/ui/dialog";
 import { Field, FieldDescription, FieldError, FieldLabel } from "~/components/ui/field";

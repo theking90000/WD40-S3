@@ -3,13 +3,14 @@ import test from "node:test";
 import { createMemoryRouter } from "react-router";
 import type { RouteObject } from "react-router";
 import { QueryObserver } from "@tanstack/react-query";
-import { AuthError, logout } from "./auth.ts";
-import type { CurrentUser } from "./auth.ts";
-import { authMiddleware, requireUserMiddleware, withUser } from "./auth-router.ts";
-import { organizationLoader, organizationMiddleware, selectionLoader } from "./organization-router.ts";
-import { createOrganization, organizationsQuery, refreshOrganizations } from "./organizations.ts";
-import type { Organization } from "./organizations.ts";
-import { currentUserKey, queryClient, resetQuerySession, setQueryUser } from "./query-client.ts";
+import { AuthError } from "../../lib/api.ts";
+import { logout } from "../auth/session.ts";
+import type { CurrentUser } from "../auth/session.ts";
+import { authMiddleware, requireUserMiddleware, withUser } from "../auth/router.ts";
+import { organizationLoader, organizationMiddleware, selectionLoader } from "./router.ts";
+import { createOrganization, organizationsQuery, refreshOrganizations } from "./api.ts";
+import type { Organization } from "./api.ts";
+import { currentUserKey, queryClient, resetQuerySession, setQueryUser } from "../../lib/query-client.ts";
 
 test("organization cache and routing share requests and follow membership and session changes", async (t) => {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");

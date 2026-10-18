@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Trash2Icon } from "lucide-react";
-import type { CurrentUser } from "~/auth.ts";
-import type { OrganizationMember } from "~/organization-members.ts";
-import { memberErrorMessage, removeOrganizationMember } from "~/organization-members.ts";
+import type { CurrentUser } from "~/features/auth/session.ts";
+import type { OrganizationMember } from "~/features/organizations/members/api.ts";
+import { memberErrorMessage, removeOrganizationMember } from "~/features/organizations/members/api.ts";
 import { Button } from "~/components/ui/button";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,

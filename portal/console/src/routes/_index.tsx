@@ -1,17 +1,17 @@
 import { useEffect, useState } from "react";
 import { ArrowRightIcon, Building2Icon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { selectionLoader, useOrganizations } from "~/organization-router.ts";
-import { organizationErrorMessage } from "~/organizations.ts";
-import { Account } from "~/components/auth/account";
-import { AuthFailure, AuthPending } from "~/components/auth/auth-screen";
-import { CreateOrganizationDialog } from "~/components/organizations/create-organization";
+import { selectionLoader, useOrganizations } from "~/features/organizations/router.ts";
+import { organizationErrorMessage } from "~/features/organizations/api.ts";
+import { Account } from "~/features/auth/components/account";
+import { AuthFailure, AuthPending } from "~/features/auth/components/auth-screen";
+import { CreateOrganizationDialog } from "~/features/organizations/components/create-organization";
 import { ConsoleShell } from "~/components/shell/console-shell";
 import { Button } from "~/components/ui/button";
 import { Badge } from "~/components/ui/badge";
 
 export { selectionLoader as clientLoader };
-export { AuthPending as HydrateFallback } from "~/components/auth/auth-screen";
+export { AuthPending as HydrateFallback } from "~/features/auth/components/auth-screen";
 export const handle = { title: "Vos organisations" };
 
 export default function SelectOrganization() {

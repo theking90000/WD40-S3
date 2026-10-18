@@ -1,8 +1,8 @@
 import { useId, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
-import type { CurrentUser } from "~/auth.ts";
-import { createOrganization, organizationErrorMessage } from "~/organizations.ts";
+import type { CurrentUser } from "~/features/auth/session.ts";
+import { createOrganization, organizationErrorMessage } from "~/features/organizations/api.ts";
 import { Button } from "~/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { Field, FieldError, FieldLabel } from "~/components/ui/field";

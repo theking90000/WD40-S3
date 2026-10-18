@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { createContext, replace, useParams, useRouteLoaderData } from "react-router";
 import type { LoaderFunctionArgs, MiddlewareFunction } from "react-router";
-import { AuthError } from "./auth.ts";
-import type { CurrentUser } from "./auth.ts";
-import { requireUser, withUser } from "./auth-router.ts";
-import { isOrganizationId, organizationsQuery, refreshOrganizations } from "./organizations.ts";
-import { queryClient } from "./query-client.ts";
+import { AuthError } from "../../lib/api.ts";
+import type { CurrentUser } from "../auth/session.ts";
+import { requireUser, withUser } from "../auth/router.ts";
+import { isOrganizationId, organizationsQuery, refreshOrganizations } from "./api.ts";
+import { queryClient } from "../../lib/query-client.ts";
 
 const organizationContext = createContext<string>();
 

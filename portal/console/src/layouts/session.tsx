@@ -1,16 +1,16 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Outlet, useLoaderData, useRevalidator, useRouteError } from "react-router";
-import { requireUserMiddleware, withUser } from "~/auth-router.ts";
-import { AuthFailure, AuthPending } from "~/components/auth/auth-screen";
-import { organizationErrorMessage } from "~/organizations.ts";
-import { AuthError } from "~/auth.ts";
-import { currentUserQuery } from "~/current-user.ts";
+import { requireUserMiddleware, withUser } from "~/features/auth/router.ts";
+import { AuthFailure, AuthPending } from "~/features/auth/components/auth-screen";
+import { organizationErrorMessage } from "~/features/organizations/api.ts";
+import { AuthError } from "~/lib/api.ts";
+import { currentUserQuery } from "~/features/auth/queries.ts";
 
 export const clientMiddleware = [requireUserMiddleware];
 export const clientLoader = withUser();
 export function shouldRevalidate() { return true; }
-export { AuthPending as HydrateFallback } from "~/components/auth/auth-screen";
+export { AuthPending as HydrateFallback } from "~/features/auth/components/auth-screen";
 
 export default function SessionLayout() {
   const { user: loadedUser } = useLoaderData<typeof clientLoader>();

@@ -1,7 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
-import { getCurrentUser } from "./auth.ts";
-import type { CurrentUser } from "./auth.ts";
-import { currentUserKey, queryClient, querySession, setQueryUser } from "./query-client.ts";
+import { getCurrentUser } from "./session.ts";
+import type { CurrentUser } from "./session.ts";
+import { currentUserKey, queryClient, querySession, setQueryUser } from "../../lib/query-client.ts";
 
 export function currentUserQuery() {
   return queryOptions({

@@ -1,5 +1,5 @@
 import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
-import type { CurrentUser } from "./auth.ts";
+import type { CurrentUser } from "../features/auth/session.ts";
 
 export const currentUserKey = ["current-user", import.meta.env?.BASE_URL ?? "/"] as const;
 

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Building2Icon, CheckIcon, ChevronsUpDownIcon, PlusIcon } from "lucide-react";
 import { Link } from "react-router";
-import { useOrganization, useOrganizations } from "~/organization-router.ts";
+import { useOrganization, useOrganizations } from "~/features/organizations/router.ts";
 import { Button } from "~/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "~/components/ui/dropdown-menu";
 import { CreateOrganizationDialog } from "./create-organization";

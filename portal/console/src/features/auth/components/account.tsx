@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { UserRoundIcon } from "lucide-react";
 import { useNavigate } from "react-router";
-import { logout } from "~/auth.ts";
-import type { CurrentUser } from "~/auth.ts";
+import { logout } from "~/features/auth/session.ts";
+import type { CurrentUser } from "~/features/auth/session.ts";
 import { Button } from "~/components/ui/button";
 
 export function Account({ user }: { user: CurrentUser }) {

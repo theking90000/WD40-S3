@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createMemoryRouter } from "react-router";
 import type { RouteObject } from "react-router";
-import { AuthError, finishCallback, getLoginUrl, getReturnTo, logout } from "./auth.ts";
-import type { CurrentUser } from "./auth.ts";
-import { authMiddleware, loginLoader, optionalUser, requireUserMiddleware, withUser } from "./auth-router.ts";
-import { currentUserKey, queryClient, resetQuerySession } from "./query-client.ts";
+import { AuthError } from "../../lib/api.ts";
+import { finishCallback, getLoginUrl, getReturnTo, logout } from "./session.ts";
+import type { CurrentUser } from "./session.ts";
+import { authMiddleware, loginLoader, optionalUser, requireUserMiddleware, withUser } from "./router.ts";
+import { currentUserKey, queryClient, resetQuerySession } from "../../lib/query-client.ts";
 
 test("layout guards block loaders and actions, preserve login destinations, and handle callbacks before authentication", async (t) => {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");

@@ -1,4 +1,4 @@
-import { useOrganization } from "~/organization-router.ts";
+import { useOrganization } from "~/features/organizations/router.ts";
 
 export const handle = { title: "Vue d'ensemble" };
 

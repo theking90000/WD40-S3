@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { useLoaderData } from "react-router";
-import { login } from "~/auth.ts";
-import { loginLoader } from "~/auth-router.ts";
-import { AuthScreen } from "~/components/auth/auth-screen";
+import { login } from "~/features/auth/session.ts";
+import { loginLoader } from "~/features/auth/router.ts";
+import { AuthScreen } from "~/features/auth/components/auth-screen";
 import { Button } from "~/components/ui/button";
 
 export { loginLoader as clientLoader };
-export { AuthPending as HydrateFallback, AuthFailure as ErrorBoundary } from "~/components/auth/auth-screen";
+export { AuthPending as HydrateFallback, AuthFailure as ErrorBoundary } from "~/features/auth/components/auth-screen";
 
 export default function Login() {
   const { returnTo } = useLoaderData<typeof loginLoader>();

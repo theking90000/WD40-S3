@@ -440,10 +440,60 @@ use `{ "error": "code" }`:
 
 Authentication provider errors retain the authentication API's status and code.
 
+## Console architecture
+
+Group console code by feature under `console/src/features/`:
+
+```text
+src/
+  root.tsx, routes.ts, style.css
+  routes/                        Pages and route exports
+  layouts/                       Session and console layouts
+  features/
+    auth/
+      session.ts                 OIDC, current user HTTP calls and logout
+      queries.ts                 Cached current user and session lookup
+      router.ts                  Authentication middleware, guards and loaders
+      auth.test.ts
+      components/
+    organizations/
+      api.ts                     Types, validation, queries and mutations
+      router.ts                  Organization selection, guards and hooks
+      organizations.test.ts
+      components/                Creation dialog and organization switcher
+      members/
+        api.ts                   Member queries, mutations and cache updates
+        components/              Add, edit and remove dialogs
+  components/
+    ui/                          Generic UI components
+    shell/                       Console frame and navigation
+  lib/
+    api.ts                       Shared HTTP transport and AuthError
+    query-client.ts              Shared cache and session isolation
+    utils.ts
+  themes/
+```
+
+Add each new feature under `features/<feature>/`. Keep its types, validation,
+API operations, cache updates, error messages and components together. A single
+`api.ts` is enough initially; split it by operation only when needed. Keep tests
+beside their feature. Shared UI belongs in `components/`; shared infrastructure
+belongs in `lib/`.
+
+Routes and layouts assemble feature components and expose React Router loaders
+and middleware. Feature `router.ts` files own guards and navigation context.
+Keep HTTP transport in `lib/api.ts` and feature-specific behavior in its feature.
+Use direct imports, such as `~/features/organizations/api.ts`, without adding
+controller, service or repository layers or barrel files.
+
+Preserve the shared query client and session-generation checks when adding API
+operations so late responses cannot update another session's cache. The session
+layout retains the `layouts/session` route ID used by organization hooks.
+
 ## Console authentication
 
-`console/src/auth.ts` owns the browser protocol and API calls without importing
-React or React Router. It exports:
+`console/src/features/auth/session.ts` owns the browser authentication protocol
+and authentication API calls without importing React or React Router. It exports:
 
 - `getLoginUrl(returnTo?, { signal }?)`, which requests an authorization URL and
   saves the exact callback URI and return destination in `sessionStorage`.
@@ -455,9 +505,10 @@ React or React Router. It exports:
 - `logout()`, which clears the server cookies and pending browser login metadata.
   The caller chooses the subsequent navigation, typically to a public route.
 
-Requests use the compiled base path, same-origin credentials and `no-store`.
-POSTs and DELETEs include `X-WD40-Portal: 1`; JSON bodies also set `Content-Type`.
-`AuthError` exposes an error `code` and HTTP `status`. Network errors propagate.
+`lib/api.ts` provides the shared HTTP transport. Requests use the compiled base
+path, same-origin credentials and `no-store`. POSTs, DELETEs and PATCHes include
+`X-WD40-Portal: 1`; JSON bodies also set `Content-Type`. The shared `AuthError`
+exposes an error `code` and HTTP `status`. Network errors propagate.
 `CurrentUser` describes the `/api/me` response; `getCurrentUser` returns
 `Promise<CurrentUser | null>`.
 No access token, nonce or PKCE verifier is exposed to JavaScript. The callback's
@@ -476,7 +527,7 @@ Rust cookies are shared by tabs and mounts.
 
 ### Global callback handling
 
-`root.tsx` exports a `clientMiddleware` from `auth-router.ts`. Before route
+`root.tsx` exports a `clientMiddleware` from `features/auth/router.ts`. Before route
 loaders or actions run, it detects `code`/`state` or an OIDC error on any route,
 finishes the callback, and replaces the URL with its clean destination. Existing
 business query parameters and the saved fragment are preserved. A root build-time
@@ -502,13 +553,13 @@ Only the login page is public. The session layout guards the organization choose
 and application routes, sending unauthenticated users to `/login` with their return
 destination. The organization layout also checks membership before child loaders
 or actions run. Logout clears cookies and the browser query cache before opening `/login`.
-`auth-router.ts` provides `optionalUser(args)`, `requireUser(args)` and
+`features/auth/router.ts` provides `optionalUser(args)`, `requireUser(args)` and
 `withUser(loader?)` for routes that need identity. A fresh React Router context
 shares a lazy user promise during each navigation or fetcher call, backed by
 TanStack Query across navigations. There is no persistent browser cache or
 additional React authentication provider.
 
-`current-user.ts` defines the `current-user` query, keyed by the console base path,
+`features/auth/queries.ts` defines the `current-user` query, keyed by the console base path,
 and `getSessionUser()` for the guards. `getCurrentUser()` remains the uncached HTTP
 operation. The cached result is a `CurrentUser` or `null` and stays fresh for
 60 seconds. Navigations reuse fresh data and share concurrent requests; the first
@@ -532,7 +583,7 @@ For a route with an optional user:
 
 ```ts
 import type { LoaderFunctionArgs } from "react-router";
-import { optionalUser } from "../auth-router.ts";
+import { optionalUser } from "~/features/auth/router.ts";
 
 export async function clientLoader(args: LoaderFunctionArgs) {
   return { user: await optionalUser(args) };
@@ -544,7 +595,7 @@ export function HydrateFallback() { return null; }
 For a protected route:
 
 ```ts
-import { withUser } from "../auth-router.ts";
+import { withUser } from "~/features/auth/router.ts";
 
 export const clientLoader = withUser(async ({ user, request }) => {
   // Load this route's data here, after authentication has completed.
@@ -570,8 +621,8 @@ a deployment prefix.
 
 ### Organization state
 
-`query-client.ts` owns one TanStack Query client shared by router middleware and
-React's `QueryClientProvider`. `organizations.ts` defines the API calls, response
+`lib/query-client.ts` owns one TanStack Query client shared by router middleware and
+React's `QueryClientProvider`. `features/organizations/api.ts` defines the API calls, response
 types and shared query options. Query keys include the console base path, issuer,
 subject, email and email verification state. Lists stay fresh for 60 seconds;
 concurrent consumers share the same request. There is no polling or persistent
@@ -580,7 +631,7 @@ Authentication failures are not retried automatically. Logout or an identity
 change cancels private queries and drops their results while preserving the
 corresponding authenticated or anonymous user result.
 
-`organization-router.ts` checks the URL's organization before child loaders run.
+`features/organizations/router.ts` checks the URL's organization before child loaders run.
 An ID missing from a cached list triggers one refresh before access is refused.
 Components use `useOrganizations()` and `useOrganization()` to read that same cache;
 the URL determines the active organization. The session loader revalidates on
@@ -606,7 +657,7 @@ hidden on the caller's own row and for ordinary members. Owners must be demoted
 by another owner before they can be removed.
 Adding a member grants access directly; no invitation email is sent.
 
-`organization-members.ts` defines the API calls and TanStack Query options. The
+`features/organizations/members/api.ts` defines the API calls and TanStack Query options. The
 query key includes the authenticated identity and organization ID, with a
 60-second freshness window and no polling. Successful mutations update the
 matching cached list after cancelling older reads; results from previous sessions
@@ -617,7 +668,8 @@ to login and a lost organization membership returns to the chooser. The Rust
 fallback serves direct `/members` loads under the configured deployment prefix.
 
 The focused integration check is available from `portal/console/` with
-`node --test src/auth.test.ts`. Node.js strips the TypeScript types directly.
+`node --test src/features/auth/auth.test.ts src/features/organizations/organizations.test.ts`.
+Node.js strips the TypeScript types directly.
 It uses mocked HTTP and a memory router, without
 an IdP or browser service.
 
