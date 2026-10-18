@@ -36,6 +36,7 @@ function BucketsPage({ user, organization }: { user: CurrentUser; organization: 
   const [copyError, setCopyError] = useState("");
   const [copiedName, setCopiedName] = useState<string | null>(null);
   const detailTrigger = useRef<HTMLElement | null>(null);
+  const heading = useRef<HTMLHeadingElement | null>(null);
   const needle = search.trim().toLocaleLowerCase("fr");
   const filtered = buckets?.filter((bucket) => bucket.name.toLocaleLowerCase("fr").includes(needle)
     && (access === "ALL" || bucket.access === access)) ?? [];
@@ -48,6 +49,13 @@ function BucketsPage({ user, organization }: { user: CurrentUser; organization: 
     const timer = setTimeout(() => setCopiedName(null), 2000);
     return () => clearTimeout(timer);
   }, [copiedName]);
+
+  useEffect(() => {
+    if (buckets && selectedName !== null && !selectedBucket) {
+      setDetailsOpen(false);
+      setSelectedName(null);
+    }
+  }, [buckets, selectedName, selectedBucket]);
 
   function openBucket(name: string, trigger: HTMLElement) {
     detailTrigger.current = trigger;
@@ -76,7 +84,7 @@ function BucketsPage({ user, organization }: { user: CurrentUser; organization: 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-2">
           <p className="text-[10.5px] font-semibold text-muted-foreground">Stockage</p>
-          <h1 className="text-page-title">Buckets</h1>
+          <h1 ref={heading} tabIndex={-1} className="text-page-title">Buckets</h1>
           <p className="text-muted-foreground">Buckets de {organization.name}.</p>
           {buckets && <Badge variant="outline">{buckets.length} bucket{buckets.length > 1 ? "s" : ""}</Badge>}
         </div>
@@ -110,10 +118,11 @@ function BucketsPage({ user, organization }: { user: CurrentUser; organization: 
         </Button>
       </div>
       {notice && <p role="status" className="rounded-lg border bg-success-soft p-3 text-xs text-success-strong">{notice}</p>}
+      <span role="status" className="sr-only">{copiedName ? `Nom du bucket ${copiedName} copié.` : ""}</span>
       {copyError && <p role="alert" className="rounded-lg border bg-destructive-soft p-3 text-xs text-destructive-strong">{copyError}</p>}
       {error && (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-destructive-soft p-4 text-xs text-destructive-strong">
-          <p>{bucketErrorMessage(error)}</p>
+          <p>{bucketErrorMessage(error)}{buckets && " Les données affichées proviennent du dernier chargement réussi. Les modifications sont suspendues jusqu'à la prochaine actualisation réussie."}</p>
           <Button type="button" variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching}>Réessayer</Button>
         </div>
       )}
@@ -186,7 +195,10 @@ function BucketsPage({ user, organization }: { user: CurrentUser; organization: 
       {selectedBucket && <BucketDetails key={selectedBucket.name} user={user} organization={organization} bucket={selectedBucket}
         open={detailsOpen} disabled={!!error} onOpenChange={setDetailsOpen}
         onUpdated={() => { setNotice("Le niveau d'accès du bucket a été enregistré."); setCopyError(""); }}
-        restoreFocus={() => { if (detailTrigger.current?.isConnected) detailTrigger.current.focus(); }} />}
+        restoreFocus={() => {
+          if (detailTrigger.current?.isConnected) detailTrigger.current.focus();
+          else heading.current?.focus();
+        }} />}
     </section>
   );
 }

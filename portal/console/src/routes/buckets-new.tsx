@@ -1,10 +1,11 @@
 import { Link, Navigate } from "react-router";
 import { ArrowLeftIcon } from "lucide-react";
-import { useOrganization, useOrganizations } from "~/features/organizations/router.ts";
+import { organizationOwnerMiddleware, useOrganization, useOrganizations } from "~/features/organizations/router.ts";
 import { organizationBucketsQuery } from "~/features/organizations/buckets/api.ts";
 import { CreateBucketForm } from "~/features/organizations/buckets/components/create-bucket";
 
 export const handle = { title: "Créer un bucket" };
+export const clientMiddleware = [organizationOwnerMiddleware("buckets")];
 
 export default function NewBucket() {
   const organization = useOrganization();

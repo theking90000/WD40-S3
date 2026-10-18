@@ -28,6 +28,7 @@ export function CopyCredentialValue({ value, label, compact = false }: { value: 
         {copied ? <CheckIcon aria-hidden="true" className="size-3.5" /> : <CopyIcon aria-hidden="true" className="size-3.5" />}
         {!compact && label}
       </Button>
+      <span role="status" className="sr-only">{copied ? "Copie effectuée." : ""}</span>
       {error && <span role="alert" className="break-words text-[10px] text-destructive-strong">{error}</span>}
     </span>
   );

@@ -1,9 +1,10 @@
 import { Navigate } from "react-router";
-import { useOrganization, useOrganizations } from "~/features/organizations/router.ts";
+import { organizationOwnerMiddleware, useOrganization, useOrganizations } from "~/features/organizations/router.ts";
 import { organizationCredentialsQuery } from "~/features/organizations/credentials/api.ts";
 import { CreateCredentialPage } from "~/features/organizations/credentials/components/create-credential";
 
 export const handle = { title: "Créer une clé d'accès" };
+export const clientMiddleware = [organizationOwnerMiddleware("credentials")];
 
 export default function NewCredential() {
   const organization = useOrganization();

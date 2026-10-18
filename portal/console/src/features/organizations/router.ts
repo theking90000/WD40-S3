@@ -62,6 +62,18 @@ export const organizationLoader = withUser(({ context }) => ({
   organizationId: context.get(organizationContext),
 }));
 
+export function organizationOwnerMiddleware(destination: "buckets" | "credentials"): MiddlewareFunction {
+  return async (args, next) => {
+    const user = await requireUser(args);
+    const id = args.context.get(organizationContext);
+    const organizations = await loadOrganizations(args, user);
+    const organization = organizations.find((organization) => organization.id === id);
+    if (!organization) throw replace(consolePath("?organization_unavailable=1"));
+    if (organization.access !== "OWNER") throw replace(consolePath(`${id}/${destination}`));
+    return next();
+  };
+}
+
 export function useOrganizations() {
   const data = useRouteLoaderData<{ user: CurrentUser }>("layouts/session");
   if (!data) throw new Error("Organizations require the authenticated layout");

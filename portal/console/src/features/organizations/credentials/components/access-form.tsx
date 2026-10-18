@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCwIcon, SearchIcon } from "lucide-react";
 import type { CurrentUser } from "~/features/auth/session.ts";
@@ -42,6 +42,8 @@ export function CredentialAccessForm({ user, organizationId, initialInput, pendi
   const scopeId = useId();
   const hintId = useId();
   const selectionId = useId();
+  const unavailableId = useId();
+  const errorMessage = useRef<HTMLParagraphElement | null>(null);
   const { data: buckets, error: bucketsError, isFetching, refetch } = useQuery({
     ...organizationBucketsQuery(user, organizationId), enabled: input.access_type === "RESTRICTED",
   });
@@ -54,6 +56,10 @@ export function CredentialAccessForm({ user, organizationId, initialInput, pendi
   const valid = input.access_type === "ALL" || (buckets !== undefined && !bucketsError && unavailable.length === 0);
   const needle = search.trim().toLocaleLowerCase("fr");
   const filtered = buckets?.filter((bucket) => bucket.name.toLocaleLowerCase("fr").includes(needle)) ?? [];
+
+  useEffect(() => {
+    if (error) errorMessage.current?.focus();
+  }, [error]);
 
   function changeInput(next: CredentialInput) {
     setInput(next);
@@ -80,7 +86,8 @@ export function CredentialAccessForm({ user, organizationId, initialInput, pendi
           : "Uniquement les buckets cochés ci-dessous. Une sélection vide n'autorise aucun bucket."}</FieldDescription>
       </Field>
       {input.access_type === "RESTRICTED" && (
-        <fieldset disabled={pending || disabled} className="min-w-0 space-y-3" aria-describedby={selectionId}>
+        <fieldset disabled={pending || disabled} className="min-w-0 space-y-3" aria-invalid={unavailable.length > 0}
+          aria-describedby={`${selectionId}${unavailable.length > 0 ? ` ${unavailableId}` : ""}`}>
           <legend className="mb-3 text-xs font-semibold">Buckets autorisés</legend>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-0 flex-1 basis-40">
@@ -92,7 +99,7 @@ export function CredentialAccessForm({ user, organizationId, initialInput, pendi
               <RefreshCwIcon aria-hidden="true" />Actualiser
             </Button>
           </div>
-          {bucketsError && <p role="alert" className="text-xs text-destructive-strong">{bucketErrorMessage(bucketsError)}</p>}
+          {bucketsError && <p role="alert" className="text-xs text-destructive-strong">{bucketErrorMessage(bucketsError)}{buckets && " La liste affichée provient du dernier chargement réussi. Actualisez-la avant d'enregistrer la sélection."}</p>}
           {!buckets && !bucketsError ? (
             <div role="status" className="space-y-2 rounded-lg border p-3"><span className="sr-only">Chargement des buckets…</span><Skeleton className="h-7 w-full" /><Skeleton className="h-7 w-full" /></div>
           ) : buckets && (
@@ -110,7 +117,7 @@ export function CredentialAccessForm({ user, organizationId, initialInput, pendi
                 ))}
             </div>
           )}
-          {unavailable.length > 0 && <div role="alert" className="space-y-2 rounded-lg border bg-destructive-soft p-3 text-xs text-destructive-strong">
+          {unavailable.length > 0 && <div id={unavailableId} role="alert" className="space-y-2 rounded-lg border bg-destructive-soft p-3 text-xs text-destructive-strong">
             <p>Ces buckets ne sont plus disponibles dans l'organisation :</p>
             <ul className="space-y-1 break-all font-mono">{unavailable.map((name) => <li key={name}>{name}</li>)}</ul>
             <Button type="button" variant="outline" size="sm" onClick={() => changeInput({ access_type: "RESTRICTED", bucket_names: names.filter((name) => available.has(name)) })}>Retirer de la sélection</Button>
@@ -118,7 +125,7 @@ export function CredentialAccessForm({ user, organizationId, initialInput, pendi
           <p id={selectionId} className="text-[10.5px] text-muted-foreground" aria-live="polite">{names.length === 0 ? "Aucun bucket autorisé." : `${names.length} bucket${names.length > 1 ? "s" : ""} sélectionné${names.length > 1 ? "s" : ""}.`}</p>
         </fieldset>
       )}
-      {error && <p role="alert" className="rounded-lg border bg-destructive-soft p-3 text-xs text-destructive-strong">{credentialErrorMessage(error)}</p>}
+      {error && <p ref={errorMessage} tabIndex={-1} role="alert" className="rounded-lg border bg-destructive-soft p-3 text-xs text-destructive-strong">{credentialErrorMessage(error)}</p>}
       <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
         <Button type="button" variant="outline" disabled={pending} onClick={onCancel}>Annuler</Button>
         <Button type="submit" disabled={pending || disabled || !valid || unchanged} aria-busy={pending}>{pending ? "Enregistrement…" : submitLabel}</Button>

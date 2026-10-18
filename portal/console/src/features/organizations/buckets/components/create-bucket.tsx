@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import type { CurrentUser } from "~/features/auth/session.ts";
@@ -15,6 +15,7 @@ export function CreateBucketForm({ user, organization }: { user: CurrentUser; or
   const [name, setName] = useState("");
   const [access, setAccess] = useState<BucketAccess>("PRIVATE");
   const [touched, setTouched] = useState(false);
+  const nameInput = useRef<HTMLInputElement | null>(null);
   const nameId = useId();
   const hintId = useId();
   const errorId = useId();
@@ -28,14 +29,19 @@ export function CreateBucketForm({ user, organization }: { user: CurrentUser; or
   const serverNameError = mutation.error instanceof AuthError
     && (mutation.error.code === "invalid_bucket_name" || mutation.error.code === "bucket_already_exists");
   const nameError = touched && !validName
-    ? "Saisissez un nom conforme aux règles de nommage ci-contre."
+    ? "Saisissez un nom conforme aux règles de nommage sur cette page."
     : serverNameError ? bucketErrorMessage(mutation.error) : "";
+
+  useEffect(() => {
+    if (serverNameError) nameInput.current?.focus();
+  }, [serverNameError, mutation.error]);
 
   return (
     <div className="grid items-start gap-5 min-[961px]:grid-cols-[minmax(0,1fr)_280px]">
       <form noValidate className="space-y-5 rounded-xl border bg-surface p-5 min-[621px]:p-6" onSubmit={(event) => {
         event.preventDefault();
         setTouched(true);
+        if (!validName) nameInput.current?.focus();
         if (!mutation.isPending && validName && organization.access === "OWNER") {
           // Per-call callbacks stop when this form unmounts or the organization changes.
           mutation.mutate({ name, access }, { onSuccess: (bucket) => {
@@ -45,7 +51,7 @@ export function CreateBucketForm({ user, organization }: { user: CurrentUser; or
       }}>
         <Field data-invalid={!!nameError}>
           <FieldLabel htmlFor={nameId}>Nom du bucket</FieldLabel>
-          <Input id={nameId} name="name" value={name} required autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false}
+          <Input ref={nameInput} id={nameId} name="name" value={name} required autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false}
             placeholder="prod-assets" className="font-mono" disabled={mutation.isPending}
             onBlur={() => setTouched(true)} onChange={(event) => {
               setName(event.target.value);

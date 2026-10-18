@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { KeyRoundIcon, PlusIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
@@ -31,6 +31,7 @@ function CredentialsPage({ user, organization }: { user: CurrentUser; organizati
   const [search, setSearch] = useState("");
   const [accessType, setAccessType] = useState<CredentialAccessType | "ANY">("ANY");
   const [notice, setNotice] = useState("");
+  const heading = useRef<HTMLHeadingElement | null>(null);
   const needle = search.trim().toLocaleLowerCase("fr");
   const owner = organization.access === "OWNER";
   const filtered = credentials?.filter((credential) => (accessType === "ANY" || credential.access_type === accessType)
@@ -43,7 +44,7 @@ function CredentialsPage({ user, organization }: { user: CurrentUser; organizati
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-2">
           <p className="text-[10.5px] font-semibold text-muted-foreground">Stockage</p>
-          <h1 className="text-page-title">Clés d'accès</h1>
+          <h1 ref={heading} tabIndex={-1} className="text-page-title">Clés d'accès</h1>
           <p className="text-muted-foreground">Clés d'accès de {organization.name}.</p>
           {credentials && <Badge variant="outline">{credentials.length} clé{credentials.length > 1 ? "s" : ""}</Badge>}
         </div>
@@ -58,7 +59,7 @@ function CredentialsPage({ user, organization }: { user: CurrentUser; organizati
         <div className="relative min-w-0 flex-1 basis-48 sm:max-w-sm">
           <SearchIcon aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input type="search" value={search} onChange={(event) => setSearch(event.target.value)} className="pl-9" autoComplete="off"
-            placeholder="Rechercher une clé ou un bucket…" aria-label="Rechercher une clé ou un bucket autorisé" disabled={!credentials} />
+            placeholder="Clé ou bucket sélectionné…" aria-label="Rechercher une clé ou un bucket sélectionné" disabled={!credentials} />
         </div>
         <div className="w-full min-[461px]:w-48">
           <NativeSelect value={accessType} disabled={!credentials} aria-label="Filtrer par portée" onChange={(event) => {
@@ -75,7 +76,7 @@ function CredentialsPage({ user, organization }: { user: CurrentUser; organizati
       </div>
       {notice && <p role="status" className="rounded-lg border bg-success-soft p-3 text-xs text-success-strong">{notice}</p>}
       {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-destructive-soft p-4 text-xs text-destructive-strong">
-        <p>{credentialErrorMessage(error)}</p><Button type="button" variant="outline" size="sm" disabled={isFetching} onClick={() => void refetch()}>Réessayer</Button>
+        <p>{credentialErrorMessage(error)}{credentials && " Les données affichées proviennent du dernier chargement réussi. Les modifications sont suspendues jusqu'à la prochaine actualisation réussie."}</p><Button type="button" variant="outline" size="sm" disabled={isFetching} onClick={() => void refetch()}>Réessayer</Button>
       </div>}
       {(credentials || !error) && <div className="overflow-hidden rounded-xl border bg-surface" aria-busy={isFetching}>
         {!credentials ? <div role="status" className="space-y-4 p-5"><span className="sr-only">Chargement des clés…</span>{[0, 1, 2].map((row) => <Skeleton key={row} className="h-10 w-full" />)}</div>
@@ -100,8 +101,8 @@ function CredentialsPage({ user, organization }: { user: CurrentUser; organizati
               <TableCell className="hidden min-[761px]:table-cell"><CredentialScope credential={credential} /></TableCell>
               <TableCell className="hidden text-muted-foreground min-[961px]:table-cell"><time dateTime={credential.created_at}>{dateFormat.format(new Date(credential.created_at))}</time></TableCell>
               {owner && <TableCell className="text-right"><div className="flex items-center justify-end gap-1">
-                <EditCredentialDialog user={user} organizationId={organization.id} credential={credential} disabled={!!error} onUpdated={(updated) => setNotice(`La portée de la clé ${updated.key_id} a été enregistrée.`)} />
-                <DeleteCredentialDialog user={user} organizationId={organization.id} credential={credential} disabled={!!error} onDeleted={(keyId) => setNotice(`La clé ${keyId} a été supprimée du portail.`)} />
+                <EditCredentialDialog user={user} organizationId={organization.id} credential={credential} disabled={!!error} restoreFocus={() => heading.current?.focus()} onUpdated={(updated) => setNotice(`La portée de la clé ${updated.key_id} a été enregistrée.`)} />
+                <DeleteCredentialDialog user={user} organizationId={organization.id} credential={credential} disabled={!!error} restoreFocus={() => heading.current?.focus()} onDeleted={(keyId) => setNotice(`La clé ${keyId} a été supprimée du portail.`)} />
               </div></TableCell>}
             </TableRow>)}</TableBody>
           </Table>}
