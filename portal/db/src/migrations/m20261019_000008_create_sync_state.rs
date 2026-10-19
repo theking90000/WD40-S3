@@ -1,0 +1,141 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(BucketSync::Table)
+                    .col(
+                        ColumnDef::new(BucketSync::BucketName)
+                            .text()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(BucketSync::PublicPolicyId)
+                            .uuid()
+                            .not_null()
+                            .unique_key(),
+                    )
+                    .col(
+                        ColumnDef::new(BucketSync::PrivatePolicyId)
+                            .uuid()
+                            .not_null()
+                            .unique_key(),
+                    )
+                    .col(
+                        ColumnDef::new(BucketSync::Generation)
+                            .big_integer()
+                            .not_null()
+                            .default(1i64),
+                    )
+                    .col(
+                        ColumnDef::new(BucketSync::AppliedGeneration)
+                            .big_integer()
+                            .not_null()
+                            .default(0i64),
+                    )
+                    .col(ColumnDef::new(BucketSync::LastError).text())
+                    .col(
+                        ColumnDef::new(BucketSync::DeleteRequested)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .check(Expr::col(BucketSync::Generation).gte(1i64))
+                    .check(Expr::col(BucketSync::AppliedGeneration).gte(0i64))
+                    .check(
+                        Expr::col(BucketSync::AppliedGeneration)
+                            .lte(Expr::col(BucketSync::Generation)),
+                    )
+                    .check(
+                        Expr::col(BucketSync::PublicPolicyId)
+                            .ne(Expr::col(BucketSync::PrivatePolicyId)),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(CredentialSync::Table)
+                    .col(
+                        ColumnDef::new(CredentialSync::KeyId)
+                            .text()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(CredentialSync::PrincipalId)
+                            .uuid()
+                            .not_null()
+                            .unique_key(),
+                    )
+                    .col(
+                        ColumnDef::new(CredentialSync::Generation)
+                            .big_integer()
+                            .not_null()
+                            .default(1i64),
+                    )
+                    .col(
+                        ColumnDef::new(CredentialSync::AppliedGeneration)
+                            .big_integer()
+                            .not_null()
+                            .default(0i64),
+                    )
+                    .col(ColumnDef::new(CredentialSync::LastError).text())
+                    .col(
+                        ColumnDef::new(CredentialSync::DeleteRequested)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .check(Expr::col(CredentialSync::Generation).gte(1i64))
+                    .check(Expr::col(CredentialSync::AppliedGeneration).gte(0i64))
+                    .check(
+                        Expr::col(CredentialSync::AppliedGeneration)
+                            .lte(Expr::col(CredentialSync::Generation)),
+                    )
+                    .to_owned(),
+            )
+            .await
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(CredentialSync::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(BucketSync::Table).to_owned())
+            .await
+    }
+}
+
+#[derive(DeriveIden)]
+enum BucketSync {
+    Table,
+    BucketName,
+    PublicPolicyId,
+    PrivatePolicyId,
+    Generation,
+    AppliedGeneration,
+    LastError,
+    DeleteRequested,
+}
+
+#[derive(DeriveIden)]
+enum CredentialSync {
+    Table,
+    KeyId,
+    PrincipalId,
+    Generation,
+    AppliedGeneration,
+    LastError,
+    DeleteRequested,
+}

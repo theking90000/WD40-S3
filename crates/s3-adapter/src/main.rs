@@ -51,7 +51,7 @@ struct Args {
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let args = Args::parse();
     let config = args.adapter.adapter_config()?;
-    let budget = args.adapter.scheduler.frame_budget();
+    let budget = args.adapter.options.scheduler.frame_budget();
     let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     let mut tls = rustls::ClientConfig::builder_with_provider(Arc::new(
         rustls::crypto::ring::default_provider(),

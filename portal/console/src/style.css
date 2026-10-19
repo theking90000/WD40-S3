@@ -1,0 +1,43 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "./themes/cloud-light.css";
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans text-body;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3 {
+    @apply font-display;
+  }
+
+  ::selection {
+    background: var(--brand-soft);
+    color: var(--foreground);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  main {
+    max-width: 44rem;
+    margin: 12vh auto;
+    padding: 1.5rem;
+  }
+
+  button {
+    padding: 0.6rem 1rem;
+    font: inherit;
+    cursor: pointer;
+  }
+}
