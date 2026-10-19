@@ -3,6 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration, useRouteError } from "react-router";
 import { authMiddleware } from "./features/auth/router.ts";
 import { AuthFailure } from "~/features/auth/components/auth-screen";
+import { ThemeProvider, themeScript } from "~/features/theme/theme";
 import "./style.css";
 import { queryClient } from "./lib/query-client.ts";
 
@@ -20,16 +21,19 @@ clientLoader.hydrate = true as const;
 
 export function Layout({ children }: { children: ReactNode }) {
   return (
-    <html lang="fr">
+    <html lang="fr" suppressHydrationWarning>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <title>WD40 Portal</title>
         <Meta />
         <Links />
       </head>
       <body>
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+        <ThemeProvider>
+          <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+        </ThemeProvider>
         <ScrollRestoration />
         <Scripts />
       </body>
