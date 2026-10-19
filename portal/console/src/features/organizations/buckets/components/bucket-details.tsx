@@ -7,6 +7,7 @@ import type { Bucket, BucketAccess } from "~/features/organizations/buckets/api.
 import { bucketErrorMessage, updateOrganizationBucketAccess } from "~/features/organizations/buckets/api.ts";
 import { BucketAccessBadge, BucketAccessField, bucketAccessInfo } from "./access";
 import { Button } from "~/components/ui/button";
+import { S3Connection } from "~/components/s3-connection";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "~/components/ui/sheet";
 
 export function BucketDetails({ user, organization, bucket, open, disabled, onOpenChange, onUpdated, restoreFocus }: {
@@ -86,6 +87,7 @@ export function BucketDetails({ user, organization, bucket, open, disabled, onOp
             <code className="block select-all break-all rounded-lg border bg-background p-3 font-mono text-xs">{bucket.name}</code>
             <p className="text-[10.5px] text-muted-foreground">Le nom ne peut pas être modifié.</p>
           </div>
+          <S3Connection bucketName={bucket.name} compact />
           {owner ? (
             <form className="space-y-4" onSubmit={(event) => {
               event.preventDefault();

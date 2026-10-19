@@ -7,7 +7,8 @@ import type { Organization } from "~/features/organizations/api.ts";
 import type { CredentialAccessType } from "~/features/organizations/credentials/api.ts";
 import { credentialErrorMessage, organizationCredentialsQuery } from "~/features/organizations/credentials/api.ts";
 import { CredentialScope } from "~/features/organizations/credentials/components/access-form";
-import { CopyCredentialValue } from "~/features/organizations/credentials/components/copy-value";
+import { CopyValue } from "~/components/copy-value";
+import { S3Connection } from "~/components/s3-connection";
 import { DeleteCredentialDialog } from "~/features/organizations/credentials/components/delete-credential";
 import { EditCredentialDialog } from "~/features/organizations/credentials/components/edit-credential";
 import { useOrganization, useOrganizations } from "~/features/organizations/router.ts";
@@ -54,6 +55,7 @@ function CredentialsPage({ user, organization }: { user: CurrentUser; organizati
           </Button>
         )}
       </div>
+      <div id="s3-connection" className="scroll-mt-5"><S3Connection /></div>
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-0 flex-1 basis-48 sm:max-w-sm">
           <SearchIcon aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -94,7 +96,7 @@ function CredentialsPage({ user, organization }: { user: CurrentUser; organizati
             </TableRow></TableHeader>
             <TableBody>{filtered.map((credential) => <TableRow key={credential.key_id}>
               <TableCell>
-                <div className="flex flex-wrap items-center gap-1"><code className="min-w-0 select-all break-all font-mono text-[10.5px]">{credential.key_id}</code><CopyCredentialValue value={credential.key_id} label="Copier l'identifiant" compact /></div>
+                <div className="flex flex-wrap items-center gap-1"><code className="min-w-0 select-all break-all font-mono text-[10.5px]">{credential.key_id}</code><CopyValue value={credential.key_id} label="Copier l'identifiant" compact /></div>
                 <div className="mt-1 space-y-1 text-[10px] text-muted-foreground"><div className="min-[761px]:hidden"><CredentialScope credential={credential} /></div><time className="min-[961px]:hidden" dateTime={credential.created_at}>Créée le {dateFormat.format(new Date(credential.created_at))}</time></div>
               </TableCell>
               <TableCell className="hidden min-[761px]:table-cell"><CredentialScope credential={credential} /></TableCell>

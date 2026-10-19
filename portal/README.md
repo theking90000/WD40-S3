@@ -82,6 +82,31 @@ production.
 
 ## Pages and prerendering
 
+The access-key page displays the S3 endpoint and client region, also shown after
+creating a key. Bucket details provide copyable bucket URLs, and the organization
+overview links to the connection information.
+
+Set the optional `VITE_S3_ENDPOINT` environment variable when building the console
+to override its public S3 endpoint, for example `https://objects.example.com` or
+`http://localhost:9000`. It must be an HTTP or HTTPS origin without credentials,
+a path other than `/`, query parameters or a fragment. Invalid values fail the
+console build. Vite also reads its usual `.env` files under `console/`.
+The value is embedded in the browser assets; changing it requires rebuilding.
+It does not configure server routing, which uses `WD40_PORTAL_S3_HOST` at runtime.
+
+When the variable is absent or blank, the browser derives the endpoint from
+`window.location.hostname`: remove an initial `console.`, prepend `s3.`, and use
+HTTPS without inheriting the console port. Both `console.example.com` and
+`example.com` therefore produce `https://s3.example.com`. This is a naming
+convention, not a network discovery or health check. Localhost and IP addresses
+require an explicit endpoint.
+
+Use `us-east-1` as the client region. WD40 currently imposes no signing region.
+Virtual-hosted bucket URLs require matching DNS and TLS configuration for bucket
+subdomains. HTTPS bucket names containing dots use path-style URLs to avoid the
+limits of ordinary wildcard certificates. Localhost and IP endpoints also use
+path-style URLs. These displayed addresses do not grant public access to a bucket.
+
 The console uses React 19.3.1, React Router 8.4.0 and Vite 8.3.4.
 `console/react-router.config.ts` sets `ssr: false` and `prerender: ["/", "/login"]`, following
 the [React Router prerendering guide](https://reactrouter.com/how-to/pre-rendering).

@@ -7,6 +7,7 @@ fn main() -> io::Result<()> {
     }
 
     println!("cargo::rerun-if-env-changed=WD40_PORTAL_BASE_PATH");
+    println!("cargo::rerun-if-env-changed=VITE_S3_ENDPOINT");
     let basename = match env::var("WD40_PORTAL_BASE_PATH") {
         Ok(value) => value,
         Err(env::VarError::NotPresent) => "/".to_owned(),
@@ -34,6 +35,10 @@ fn main() -> io::Result<()> {
         "vite.config.ts",
         "react-router.config.ts",
         "tsconfig.json",
+        ".env",
+        ".env.local",
+        ".env.production",
+        ".env.production.local",
         "src",
     ] {
         println!("cargo::rerun-if-changed=console/{name}");

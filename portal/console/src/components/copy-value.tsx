@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { Button } from "~/components/ui/button";
 
-export function CopyCredentialValue({ value, label, compact = false }: { value: string; label: string; compact?: boolean }) {
+export function CopyValue({ value, label, compact = false }: { value: string; label: string; compact?: boolean }) {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {

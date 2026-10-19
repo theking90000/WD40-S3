@@ -8,7 +8,8 @@ import type { CreatedCredential, CredentialInput } from "~/features/organization
 import { createOrganizationCredential } from "~/features/organizations/credentials/api.ts";
 import { AuthError } from "~/lib/api.ts";
 import { CredentialAccessForm, CredentialScope } from "./access-form";
-import { CopyCredentialValue } from "./copy-value";
+import { CopyValue } from "~/components/copy-value";
+import { S3Connection } from "~/components/s3-connection";
 import { Button } from "~/components/ui/button";
 
 export function CreateCredentialPage({ user, organization }: { user: CurrentUser; organization: Organization }) {
@@ -109,13 +110,14 @@ function CredentialCreated({ credential, organizationName, onNew, onFinish }: {
       <div className="max-w-3xl space-y-5 rounded-xl border bg-surface p-5 min-[621px]:p-6">
         <p role="status" className="flex items-center gap-2 text-xs"><CheckIcon aria-hidden="true" className="size-4 shrink-0 text-success-strong" />La clé a été enregistrée dans {organizationName}.</p>
         <div className="space-y-2 rounded-lg border bg-background p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-xs font-semibold">Secret d'accès</h2><CopyCredentialValue value={credential.secret} label="Copier le secret" /></div>
+          <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-xs font-semibold">Secret d'accès</h2><CopyValue value={credential.secret} label="Copier le secret" /></div>
           <code className="block select-all break-all font-mono text-xs leading-relaxed">{credential.secret}</code>
         </div>
         <div className="space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-xs font-semibold">Identifiant de la clé</h2><CopyCredentialValue value={credential.key_id} label="Copier l'identifiant" /></div>
+          <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-xs font-semibold">Identifiant de la clé</h2><CopyValue value={credential.key_id} label="Copier l'identifiant" /></div>
           <code className="block select-all break-all font-mono text-xs">{credential.key_id}</code>
         </div>
+        <S3Connection compact />
         <div className="space-y-2"><h2 className="text-xs font-semibold">Portée</h2><CredentialScope credential={credential} /></div>
         <p className="text-xs text-muted-foreground">Le raccordement S3 n'est pas encore actif. Si vous perdez ce secret, supprimez la clé et créez-en une nouvelle.</p>
         <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
