@@ -22,7 +22,10 @@ pub(super) async fn handle(
     } else {
         // SQLite has no row locks. Acquire its write lock before reading children.
         organization::Entity::update_many()
-            .col_expr(organization::Column::Name, Expr::col(organization::Column::Name).into())
+            .col_expr(
+                organization::Column::Name,
+                Expr::col(organization::Column::Name).into(),
+            )
             .filter(organization::Column::Id.eq(current.id))
             .exec(&transaction)
             .await?;

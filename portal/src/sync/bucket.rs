@@ -18,7 +18,10 @@ pub async fn sync_bucket(context: &SyncContext, bucket_name: &str) -> Result<App
     synchronize(context, bucket_name).await
 }
 
-pub(super) async fn synchronize(context: &SyncContext, bucket_name: &str) -> Result<Applied, Error> {
+pub(super) async fn synchronize(
+    context: &SyncContext,
+    bucket_name: &str,
+) -> Result<Applied, Error> {
     let state = bucket_sync::Entity::find_by_id(bucket_name.to_owned())
         .one(&context.db)
         .await?

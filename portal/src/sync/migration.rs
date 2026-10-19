@@ -20,7 +20,10 @@ pub async fn migrate_credential_policies(context: &SyncContext) -> Result<(), Er
     let tracked: BTreeSet<_> = states.iter().map(|state| state.key_id.as_str()).collect();
     for credential in credential::Entity::find().all(&context.db).await? {
         if !tracked.contains(credential.key_id.as_str()) {
-            eprintln!("Credential policy migration has no sync state for {}", credential.key_id);
+            eprintln!(
+                "Credential policy migration has no sync state for {}",
+                credential.key_id
+            );
             return Err(Error::MissingState("credential"));
         }
     }
@@ -28,10 +31,16 @@ pub async fn migrate_credential_policies(context: &SyncContext) -> Result<(), Er
         let result = if state.delete_requested {
             super::credential::delete_requested(context, &state.key_id).await
         } else {
-            super::credential::synchronize(context, &state.key_id, None).await.map(|_| ())
+            super::credential::synchronize(context, &state.key_id, None)
+                .await
+                .map(|_| ())
         };
         result.map_err(|error| {
-            eprintln!("Credential policy migration failed for {}: {}", state.key_id, error.code());
+            eprintln!(
+                "Credential policy migration failed for {}: {}",
+                state.key_id,
+                error.code()
+            );
             error
         })?;
     }
@@ -41,15 +50,24 @@ pub async fn migrate_credential_policies(context: &SyncContext) -> Result<(), Er
         .all(&context.db)
         .await?
     {
-        super::bucket::synchronize(context, &bucket.bucket_name).await.map_err(|error| {
-            eprintln!("Public policy migration failed for {}: {}", bucket.bucket_name, error.code());
-            error
-        })?;
+        super::bucket::synchronize(context, &bucket.bucket_name)
+            .await
+            .map_err(|error| {
+                eprintln!(
+                    "Public policy migration failed for {}: {}",
+                    bucket.bucket_name,
+                    error.code()
+                );
+                error
+            })?;
     }
 
     // Do not delete shared grants until every tracked key has been converted.
     for state in credential_sync::Entity::find().all(&context.db).await? {
-        if state.delete_requested || state.applied_generation != state.generation || state.last_error.is_some() {
+        if state.delete_requested
+            || state.applied_generation != state.generation
+            || state.last_error.is_some()
+        {
             return Err(Error::MigrationPending);
         }
     }
@@ -58,10 +76,12 @@ pub async fn migrate_credential_policies(context: &SyncContext) -> Result<(), Er
         .all(&context.db)
         .await?
     {
-        context.call(
-            "delete legacy bucket policy",
-            context.policies.delete_policy(policy.policy_id.as_u128()),
-        ).await?;
+        context
+            .call(
+                "delete legacy bucket policy",
+                context.policies.delete_policy(policy.policy_id.as_u128()),
+            )
+            .await?;
         // Retain the identifier on failure; deletion in WD40 is idempotent.
         legacy_bucket_policy::Entity::delete_by_id(policy.policy_id)
             .exec(&context.db)

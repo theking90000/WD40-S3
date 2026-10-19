@@ -33,7 +33,10 @@ pub(super) async fn handle(
 
     // Lock before reading so a partial PATCH cannot restore older permissions.
     let result = credential::Entity::update_many()
-        .col_expr(credential::Column::KeyId, Expr::col(credential::Column::KeyId).into())
+        .col_expr(
+            credential::Column::KeyId,
+            Expr::col(credential::Column::KeyId).into(),
+        )
         .filter(credential::Column::OrganizationId.eq(organization.id))
         .filter(credential::Column::KeyId.eq(path.key_id.clone()))
         .exec(&transaction)
@@ -55,7 +58,8 @@ pub(super) async fn handle(
         .into_iter()
         .map(|association| association.bucket_name)
         .collect();
-    let (access_type, bucket_names, permissions) = request.into_selection(Some(&current), existing_bucket_names)?;
+    let (access_type, bucket_names, permissions) =
+        request.into_selection(Some(&current), existing_bucket_names)?;
     credential::Entity::update_many()
         .set(credential::ActiveModel {
             access_type: Set(access_type),

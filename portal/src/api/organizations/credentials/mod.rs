@@ -88,26 +88,40 @@ impl Request {
         if self.access_type.is_none() && self.bucket_names.is_none() && self.permissions.is_none() {
             return Err(Error::new(StatusCode::BAD_REQUEST, "invalid_request"));
         }
-        let access_type = self.access_type.map(CredentialAccessType::from)
+        let access_type = self
+            .access_type
+            .map(CredentialAccessType::from)
             .or_else(|| current.map(|credential| credential.access_type))
             .ok_or_else(|| Error::new(StatusCode::BAD_REQUEST, "invalid_request"))?;
         let mut bucket_names = match access_type {
             CredentialAccessType::All => {
                 if self.bucket_names.is_some() {
-                    return Err(Error::new(StatusCode::BAD_REQUEST, "invalid_bucket_selection"));
+                    return Err(Error::new(
+                        StatusCode::BAD_REQUEST,
+                        "invalid_bucket_selection",
+                    ));
                 }
                 Vec::new()
             }
-            CredentialAccessType::Restricted => self.bucket_names.or_else(|| {
-                current.filter(|credential| credential.access_type == CredentialAccessType::Restricted)
-                    .map(|_| existing_bucket_names)
-            }).ok_or_else(|| Error::new(StatusCode::BAD_REQUEST, "invalid_bucket_selection"))?,
+            CredentialAccessType::Restricted => self
+                .bucket_names
+                .or_else(|| {
+                    current
+                        .filter(|credential| {
+                            credential.access_type == CredentialAccessType::Restricted
+                        })
+                        .map(|_| existing_bucket_names)
+                })
+                .ok_or_else(|| Error::new(StatusCode::BAD_REQUEST, "invalid_bucket_selection"))?,
         };
         bucket_names.sort_unstable();
         let count = bucket_names.len();
         bucket_names.dedup();
         if bucket_names.len() != count {
-            return Err(Error::new(StatusCode::BAD_REQUEST, "invalid_bucket_selection"));
+            return Err(Error::new(
+                StatusCode::BAD_REQUEST,
+                "invalid_bucket_selection",
+            ));
         }
 
         let permissions = match self.permissions {
@@ -122,7 +136,9 @@ impl Request {
                 }
                 mask
             }
-            None => current.map_or(portal_db::credential::ALL_PERMISSIONS, |credential| credential.permissions),
+            None => current.map_or(portal_db::credential::ALL_PERMISSIONS, |credential| {
+                credential.permissions
+            }),
         };
         Ok((access_type, bucket_names, permissions))
     }
@@ -149,10 +165,15 @@ pub(super) struct CredentialResponse {
 
 impl CredentialResponse {
     fn new(credential: Credential, bucket_names: Vec<String>) -> Self {
-        let permissions = [Permission::Read, Permission::Write, Permission::List, Permission::Delete]
-            .into_iter()
-            .filter(|permission| credential.permissions & permission.bit() != 0)
-            .collect();
+        let permissions = [
+            Permission::Read,
+            Permission::Write,
+            Permission::List,
+            Permission::Delete,
+        ]
+        .into_iter()
+        .filter(|permission| credential.permissions & permission.bit() != 0)
+        .collect();
         Self {
             organization_id: credential.organization_id.to_string(),
             key_id: credential.key_id,

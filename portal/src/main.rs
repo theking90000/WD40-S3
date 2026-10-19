@@ -62,8 +62,11 @@ async fn serve(args: Args, db: &DatabaseConnection) -> io::Result<()> {
         .map_err(|error| io::Error::other(format!("Cannot open policy registry: {error}")))?;
     if args.migrate_credential_policies {
         let context = portal::sync::SyncContext::new(db.clone(), credentials, policies);
-        portal::sync::migrate_credential_policies(&context).await
-            .map_err(|error| io::Error::other(format!("Cannot migrate credential policies: {error}")))?;
+        portal::sync::migrate_credential_policies(&context)
+            .await
+            .map_err(|error| {
+                io::Error::other(format!("Cannot migrate credential policies: {error}"))
+            })?;
         eprintln!("Credential policy migration completed");
         return Ok(());
     }

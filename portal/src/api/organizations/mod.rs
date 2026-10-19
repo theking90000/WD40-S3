@@ -31,7 +31,9 @@ pub(super) fn router(db: DatabaseConnection) -> Router<DatabaseConnection> {
     let organization = Router::new()
         .route(
             "/api/organizations/{organization_id}",
-            get(get::handle).patch(update::handle).delete(delete::handle),
+            get(get::handle)
+                .patch(update::handle)
+                .delete(delete::handle),
         )
         .nest(
             "/api/organizations/{organization_id}",
@@ -212,12 +214,19 @@ mod tests {
         let email = " Alice@example.org ";
         for verified in [Some(true), Some(false), None] {
             match user_email(&user(Some(email), verified)) {
-                Ok(value) if (!cfg!(feature = "verified-email") || verified == Some(true))
-                    && value == email => {}
-                Err(error) if cfg!(feature = "verified-email") && verified != Some(true)
-                    && error.status == StatusCode::FORBIDDEN
-                    && error.code == "email_not_verified" => {}
-                _ => return Err(format!("unexpected email result for verification {verified:?}")),
+                Ok(value)
+                    if (!cfg!(feature = "verified-email") || verified == Some(true))
+                        && value == email => {}
+                Err(error)
+                    if cfg!(feature = "verified-email")
+                        && verified != Some(true)
+                        && error.status == StatusCode::FORBIDDEN
+                        && error.code == "email_not_verified" => {}
+                _ => {
+                    return Err(format!(
+                        "unexpected email result for verification {verified:?}"
+                    ));
+                }
             }
         }
         Ok(())
@@ -228,8 +237,9 @@ mod tests {
         for email in [None, Some(""), Some(" \t\n")] {
             for verified in [Some(true), Some(false), None] {
                 match user_email(&user(email, verified)) {
-                    Err(error) if error.status == StatusCode::FORBIDDEN
-                        && error.code == "email_required" => {}
+                    Err(error)
+                        if error.status == StatusCode::FORBIDDEN
+                            && error.code == "email_required" => {}
                     _ => return Err(format!("unexpected result for email {email:?}")),
                 }
             }

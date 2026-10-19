@@ -1,12 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use policy_registry::{Actions, Effect, Policy, PrincipalSelector, ResourcePattern, Statement, traits::PolicyRegistry as _};
+use policy_registry::{
+    Actions, Effect, Policy, PrincipalSelector, ResourcePattern, Statement,
+    traits::PolicyRegistry as _,
+};
 use portal_db::{
     Bucket, BucketSync, CredentialAccessType, CredentialSync, bucket, bucket_sync, credential,
     credential_bucket, credential_sync, legacy_bucket_policy,
     sea_orm::{
-        ColumnTrait, EntityTrait, IsolationLevel, QueryFilter, QueryOrder, Set,
-        TransactionTrait, entity::prelude::Uuid,
+        ColumnTrait, EntityTrait, IsolationLevel, QueryFilter, QueryOrder, Set, TransactionTrait,
+        entity::prelude::Uuid,
     },
 };
 use s3_credentials_registry::{KeyId, KeySecret, traits::S3CredentialRegistry as _};
@@ -97,18 +100,23 @@ async fn apply(
         statements: if actions.is_empty() {
             Vec::new()
         } else {
-            buckets.iter().map(|(bucket, _)| Statement {
-                effect: Effect::Allow,
-                actions,
-                resource: ResourcePattern::Prefix(format!("{}/", bucket.name)),
-            }).collect()
+            buckets
+                .iter()
+                .map(|(bucket, _)| Statement {
+                    effect: Effect::Allow,
+                    actions,
+                    resource: ResourcePattern::Prefix(format!("{}/", bucket.name)),
+                })
+                .collect()
         },
     };
     super::put_policy(context, state.policy_id.as_u128(), policy).await?;
-    context.call(
-        "attach credential policy",
-        context.policies.attach(selector, state.policy_id.as_u128()),
-    ).await?;
+    context
+        .call(
+            "attach credential policy",
+            context.policies.attach(selector, state.policy_id.as_u128()),
+        )
+        .await?;
     if existing.is_none() {
         let secret = secret.ok_or(Error::CredentialMissing)?;
         context
@@ -150,7 +158,12 @@ async fn selected_buckets(
         return Err(Error::InvalidPermissions);
     }
     let mut actions = Actions::EMPTY;
-    for (bit, action) in [(1, Actions::READ), (2, Actions::WRITE), (4, Actions::DELETE), (8, Actions::LIST)] {
+    for (bit, action) in [
+        (1, Actions::READ),
+        (2, Actions::WRITE),
+        (4, Actions::DELETE),
+        (8, Actions::LIST),
+    ] {
         if credential.permissions & bit != 0 {
             actions |= action;
         }
@@ -211,14 +224,21 @@ async fn managed_policies(
         return Ok(BTreeSet::new());
     }
     let public = bucket_sync::Entity::find()
-        .filter(bucket_sync::Column::PublicPolicyId.is_in(current.iter().copied().map(Uuid::from_u128)))
+        .filter(
+            bucket_sync::Column::PublicPolicyId.is_in(current.iter().copied().map(Uuid::from_u128)),
+        )
         .all(&context.db)
         .await?;
     let legacy = legacy_bucket_policy::Entity::find()
-        .filter(legacy_bucket_policy::Column::PolicyId.is_in(current.iter().copied().map(Uuid::from_u128)))
+        .filter(
+            legacy_bucket_policy::Column::PolicyId
+                .is_in(current.iter().copied().map(Uuid::from_u128)),
+        )
         .all(&context.db)
         .await?;
-    Ok(public.into_iter().map(|state| state.public_policy_id.as_u128())
+    Ok(public
+        .into_iter()
+        .map(|state| state.public_policy_id.as_u128())
         .chain(legacy.into_iter().map(|policy| policy.policy_id.as_u128()))
         .collect())
 }
@@ -278,10 +298,12 @@ async fn delete(context: &SyncContext, state: &CredentialSync) -> Result<(), Err
             )
             .await?;
     }
-    context.call(
-        "delete credential policy",
-        context.policies.delete_policy(state.policy_id.as_u128()),
-    ).await?;
+    context
+        .call(
+            "delete credential policy",
+            context.policies.delete_policy(state.policy_id.as_u128()),
+        )
+        .await?;
 
     let transaction = context.db.begin().await?;
     let result = credential_sync::Entity::delete_many()

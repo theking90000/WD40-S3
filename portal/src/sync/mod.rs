@@ -121,7 +121,9 @@ impl fmt::Display for Error {
             Self::CredentialMissing => formatter.write_str("credential is absent from WD40"),
             Self::PrincipalMismatch => formatter.write_str("credential principal does not match"),
             Self::InvalidPermissions => formatter.write_str("invalid credential permission mask"),
-            Self::MigrationPending => formatter.write_str("credential policy migration is still pending"),
+            Self::MigrationPending => {
+                formatter.write_str("credential policy migration is still pending")
+            }
             Self::DeletionRequested => formatter.write_str("resource is pending deletion"),
             Self::DeletionNotRequested => {
                 formatter.write_str("credential deletion was not requested")
@@ -167,9 +169,13 @@ impl From<policy_registry::Error> for Error {
 }
 
 async fn put_policy(context: &SyncContext, id: u128, policy: Policy) -> Result<(), Error> {
-    let current = context.call("get policy", context.policies.get_policy(id)).await?;
+    let current = context
+        .call("get policy", context.policies.get_policy(id))
+        .await?;
     if current.as_ref() != Some(&policy) {
-        context.call("put policy", context.policies.put_policy(id, policy)).await?;
+        context
+            .call("put policy", context.policies.put_policy(id, policy))
+            .await?;
     }
     Ok(())
 }

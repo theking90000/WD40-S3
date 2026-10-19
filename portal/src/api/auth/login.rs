@@ -8,8 +8,7 @@ use axum::{
 use axum_extra::extract::cookie::CookieJar;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use openidconnect::{
-    CsrfToken, Nonce, PkceCodeChallenge, PkceCodeVerifier, Scope,
-    core::CoreAuthenticationFlow,
+    CsrfToken, Nonce, PkceCodeChallenge, PkceCodeVerifier, Scope, core::CoreAuthenticationFlow,
 };
 use serde::{Deserialize, Serialize};
 

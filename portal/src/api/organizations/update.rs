@@ -9,7 +9,9 @@ use portal_db::{
 };
 use serde::Deserialize;
 
-use super::{Error, OrganizationResponse, current::CurrentOrganization, name_write_error, validate_name};
+use super::{
+    Error, OrganizationResponse, current::CurrentOrganization, name_write_error, validate_name,
+};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
