@@ -5,10 +5,10 @@ use s3s::{
     access::S3AccessContext,
     auth::Credentials,
     dto::{
-        CompleteMultipartUploadInput, CopyObjectInput, CreateMultipartUploadInput,
-        DeleteObjectInput, DeleteObjectsInput, GetObjectInput, HeadObjectInput,
-        ListMultipartUploadsInput, ListObjectsInput, ListObjectsV2Input, ListPartsInput,
-        PutObjectInput, UploadPartInput,
+        AbortMultipartUploadInput, CompleteMultipartUploadInput, CopyObjectInput,
+        CreateMultipartUploadInput, DeleteObjectInput, DeleteObjectsInput, GetObjectInput,
+        HeadObjectInput, ListMultipartUploadsInput, ListObjectsInput, ListObjectsV2Input,
+        ListPartsInput, PutObjectInput, UploadPartInput,
     },
 };
 
@@ -56,6 +56,13 @@ impl S3Access {
 
 #[async_trait::async_trait]
 impl s3s::access::S3Access for S3Access {
+    async fn abort_multipart_upload(
+        &self,
+        req: &mut S3Request<AbortMultipartUploadInput>,
+    ) -> S3Result<()> {
+        request::abort_multipart_upload::abort_multipart_upload_access(self, req).await
+    }
+
     async fn complete_multipart_upload(
         &self,
         req: &mut S3Request<CompleteMultipartUploadInput>,

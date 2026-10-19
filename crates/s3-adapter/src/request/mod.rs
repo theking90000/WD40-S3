@@ -1,3 +1,4 @@
+pub(crate) mod abort_multipart_upload;
 pub(crate) mod complete_multipart_upload;
 pub(crate) mod copy_object;
 pub(crate) mod create_multipart_upload;

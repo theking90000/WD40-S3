@@ -1,13 +1,14 @@
 use s3s::{
     S3Request, S3Response, S3Result,
     dto::{
-        CompleteMultipartUploadInput, CompleteMultipartUploadOutput, CopyObjectInput,
-        CopyObjectOutput, CreateMultipartUploadInput, CreateMultipartUploadOutput,
-        DeleteObjectInput, DeleteObjectOutput, DeleteObjectsInput, DeleteObjectsOutput,
-        GetObjectInput, GetObjectOutput, HeadObjectInput, HeadObjectOutput,
-        ListMultipartUploadsInput, ListMultipartUploadsOutput, ListObjectsInput, ListObjectsOutput,
-        ListObjectsV2Input, ListObjectsV2Output, ListPartsInput, ListPartsOutput, PutObjectInput,
-        PutObjectOutput, UploadPartInput, UploadPartOutput,
+        AbortMultipartUploadInput, AbortMultipartUploadOutput, CompleteMultipartUploadInput,
+        CompleteMultipartUploadOutput, CopyObjectInput, CopyObjectOutput,
+        CreateMultipartUploadInput, CreateMultipartUploadOutput, DeleteObjectInput,
+        DeleteObjectOutput, DeleteObjectsInput, DeleteObjectsOutput, GetObjectInput,
+        GetObjectOutput, HeadObjectInput, HeadObjectOutput, ListMultipartUploadsInput,
+        ListMultipartUploadsOutput, ListObjectsInput, ListObjectsOutput, ListObjectsV2Input,
+        ListObjectsV2Output, ListPartsInput, ListPartsOutput, PutObjectInput, PutObjectOutput,
+        UploadPartInput, UploadPartOutput,
     },
 };
 
@@ -15,6 +16,13 @@ use crate::{S3Adapter, request};
 
 #[async_trait::async_trait]
 impl s3s::S3 for S3Adapter {
+    async fn abort_multipart_upload(
+        &self,
+        req: S3Request<AbortMultipartUploadInput>,
+    ) -> S3Result<S3Response<AbortMultipartUploadOutput>> {
+        request::abort_multipart_upload::abort_multipart_upload(self, req).await
+    }
+
     async fn complete_multipart_upload(
         &self,
         req: S3Request<CompleteMultipartUploadInput>,
