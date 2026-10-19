@@ -1,0 +1,59 @@
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --background: oklch(19% 0.012 55);
+  --surface: oklch(23.5% 0.014 55);
+  --foreground: oklch(93% 0.013 75);
+  --muted-foreground: oklch(73% 0.024 70);
+  --border: oklch(36% 0.018 60);
+  --brand: oklch(76% 0.135 50);
+  --success: oklch(76% 0.115 150);
+  --warning: oklch(82% 0.135 80);
+  --destructive: oklch(74% 0.15 30);
+  --brand-soft: color-mix(in oklch, var(--brand) 16%, transparent);
+  --foreground-soft: color-mix(in oklch, var(--foreground) 8%, transparent);
+  --ring: color-mix(in oklch, var(--brand) 80%, var(--foreground));
+
+  --card: var(--surface);
+  --card-foreground: var(--foreground);
+  --popover: var(--surface);
+  --popover-foreground: var(--foreground);
+  --primary: var(--foreground);
+  --primary-foreground: var(--surface);
+  --primary-hover: color-mix(in oklch, var(--foreground) 87%, var(--surface));
+  --secondary: var(--surface);
+  --secondary-foreground: var(--foreground);
+  --secondary-hover-border: color-mix(in oklch, var(--foreground) 24%, var(--border));
+  --muted: var(--background);
+  --accent: var(--foreground-soft);
+  --accent-foreground: var(--foreground);
+  --destructive-foreground: var(--background);
+  --input: var(--border);
+  --success-soft: color-mix(in oklch, var(--success) 13%, var(--surface));
+  --success-strong: color-mix(in oklch, var(--success) 80%, var(--foreground));
+  --warning-soft: color-mix(in oklch, var(--warning) 14%, var(--surface));
+  --warning-strong: color-mix(in oklch, var(--warning) 80%, var(--foreground));
+  --destructive-soft: color-mix(in oklch, var(--destructive) 13%, var(--surface));
+  --destructive-strong: color-mix(in oklch, var(--destructive) 80%, var(--foreground));
+  --table-header: color-mix(in oklch, var(--background) 65%, var(--surface));
+  --table-row-hover: color-mix(in oklch, var(--foreground) 6%, transparent);
+  --overlay: oklch(10% 0.01 46 / 65%);
+  --sheet-overlay: oklch(10% 0.01 46 / 60%);
+  --popover-shadow: 0 20px 52px oklch(10% 0.01 46 / 45%);
+  --sheet-shadow: -16px 0 46px oklch(10% 0.01 46 / 50%);
+
+  --sidebar: oklch(17% 0.014 55);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--surface);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+
+  --chart-1: var(--brand);
+  --chart-2: var(--foreground);
+  --chart-3: color-mix(in oklch, var(--foreground) 62%, var(--surface));
+  --chart-4: color-mix(in oklch, var(--foreground) 35%, var(--surface));
+  --chart-5: color-mix(in oklch, var(--foreground) 16%, var(--surface));
+}
