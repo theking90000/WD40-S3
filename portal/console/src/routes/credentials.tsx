@@ -54,7 +54,6 @@ function CredentialsPage({ user, organization }: { user: CurrentUser; organizati
           </Button>
         )}
       </div>
-      <p className="rounded-lg border bg-background p-3 text-xs text-muted-foreground">Le secret est affiché une seule fois à la création. Le raccordement de ces clés à l'API S3 n'est pas encore actif.</p>
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-0 flex-1 basis-48 sm:max-w-sm">
           <SearchIcon aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />

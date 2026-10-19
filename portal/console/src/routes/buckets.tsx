@@ -94,7 +94,6 @@ function BucketsPage({ user, organization }: { user: CurrentUser; organization: 
           </Button>
         )}
       </div>
-      <p className="rounded-lg border bg-background p-3 text-xs text-muted-foreground">Les niveaux d'accès sont enregistrés dans le portail. Leur application côté S3 n'est pas encore active.</p>
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-0 flex-1 basis-48 sm:max-w-sm">
           <SearchIcon aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
