@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { DatabaseIcon } from "lucide-react";
 import { Link, useLocation } from "react-router";
 import { TooltipProvider } from "~/components/ui/tooltip";
+import { ThemeSwitcher } from "~/features/theme/components/theme-switcher";
 import { ShellNavigation } from "./navigation";
 import type { ShellNavigationGroup } from "./navigation";
 import { MobileNavigation } from "./mobile-navigation";
@@ -95,11 +96,10 @@ export function ConsoleShell({
               )}
               <span aria-current="page" className="truncate font-semibold text-foreground">{title}</span>
             </nav>
-            {actions && (
-              <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1.75">
-                {actions}
-              </div>
-            )}
+            <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1.75">
+              {actions}
+              <ThemeSwitcher />
+            </div>
           </header>
           <main
             id={contentId}
