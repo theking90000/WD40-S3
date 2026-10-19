@@ -9,7 +9,7 @@ use axum_extra::extract::cookie::CookieJar;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use openidconnect::{
     CsrfToken, Nonce, PkceCodeChallenge, PkceCodeVerifier, Scope,
-    core::{CoreAuthPrompt, CoreAuthenticationFlow},
+    core::CoreAuthenticationFlow,
 };
 use serde::{Deserialize, Serialize};
 
@@ -62,7 +62,6 @@ pub(super) async fn handle(
         .set_pkce_challenge(challenge)
         .add_scope(Scope::new("profile".to_owned()))
         .add_scope(Scope::new("email".to_owned()))
-        .add_prompt(CoreAuthPrompt::Login)
         .url();
     let policy = Cookies::from_headers(&headers);
     let jar = policy.set(
