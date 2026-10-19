@@ -5,16 +5,18 @@
 
 mod bucket;
 mod credential;
+mod migration;
 
 use std::{fmt, future::Future, sync::Arc, time::Duration};
 
-use policy_registry::PolicyRegistry;
+use policy_registry::{Policy, PolicyRegistry, traits::PolicyRegistry as _};
 use portal_db::DatabaseConnection;
 use s3_credentials_registry::S3CredentialRegistry;
 use tokio::sync::{Semaphore, SemaphorePermit};
 
 pub use bucket::sync_bucket;
 pub use credential::{delete_credential, register_credential, sync_credential};
+pub use migration::migrate_credential_policies;
 
 /// The portal generation confirmed by a completed application.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -73,6 +75,8 @@ pub enum Error {
     CredentialNotFound,
     CredentialMissing,
     PrincipalMismatch,
+    InvalidPermissions,
+    MigrationPending,
     DeletionRequested,
     DeletionNotRequested,
     StateChanged,
@@ -92,6 +96,8 @@ impl Error {
             Self::CredentialNotFound => "credential_not_found",
             Self::CredentialMissing => "credential_missing",
             Self::PrincipalMismatch => "principal_mismatch",
+            Self::InvalidPermissions => "invalid_permissions",
+            Self::MigrationPending => "policy_migration_pending",
             Self::DeletionRequested => "deletion_requested",
             Self::DeletionNotRequested => "deletion_not_requested",
             Self::StateChanged => "sync_state_changed",
@@ -114,6 +120,8 @@ impl fmt::Display for Error {
             Self::CredentialNotFound => formatter.write_str("credential not found"),
             Self::CredentialMissing => formatter.write_str("credential is absent from WD40"),
             Self::PrincipalMismatch => formatter.write_str("credential principal does not match"),
+            Self::InvalidPermissions => formatter.write_str("invalid credential permission mask"),
+            Self::MigrationPending => formatter.write_str("credential policy migration is still pending"),
             Self::DeletionRequested => formatter.write_str("resource is pending deletion"),
             Self::DeletionNotRequested => {
                 formatter.write_str("credential deletion was not requested")
@@ -156,4 +164,12 @@ impl From<policy_registry::Error> for Error {
     fn from(error: policy_registry::Error) -> Self {
         Self::Policies(error)
     }
+}
+
+async fn put_policy(context: &SyncContext, id: u128, policy: Policy) -> Result<(), Error> {
+    let current = context.call("get policy", context.policies.get_policy(id)).await?;
+    if current.as_ref() != Some(&policy) {
+        context.call("put policy", context.policies.put_policy(id, policy)).await?;
+    }
+    Ok(())
 }

@@ -12,6 +12,10 @@ mod embedded_s3;
 #[derive(Parser)]
 #[command(version, about = "WD40 portal proof of concept")]
 struct Args {
+    /// Convert keys to individual policies and clean legacy policies, then exit.
+    /// Stop other portal processes first and use the same SQL and WD40 registries.
+    #[arg(long)]
+    migrate_credential_policies: bool,
     #[command(flatten)]
     portal: PortalArgs,
     #[command(flatten)]
@@ -56,6 +60,13 @@ async fn serve(args: Args, db: &DatabaseConnection) -> io::Result<()> {
         .open()
         .await
         .map_err(|error| io::Error::other(format!("Cannot open policy registry: {error}")))?;
+    if args.migrate_credential_policies {
+        let context = portal::sync::SyncContext::new(db.clone(), credentials, policies);
+        portal::sync::migrate_credential_policies(&context).await
+            .map_err(|error| io::Error::other(format!("Cannot migrate credential policies: {error}")))?;
+        eprintln!("Credential policy migration completed");
+        return Ok(());
+    }
     #[cfg(feature = "embedded-s3")]
     let s3 = if args.embedded_s3.embedded_s3 {
         Some(

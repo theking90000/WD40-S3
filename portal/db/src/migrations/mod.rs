@@ -8,6 +8,7 @@ mod m20261018_000005_create_buckets;
 mod m20261019_000006_create_credentials;
 mod m20261019_000007_create_credential_buckets;
 mod m20261019_000008_create_sync_state;
+mod m20261019_000009_credential_permissions;
 
 pub struct Migrator;
 
@@ -23,6 +24,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261019_000006_create_credentials::Migration),
             Box::new(m20261019_000007_create_credential_buckets::Migration),
             Box::new(m20261019_000008_create_sync_state::Migration),
+            Box::new(m20261019_000009_credential_permissions::Migration),
         ]
     }
 }

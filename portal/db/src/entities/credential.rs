@@ -1,4 +1,7 @@
-use sea_orm::entity::prelude::*;
+use sea_orm::{Set, entity::prelude::*};
+
+/// READ, WRITE, DELETE and LIST occupy bits 0, 1, 2 and 3 respectively.
+pub const ALL_PERMISSIONS: i16 = 15;
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "credentials")]
@@ -7,6 +10,7 @@ pub struct Model {
     pub key_id: String,
     pub organization_id: Uuid,
     pub access_type: CredentialAccessType,
+    pub permissions: i16,
     pub created_at: DateTimeWithTimeZone,
 }
 
@@ -47,4 +51,15 @@ impl Related<super::organization::Entity> for Entity {
     }
 }
 
-impl ActiveModelBehavior for ActiveModel {}
+#[async_trait::async_trait]
+impl ActiveModelBehavior for ActiveModel {
+    async fn before_save<C>(mut self, _db: &C, insert: bool) -> Result<Self, DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        if insert && self.permissions.is_not_set() {
+            self.permissions = Set(ALL_PERMISSIONS);
+        }
+        Ok(self)
+    }
+}

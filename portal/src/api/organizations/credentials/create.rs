@@ -30,7 +30,7 @@ pub(super) async fn handle(
 ) -> Result<(StatusCode, Json<Response>), Error> {
     organization.require_owner()?;
     let Json(request) = payload?;
-    let (access_type, bucket_names) = request.into_selection()?;
+    let (access_type, bucket_names, permissions) = request.into_selection(None, Vec::new())?;
 
     for _ in 0..3 {
         let key_id = random_key(20)?;
@@ -48,6 +48,7 @@ pub(super) async fn handle(
             key_id: Set(key_id),
             organization_id: Set(organization.id),
             access_type: Set(access_type),
+            permissions: Set(permissions),
             ..Default::default()
         }
         .insert(&transaction)

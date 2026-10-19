@@ -7,8 +7,8 @@ use axum::{
     http::StatusCode,
 };
 use portal_db::{
-    DatabaseConnection, credential,
-    sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait},
+    DatabaseConnection, credential, credential_bucket,
+    sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait, sea_query::Expr},
 };
 
 use super::super::pending;
@@ -29,15 +29,11 @@ pub(super) async fn handle(
     let Path(path) = path?;
     validate_key_id(&path.key_id)?;
     let Json(request) = payload?;
-    let (access_type, bucket_names) = request.into_selection()?;
     let transaction = db.begin().await?;
 
-    // Serialize concurrent changes to this credential before replacing its selection.
+    // Lock before reading so a partial PATCH cannot restore older permissions.
     let result = credential::Entity::update_many()
-        .set(credential::ActiveModel {
-            access_type: Set(access_type),
-            ..Default::default()
-        })
+        .col_expr(credential::Column::KeyId, Expr::col(credential::Column::KeyId).into())
         .filter(credential::Column::OrganizationId.eq(organization.id))
         .filter(credential::Column::KeyId.eq(path.key_id.clone()))
         .exec(&transaction)
@@ -45,6 +41,31 @@ pub(super) async fn handle(
     if result.rows_affected == 0 {
         return Err(Error::new(StatusCode::NOT_FOUND, "credential_not_found"));
     }
+
+    let current = credential::Entity::find_by_id(path.key_id.clone())
+        .filter(credential::Column::OrganizationId.eq(organization.id))
+        .one(&transaction)
+        .await?
+        .ok_or_else(|| Error::new(StatusCode::NOT_FOUND, "credential_not_found"))?;
+    let existing_bucket_names = credential_bucket::Entity::find()
+        .filter(credential_bucket::Column::OrganizationId.eq(organization.id))
+        .filter(credential_bucket::Column::KeyId.eq(path.key_id.clone()))
+        .all(&transaction)
+        .await?
+        .into_iter()
+        .map(|association| association.bucket_name)
+        .collect();
+    let (access_type, bucket_names, permissions) = request.into_selection(Some(&current), existing_bucket_names)?;
+    credential::Entity::update_many()
+        .set(credential::ActiveModel {
+            access_type: Set(access_type),
+            permissions: Set(permissions),
+            ..Default::default()
+        })
+        .filter(credential::Column::OrganizationId.eq(organization.id))
+        .filter(credential::Column::KeyId.eq(path.key_id.clone()))
+        .exec(&transaction)
+        .await?;
 
     selection::validate(&transaction, organization.id, &bucket_names).await?;
     selection::replace(&transaction, organization.id, &path.key_id, &bucket_names).await?;
