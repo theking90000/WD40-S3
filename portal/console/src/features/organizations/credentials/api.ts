@@ -2,7 +2,7 @@ import { queryOptions } from "@tanstack/react-query";
 import { api, AuthError } from "../../../lib/api.ts";
 import { queryClient, querySession } from "../../../lib/query-client.ts";
 import type { CurrentUser } from "../../auth/session.ts";
-import { organizationsQuery, refreshOrganizations } from "../api.ts";
+import { invalidateOrganization, organizationsQuery, refreshOrganizations } from "../api.ts";
 import { organizationBucketsQuery } from "../buckets/api.ts";
 
 export type CredentialAccessType = "ALL" | "RESTRICTED";
@@ -101,6 +101,11 @@ async function credentialsRequest(
     }
     requireSession(session);
     throw error;
+  } finally {
+    if (options.method === "POST" || options.method === "DELETE") {
+      // Refresh independently so counts cannot delay returning the one-time secret.
+      void invalidateOrganization(user, organizationId, session).catch(() => {});
+    }
   }
 }
 

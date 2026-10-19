@@ -2,7 +2,7 @@ import { queryOptions } from "@tanstack/react-query";
 import { api, AuthError } from "../../../lib/api.ts";
 import { queryClient, querySession } from "../../../lib/query-client.ts";
 import type { CurrentUser } from "../../auth/session.ts";
-import { organizationsQuery, refreshOrganizations } from "../api.ts";
+import { invalidateOrganization, organizationsQuery, refreshOrganizations } from "../api.ts";
 
 export type BucketAccess = "PRIVATE" | "PUBLIC" | "PUBLIC_LIST";
 
@@ -70,6 +70,11 @@ async function bucketsRequest(
     }
     requireSession(session);
     throw error;
+  } finally {
+    if (options.method === "POST" || options.method === "DELETE") {
+      // A failed synchronization can still leave a committed SQL change.
+      void invalidateOrganization(user, organizationId, session).catch(() => {});
+    }
   }
 }
 

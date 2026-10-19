@@ -3,10 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { DatabaseIcon, KeyRoundIcon, LayoutGridIcon, Settings2Icon, UsersIcon } from "lucide-react";
 import { Outlet, useMatches, useNavigate } from "react-router";
 import { organizationLoader, organizationMiddleware, useOrganization, useOrganizations } from "~/features/organizations/router.ts";
-import { organizationErrorMessage } from "~/features/organizations/api.ts";
-import { organizationMembersQuery } from "~/features/organizations/members/api.ts";
-import { organizationBucketsQuery } from "~/features/organizations/buckets/api.ts";
-import { organizationCredentialsQuery } from "~/features/organizations/credentials/api.ts";
+import { organizationErrorMessage, organizationQuery } from "~/features/organizations/api.ts";
 import { AuthFailure, AuthPending } from "~/features/auth/components/auth-screen";
 import { Account } from "~/features/auth/components/account";
 import { OrganizationSwitcher } from "~/features/organizations/components/organization-switcher";
@@ -21,16 +18,10 @@ export { ErrorBoundary } from "./session";
 export default function ConsoleLayout() {
   const { user, data, error, refetch, isFetching } = useOrganizations();
   const organization = useOrganization();
-  // Observe cached lists without fetching them for other pages.
-  const { data: members } = useQuery({
-    ...organizationMembersQuery(user, organization?.id ?? ""), enabled: false,
+  const details = useQuery({
+    ...organizationQuery(user, organization?.id ?? ""), enabled: !!organization,
   });
-  const { data: buckets } = useQuery({
-    ...organizationBucketsQuery(user, organization?.id ?? ""), enabled: false,
-  });
-  const { data: credentials } = useQuery({
-    ...organizationCredentialsQuery(user, organization?.id ?? ""), enabled: false,
-  });
+  const counts = details.isError ? undefined : details.data?.counts;
   const navigate = useNavigate();
   const matches = useMatches();
   let title = "Console";
@@ -55,14 +46,14 @@ export default function ConsoleLayout() {
     {
       label: "Stockage",
       items: [
-        { label: "Buckets", to: `/${organization.id}/buckets`, icon: DatabaseIcon, count: buckets?.length },
-        { label: "Clés d'accès", to: `/${organization.id}/credentials`, icon: KeyRoundIcon, count: credentials?.length },
+        { label: "Buckets", to: `/${organization.id}/buckets`, icon: DatabaseIcon, count: counts?.buckets },
+        { label: "Clés d'accès", to: `/${organization.id}/credentials`, icon: KeyRoundIcon, count: counts?.credentials },
       ],
     },
     {
       label: "Organisation",
       items: [
-        { label: "Membres", to: `/${organization.id}/members`, icon: UsersIcon, count: members?.length },
+        { label: "Membres", to: `/${organization.id}/members`, icon: UsersIcon, count: counts?.members },
         { label: "Paramètres", icon: Settings2Icon, disabled: true },
       ],
     },

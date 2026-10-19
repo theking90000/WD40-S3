@@ -1,7 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 import { api, AuthError } from "../../../lib/api.ts";
 import type { CurrentUser } from "../../auth/session.ts";
-import { organizationsQuery, refreshOrganizations } from "../api.ts";
+import { invalidateOrganization, organizationsQuery, refreshOrganizations } from "../api.ts";
 import { queryClient, querySession } from "../../../lib/query-client.ts";
 
 export interface OrganizationMember {
@@ -42,6 +42,10 @@ async function membersRequest(
       }
     }
     throw error;
+  } finally {
+    if (options.method === "POST" || options.method === "DELETE") {
+      void invalidateOrganization(user, organizationId, session).catch(() => {});
+    }
   }
 }
 

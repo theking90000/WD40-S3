@@ -10,6 +10,16 @@ export interface Organization {
   access: "MEMBER" | "OWNER";
 }
 
+export interface OrganizationCounts {
+  buckets: number;
+  credentials: number;
+  members: number;
+}
+
+export interface OrganizationDetails extends Organization {
+  counts: OrganizationCounts;
+}
+
 export function isOrganizationId(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
@@ -20,6 +30,17 @@ function isOrganization(value: unknown): value is Organization {
     && "name" in value && typeof value.name === "string"
     && "created_at" in value && typeof value.created_at === "string"
     && "access" in value && (value.access === "MEMBER" || value.access === "OWNER");
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isOrganizationCounts(value: unknown): value is OrganizationCounts {
+  return !!value && typeof value === "object"
+    && "buckets" in value && isCount(value.buckets)
+    && "credentials" in value && isCount(value.credentials)
+    && "members" in value && isCount(value.members);
 }
 
 export function organizationsQuery(user: CurrentUser) {
@@ -37,6 +58,44 @@ export function organizationsQuery(user: CurrentUser) {
     staleTime: 60_000,
     retry: (count, error) => count < 1 && !(error instanceof AuthError && error.status < 500),
   });
+}
+
+export function organizationQuery(user: CurrentUser, organizationId: string) {
+  return queryOptions({
+    queryKey: [...organizationsQuery(user).queryKey, organizationId, "details"],
+    queryFn: async ({ signal }): Promise<OrganizationDetails> => {
+      const session = querySession();
+      try {
+        const response = await api(`organizations/${encodeURIComponent(organizationId)}`, { signal });
+        const body: unknown = await response.json();
+        if (session !== querySession()) throw new DOMException("Session changed", "AbortError");
+        if (!isOrganization(body) || body.id !== organizationId
+          || !("counts" in body) || !isOrganizationCounts(body.counts)) {
+          throw new AuthError("invalid_organization_response", 502);
+        }
+        return { ...body, counts: body.counts };
+      } catch (error) {
+        if (session !== querySession()) throw new DOMException("Session changed", "AbortError");
+        if (error instanceof AuthError && error.code === "organization_not_found") {
+          await refreshOrganizations(user).catch(() => {});
+        }
+        if (session !== querySession()) throw new DOMException("Session changed", "AbortError");
+        throw error;
+      }
+    },
+    staleTime: 60_000,
+    retry: (count, error) => count < 1 && error.name !== "AbortError"
+      && !(error instanceof AuthError && error.status < 500),
+  });
+}
+
+export async function invalidateOrganization(user: CurrentUser, organizationId: string, session: number) {
+  if (session !== querySession()) return;
+  const { queryKey } = organizationQuery(user, organizationId);
+  // Cancel even an initial request so an older count cannot win after a write.
+  await queryClient.cancelQueries({ queryKey, exact: true });
+  if (session !== querySession()) return;
+  await queryClient.invalidateQueries({ queryKey, exact: true });
 }
 
 export async function refreshOrganizations(user: CurrentUser) {
