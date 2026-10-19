@@ -28,7 +28,9 @@
   --accent: var(--foreground-soft);
   --accent-foreground: var(--foreground);
   --destructive-foreground: var(--surface);
+  --destructive-hover: color-mix(in oklch, var(--destructive) 88%, var(--foreground));
   --input: var(--border);
+  --switch-thumb: var(--surface);
   --success-soft: color-mix(in oklch, var(--success) 11%, var(--surface));
   --success-strong: color-mix(in oklch, var(--success) 70%, var(--foreground));
   --warning-soft: color-mix(in oklch, var(--warning) 16%, var(--surface));

@@ -16,19 +16,21 @@
 
   --card: var(--surface);
   --card-foreground: var(--foreground);
-  --popover: var(--surface);
+  --popover: oklch(27% 0.016 55);
   --popover-foreground: var(--foreground);
   --primary: var(--foreground);
   --primary-foreground: var(--surface);
   --primary-hover: color-mix(in oklch, var(--foreground) 87%, var(--surface));
   --secondary: var(--surface);
   --secondary-foreground: var(--foreground);
-  --secondary-hover-border: color-mix(in oklch, var(--foreground) 24%, var(--border));
+  --secondary-hover-border: color-mix(in oklch, var(--foreground) 40%, var(--border));
   --muted: var(--background);
-  --accent: var(--foreground-soft);
+  --accent: color-mix(in oklch, var(--foreground) 12%, var(--surface));
   --accent-foreground: var(--foreground);
   --destructive-foreground: var(--background);
-  --input: var(--border);
+  --destructive-hover: color-mix(in oklch, var(--destructive) 88%, var(--foreground));
+  --input: oklch(54% 0.018 60);
+  --switch-thumb: var(--foreground);
   --success-soft: color-mix(in oklch, var(--success) 13%, var(--surface));
   --success-strong: color-mix(in oklch, var(--success) 80%, var(--foreground));
   --warning-soft: color-mix(in oklch, var(--warning) 14%, var(--surface));

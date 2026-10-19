@@ -184,7 +184,7 @@ export function OrganizationSettingsPage({ user, organization, disabled }: {
             <h2 id={summaryId} className="break-words text-[14.5px] font-bold">{current.name}</h2>
             {details.isPending && <span role="status" className="sr-only">Chargement du récapitulatif…</span>}
             <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-3.5">
-              <div className="flex flex-col gap-1 text-muted-foreground opacity-50">
+              <div className="flex flex-col gap-1 text-muted-foreground">
                 <dt className="text-[9px]">Stockage utilisé</dt>
                 <dd className="order-first text-[10.5px]">Indisponible</dd>
               </div>
@@ -212,7 +212,7 @@ function UnavailableSwitch({ label, description }: { label: string; description:
   const hintId = useId();
   return (
     <div className="flex items-start justify-between gap-6 py-3.5 last:pb-0">
-      <div className="min-w-0 space-y-0.5 text-muted-foreground opacity-55">
+      <div className="min-w-0 space-y-0.5 text-muted-foreground">
         <label htmlFor={id} className="block text-[11.5px] font-semibold">{label}</label>
         <p id={hintId} className="text-[10px]">{description} Indisponible.</p>
       </div>

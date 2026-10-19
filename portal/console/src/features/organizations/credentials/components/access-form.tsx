@@ -132,7 +132,7 @@ export function CredentialAccessForm({ user, organizationId, initialInput, pendi
             <div className="max-h-64 overflow-y-auto rounded-lg border bg-background">
               {filtered.length === 0 ? <p className="p-4 text-xs text-muted-foreground">{buckets.length === 0 ? "Aucun bucket disponible dans cette organisation." : "Aucun bucket ne correspond à la recherche."}</p>
                 : filtered.map((bucket) => (
-                  <label key={bucket.name} className="flex cursor-pointer items-center gap-3 border-b px-3 py-2.5 text-xs last:border-0 hover:bg-accent has-disabled:cursor-not-allowed has-disabled:opacity-50">
+                  <label key={bucket.name} className="flex cursor-pointer items-center gap-3 border-b px-3 py-2.5 text-xs last:border-0 hover:bg-accent has-[:checked]:bg-accent has-[:focus-visible]:bg-accent has-disabled:cursor-not-allowed has-disabled:opacity-50">
                     <input type="checkbox" className="size-3.5 shrink-0 accent-foreground" checked={names.includes(bucket.name)} disabled={!!bucketsError}
                       onChange={(event) => {
                         const next = event.target.checked ? [...names, bucket.name].sort() : names.filter((name) => name !== bucket.name);
@@ -153,7 +153,7 @@ export function CredentialAccessForm({ user, organizationId, initialInput, pendi
       )}
       <fieldset disabled={pending || disabled} className="min-w-0 space-y-3" aria-describedby={permissionsHintId}>
         <legend className="mb-3 text-xs font-semibold">Permissions</legend>
-        <label className="flex cursor-pointer items-center gap-3 rounded-lg border bg-background px-3 py-2.5 text-xs font-semibold has-disabled:cursor-not-allowed has-disabled:opacity-50">
+        <label className="flex cursor-pointer items-center gap-3 rounded-lg border bg-background px-3 py-2.5 text-xs font-semibold has-[:checked]:border-input has-[:checked]:bg-accent has-[:focus-visible]:bg-accent has-disabled:cursor-not-allowed has-disabled:opacity-50">
           <input ref={selectAll} type="checkbox" className="size-3.5 shrink-0 accent-foreground"
             checked={input.permissions.length === CREDENTIAL_PERMISSIONS.length}
             aria-checked={input.permissions.length > 0 && input.permissions.length < CREDENTIAL_PERMISSIONS.length ? "mixed" : input.permissions.length === CREDENTIAL_PERMISSIONS.length}
@@ -162,7 +162,7 @@ export function CredentialAccessForm({ user, organizationId, initialInput, pendi
         </label>
         <div className="grid gap-2 min-[461px]:grid-cols-2">
           {CREDENTIAL_PERMISSIONS.map((permission) => <label key={permission}
-            className="flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-xs hover:bg-accent has-disabled:cursor-not-allowed has-disabled:opacity-50">
+            className="flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-xs hover:bg-accent has-[:checked]:border-input has-[:checked]:bg-accent has-[:focus-visible]:bg-accent has-disabled:cursor-not-allowed has-disabled:opacity-50">
             <input type="checkbox" name="permissions" value={permission} className="size-3.5 shrink-0 accent-foreground"
               checked={input.permissions.includes(permission)} onChange={(event) => {
                 const checked = event.target.checked;

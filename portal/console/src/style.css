@@ -37,10 +37,12 @@
   --color-warning-strong: var(--warning-strong);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-hover: var(--destructive-hover);
   --color-destructive-soft: var(--destructive-soft);
   --color-destructive-strong: var(--destructive-strong);
   --color-border: var(--border);
   --color-input: var(--input);
+  --color-switch-thumb: var(--switch-thumb);
   --color-ring: var(--ring);
   --color-table-header: var(--table-header);
   --color-table-row-hover: var(--table-row-hover);
@@ -103,8 +105,8 @@
   }
 
   ::selection {
-    background: var(--brand-soft);
-    color: var(--foreground);
+    background: var(--primary);
+    color: var(--primary-foreground);
   }
 
   :focus-visible {
