@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { ArrowRightIcon, ChartColumnIcon, ChartPieIcon, ChevronRightIcon, DatabaseIcon, HistoryIcon, KeyRoundIcon, PlusIcon, UsersIcon } from "lucide-react";
+import { ArrowRightIcon, ChartColumnIcon, ChartPieIcon, ChevronRightIcon, DatabaseIcon, HistoryIcon, KeyRoundIcon, UsersIcon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { CurrentUser } from "~/features/auth/session.ts";
 import type { Organization } from "~/features/organizations/api.ts";
@@ -10,9 +10,6 @@ import { organizationErrorMessage, organizationQuery } from "~/features/organiza
 import { bucketErrorMessage, organizationBucketsQuery } from "~/features/organizations/buckets/api.ts";
 import { BucketAccessBadge } from "~/features/organizations/buckets/components/access";
 import { BucketDetails } from "~/features/organizations/buckets/components/bucket-details";
-import { AddMemberDialog } from "~/features/organizations/members/components/add-member";
-import { EditOrganizationDialog } from "~/features/organizations/components/edit-organization";
-import { DeleteOrganizationDialog } from "~/features/organizations/components/delete-organization";
 import { useOrganization, useOrganizations } from "~/features/organizations/router.ts";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -24,8 +21,8 @@ export const handle = { title: "Vue d'ensemble" };
 
 export default function OrganizationHome() {
   const organization = useOrganization();
-  const { user, error } = useOrganizations();
-  return organization ? <Overview key={JSON.stringify(organizationQuery(user, organization.id).queryKey)} user={user} organization={organization} disabled={!!error} /> : null;
+  const { user } = useOrganizations();
+  return organization ? <Overview key={JSON.stringify(organizationQuery(user, organization.id).queryKey)} user={user} organization={organization} /> : null;
 }
 
 function MetricCard({ title, tag, status = "Pas disponible", children }: {
@@ -57,7 +54,7 @@ function Unavailable({ icon: Icon, children }: { icon: LucideIcon; children: Rea
   );
 }
 
-function Overview({ user, organization, disabled }: { user: CurrentUser; organization: Organization; disabled: boolean }) {
+function Overview({ user, organization }: { user: CurrentUser; organization: Organization }) {
   const details = useQuery(organizationQuery(user, organization.id));
   const buckets = useQuery(organizationBucketsQuery(user, organization.id));
   const [notice, setNotice] = useState("");
@@ -66,7 +63,6 @@ function Overview({ user, organization, disabled }: { user: CurrentUser; organiz
   const heading = useRef<HTMLHeadingElement | null>(null);
   const detailTrigger = useRef<HTMLElement | null>(null);
   const counts = details.data?.counts;
-  const owner = organization.access === "OWNER";
   const recentBuckets = [...(buckets.data ?? [])].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || a.name.localeCompare(b.name)).slice(0, 3);
   const selectedBucket = buckets.data?.find((bucket) => bucket.name === selectedName);
   const dateFormat = new Intl.DateTimeFormat("fr-BE", { dateStyle: "medium" });
@@ -114,15 +110,6 @@ function Overview({ user, organization, disabled }: { user: CurrentUser; organiz
             Configurer un client S3<ArrowRightIcon aria-hidden="true" className="size-3" />
           </Link>
         </div>
-        {owner && <div className="flex w-full flex-wrap gap-2 min-[621px]:w-auto">
-          <EditOrganizationDialog user={user} organization={organization} disabled={disabled || !details.data || !!details.error}
-            onUpdated={() => setNotice("Le nom de l'organisation a été enregistré.")} restoreFocus={() => heading.current?.focus()} />
-          <DeleteOrganizationDialog user={user} organization={organization} disabled={disabled || !details.data || !!details.error}
-            empty={counts?.buckets === 0 && counts?.credentials === 0} restoreFocus={() => heading.current?.focus()} />
-          <AddMemberDialog user={user} organizationId={organization.id} variant="outline" disabled={!details.data || !!details.error}
-            onAdded={(email) => setNotice(`${email} a été ajouté à l'organisation.`)} onError={() => setNotice("")} />
-          <Button asChild><Link to={`/${organization.id}/buckets/new`}><PlusIcon aria-hidden="true" />Créer un bucket</Link></Button>
-        </div>}
       </div>
 
       {notice && <p role="status" className="rounded-lg border bg-success-soft p-3 text-xs text-success-strong">{notice}</p>}

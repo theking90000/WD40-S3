@@ -36,8 +36,8 @@ export function DeleteOrganizationDialog({ user, organization, disabled, empty, 
   return (
     <AlertDialog open={open} onOpenChange={changeOpen}>
       <AlertDialogTrigger asChild>
-        <Button ref={trigger} type="button" variant="outline" disabled={disabled}
-          className="text-destructive-strong hover:bg-destructive-soft hover:text-destructive-strong"><Trash2Icon aria-hidden="true" />Supprimer l'organisation</Button>
+        <Button ref={trigger} type="button" variant="destructive" disabled={disabled}
+          className="w-full min-[621px]:w-auto"><Trash2Icon aria-hidden="true" />Supprimer l'organisation</Button>
       </AlertDialogTrigger>
       <AlertDialogContent onCloseAutoFocus={(event) => {
         if (!trigger.current?.isConnected || trigger.current.disabled) {

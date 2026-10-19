@@ -11,6 +11,7 @@ export default [
       route("credentials", "routes/credentials.tsx"),
       route("credentials/new", "routes/credentials-new.tsx"),
       route("members", "routes/members.tsx"),
+      route("settings", "routes/settings.tsx"),
       route("status", "routes/status.tsx"),
     ]),
   ]),

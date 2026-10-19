@@ -54,7 +54,7 @@ export default function ConsoleLayout() {
       label: "Organisation",
       items: [
         { label: "Membres", to: `/${organization.id}/members`, icon: UsersIcon, count: counts?.members },
-        { label: "Paramètres", icon: Settings2Icon, disabled: true },
+        { label: "Paramètres", to: `/${organization.id}/settings`, icon: Settings2Icon },
       ],
     },
   ];
