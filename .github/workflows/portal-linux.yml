@@ -1,0 +1,52 @@
+name: Build portal for Linux
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: portal-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: linux-arm64
+            runner: ubuntu-24.04-arm
+            rustflags: ""
+          - arch: linux-x86_64-v3
+            runner: ubuntu-24.04
+            rustflags: "-C target-cpu=x86-64-v3"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Install Rust stable
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build portal
+        env:
+          RUSTFLAGS: ${{ matrix.rustflags }}
+        run: cargo b -p portal -F standalone,embedded-s3 --release
+
+      - name: Package executable
+        run: tar -czf portal-${{ matrix.arch }}.tar.gz -C target/release portal
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v7
+        with:
+          name: portal-${{ matrix.arch }}
+          path: portal-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+          compression-level: 0
