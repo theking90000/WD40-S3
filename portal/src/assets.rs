@@ -24,7 +24,7 @@ fn organization_page(path: &str) -> bool {
     }
     match segments.next() {
         None => true,
-        Some("status" | "members") => segments.next().is_none(),
+        Some("status" | "members" | "settings") => segments.next().is_none(),
         Some("buckets" | "credentials") => match segments.next() {
             None => true,
             Some("new") => segments.next().is_none(),
@@ -92,7 +92,20 @@ async fn serves_prerendered_pages_and_returns_404_for_missing_paths() {
         "/",
         "/login",
         "/login/",
+        "/e2b219e2-f69d-41cd-83b2-e3e791133b24",
         "/e2b219e2-f69d-41cd-83b2-e3e791133b24/",
+        "/e2b219e2-f69d-41cd-83b2-e3e791133b24/buckets",
+        "/e2b219e2-f69d-41cd-83b2-e3e791133b24/buckets/",
+        "/e2b219e2-f69d-41cd-83b2-e3e791133b24/buckets/new",
+        "/e2b219e2-f69d-41cd-83b2-e3e791133b24/buckets/new/",
+        "/e2b219e2-f69d-41cd-83b2-e3e791133b24/credentials",
+        "/e2b219e2-f69d-41cd-83b2-e3e791133b24/credentials/",
+        "/e2b219e2-f69d-41cd-83b2-e3e791133b24/credentials/new",
+        "/e2b219e2-f69d-41cd-83b2-e3e791133b24/credentials/new/",
+        "/e2b219e2-f69d-41cd-83b2-e3e791133b24/members",
+        "/e2b219e2-f69d-41cd-83b2-e3e791133b24/members/",
+        "/e2b219e2-f69d-41cd-83b2-e3e791133b24/settings",
+        "/e2b219e2-f69d-41cd-83b2-e3e791133b24/settings/",
         "/e2b219e2-f69d-41cd-83b2-e3e791133b24/status",
         "/e2b219e2-f69d-41cd-83b2-e3e791133b24/status/",
     ] {

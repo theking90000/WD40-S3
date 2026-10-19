@@ -1,5 +1,6 @@
 import { index, layout, route, type RouteConfig } from "@react-router/dev/routes";
 
+// NE PAS OUBLIER de modifier RUST!! Synchroniser les routes avec portal/src/assets.rs.
 export default [
   route("login", "routes/login.tsx"),
   layout("layouts/session.tsx", [
