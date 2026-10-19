@@ -14,9 +14,13 @@ It is designed around three principles:
 - Composable systems that are easy to understand.
 - API interoperability, with S3 support for integration with existing tools and systems.
 
-The [HTTP Adapter](crates/http-adapter/README.md) provides anonymous object uploads
-and streaming downloads with byte-range support, as a composable Hyper service
-or an optional standalone server.
+## Self-host or use the hosted version
+
+WD40-S3 consists of components that you can compile and run independently or embed in a single executable.
+
+To use the hosted version, create an account at [console.6700067.xyz](https://console.6700067.xyz). It supports S3 and lets you manage your own buckets and access keys.
+
+You can also self-host the portal or use WD40-S3 without S3 support, since the S3 adapter is optional.
 
 ## Store files on Discord
 
