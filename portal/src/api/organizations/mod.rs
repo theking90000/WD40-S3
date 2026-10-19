@@ -2,6 +2,7 @@ mod buckets;
 mod create;
 mod credentials;
 mod current;
+mod get;
 mod list;
 mod members;
 mod pending;
@@ -25,14 +26,19 @@ use serde::Serialize;
 use super::auth::CurrentUser;
 
 pub(super) fn router(db: DatabaseConnection) -> Router<DatabaseConnection> {
-    let organization = members::router()
-        .merge(buckets::router())
-        .merge(credentials::router())
+    let organization = Router::new()
+        .route("/api/organizations/{organization_id}", get(get::handle))
+        .nest(
+            "/api/organizations/{organization_id}",
+            members::router()
+                .merge(buckets::router())
+                .merge(credentials::router()),
+        )
         .route_layer(axum::middleware::from_fn_with_state(db, current::resolve));
 
     Router::new()
         .route("/api/organizations", get(list::handle).post(create::handle))
-        .nest("/api/organizations/{organization_id}", organization)
+        .merge(organization)
         .layer(DefaultBodyLimit::max(16 * 1024))
 }
 
