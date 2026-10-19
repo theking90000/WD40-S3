@@ -8,10 +8,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldDescription, FieldError, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 
-export function AddMemberDialog({ user, organizationId, disabled, onAdded, onError }: {
+export function AddMemberDialog({ user, organizationId, disabled, variant = "default", onAdded, onError }: {
   user: CurrentUser;
   organizationId: string;
   disabled?: boolean;
+  variant?: "default" | "outline";
   onAdded(email: string): void;
   onError(error: Error): void;
 }) {
@@ -41,7 +42,7 @@ export function AddMemberDialog({ user, organizationId, disabled, onAdded, onErr
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
       <DialogTrigger asChild>
-        <Button type="button" disabled={disabled}><PlusIcon aria-hidden="true" />Ajouter un membre</Button>
+        <Button type="button" variant={variant} disabled={disabled}><PlusIcon aria-hidden="true" />Ajouter un membre</Button>
       </DialogTrigger>
       <DialogContent showCloseButton={!mutation.isPending}>
         <DialogHeader>
