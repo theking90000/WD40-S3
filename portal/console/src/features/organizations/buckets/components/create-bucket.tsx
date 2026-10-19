@@ -62,7 +62,6 @@ export function CreateBucketForm({ user, organization }: { user: CurrentUser; or
           {nameError && <FieldError id={errorId}>{nameError}</FieldError>}
         </Field>
         <BucketAccessField value={access} onChange={setAccess} disabled={mutation.isPending} />
-        <p className="text-[10.5px] text-muted-foreground">L'application de ces réglages côté S3 n'est pas encore active.</p>
         {mutation.isError && !nameError && <p role="alert" className="rounded-lg border bg-destructive-soft p-3 text-xs text-destructive-strong">{bucketErrorMessage(mutation.error)}</p>}
         <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
           <Button type="button" variant="outline" disabled={mutation.isPending} onClick={() => void navigate(`/${organization.id}/buckets`)}>Annuler</Button>

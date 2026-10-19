@@ -111,7 +111,6 @@ export function BucketDetails({ user, organization, bucket, open, disabled, onOp
               </Button>
             </form>
           ) : <p className="text-xs text-muted-foreground">{bucketAccessInfo[bucket.access].description} Seuls les propriétaires peuvent modifier l'accès.</p>}
-          <p className="text-[10.5px] text-muted-foreground">L'application de ces réglages côté S3 n'est pas encore active.</p>
           {notice && <p role="status" className="rounded-lg border bg-success-soft p-3 text-xs text-success-strong">{notice}</p>}
           <span role="status" className="sr-only">{copied ? "Nom du bucket copié." : ""}</span>
           {copyError && <p role="alert" className="text-xs text-destructive-strong">{copyError}</p>}

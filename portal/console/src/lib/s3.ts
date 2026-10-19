@@ -30,16 +30,9 @@ export function resolveS3Endpoint(configured: string | undefined, hostname: stri
   return `https://s3.${domain.replace(/^console\./, "")}`;
 }
 
-export function supportsVirtualHosting(endpoint: string): boolean {
-  return isDomain(new URL(endpoint).hostname);
-}
-
-export function s3BucketUrls(endpoint: string, bucket: string) {
+export function s3BucketUrl(endpoint: string, bucket: string): string | null {
   const url = new URL(endpoint);
-  const pathStyle = `${url.origin}/${encodeURIComponent(bucket)}`;
-  if (!supportsVirtualHosting(endpoint) || (url.protocol === "https:" && bucket.includes("."))) {
-    return { pathStyle, virtualHosted: null };
-  }
+  if (!isDomain(url.hostname)) return null;
   url.hostname = `${bucket}.${url.hostname}`;
-  return { pathStyle, virtualHosted: url.origin };
+  return url.origin;
 }

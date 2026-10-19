@@ -102,10 +102,10 @@ convention, not a network discovery or health check. Localhost and IP addresses
 require an explicit endpoint.
 
 Use `us-east-1` as the client region. WD40 currently imposes no signing region.
-Virtual-hosted bucket URLs require matching DNS and TLS configuration for bucket
-subdomains. HTTPS bucket names containing dots use path-style URLs to avoid the
-limits of ordinary wildcard certificates. Localhost and IP endpoints also use
-path-style URLs. These displayed addresses do not grant public access to a bucket.
+Bucket details display a virtual-hosted URL when the endpoint uses a domain name,
+or only the endpoint for localhost and IP addresses. Virtual-hosted bucket URLs
+require matching DNS and TLS configuration for bucket subdomains. These displayed
+addresses do not grant public access to a bucket.
 
 The console uses React 19.3.1, React Router 8.4.0 and Vite 8.3.4.
 `console/react-router.config.ts` sets `ssr: false` and `prerender: ["/", "/login"]`, following

@@ -79,9 +79,7 @@ export function CreateCredentialPage({ user, organization }: { user: CurrentUser
             </div>
             <aside className="space-y-4">
               <div className="space-y-3 rounded-xl border bg-surface p-5">
-                <h2 className="text-card-title">Portée de la clé</h2>
-                <p className="text-xs text-muted-foreground">Tous les buckets inclut ceux qui seront créés ensuite. Une portée limitée contient uniquement votre sélection.</p>
-                <p className="text-xs text-muted-foreground">Le raccordement S3 n'est pas encore actif. La clé et sa portée sont enregistrées dans le portail.</p>
+                <p className="text-xs text-muted-foreground">Cette clé donne accès aux buckets sélectionnés.</p>
               </div>
               <div className="space-y-2 rounded-xl border bg-surface p-5 text-xs"><p className="text-muted-foreground">Organisation</p><p className="break-words font-semibold">{organization.name}</p></div>
             </aside>
@@ -119,7 +117,7 @@ function CredentialCreated({ credential, organizationName, onNew, onFinish }: {
         </div>
         <S3Connection compact />
         <div className="space-y-2"><h2 className="text-xs font-semibold">Portée</h2><CredentialScope credential={credential} /></div>
-        <p className="text-xs text-muted-foreground">Le raccordement S3 n'est pas encore actif. Si vous perdez ce secret, supprimez la clé et créez-en une nouvelle.</p>
+        <p className="text-xs text-muted-foreground">Si vous perdez ce secret, supprimez la clé et créez-en une nouvelle.</p>
         <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
           <Button type="button" variant="ghost" onClick={onNew}>Créer une autre clé</Button>
           <Button type="button" className="max-w-full whitespace-normal" onClick={onFinish}>J'ai enregistré le secret · Terminer</Button>
