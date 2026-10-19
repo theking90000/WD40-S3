@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowRightIcon, Building2Icon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { selectionLoader, useOrganizations } from "~/features/organizations/router.ts";
@@ -20,21 +20,27 @@ export default function SelectOrganization() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const unavailable = params.has("organization_unavailable");
+  const deleted = params.has("organization_deleted");
+  const heading = useRef<HTMLHeadingElement | null>(null);
   const onlyOrganization = data?.length === 1 ? data.at(0) : undefined;
 
   useEffect(() => {
-    if (onlyOrganization && !unavailable) void navigate(`/${onlyOrganization.id}/`, { replace: true });
-  }, [onlyOrganization, unavailable, navigate]);
+    if (onlyOrganization && !unavailable && !deleted) void navigate(`/${onlyOrganization.id}/`, { replace: true });
+  }, [onlyOrganization, unavailable, deleted, navigate]);
+
+  useEffect(() => {
+    if (deleted && data && !error) heading.current?.focus();
+  }, [deleted, data, error]);
 
   if (error) return <AuthFailure title="Organisations indisponibles" description={organizationErrorMessage(error)} retry={() => void refetch()} busy={isFetching} />;
-  if (!data || (onlyOrganization && !unavailable)) return <AuthPending />;
+  if (!data || (onlyOrganization && !unavailable && !deleted)) return <AuthPending />;
 
   return (
     <ConsoleShell title="Vos organisations" navigation={[]} account={<Account user={user} />}>
       <section className="mx-auto max-w-3xl space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-2">
-            <h1 className="text-page-title">Vos organisations</h1>
+            <h1 ref={heading} tabIndex={-1} className="text-page-title">Vos organisations</h1>
             <p className="text-muted-foreground">Choisissez une organisation pour accéder à votre espace de travail.</p>
           </div>
           <Button type="button" variant="outline" size="sm" disabled={isFetching} aria-busy={isFetching} onClick={() => void refetch()}>
@@ -42,6 +48,7 @@ export default function SelectOrganization() {
           </Button>
         </div>
         {unavailable && <p role="status" className="rounded-lg border bg-warning-soft p-3 text-warning-strong">Cette organisation n'existe pas ou vous n'y avez plus accès. Choisissez une autre organisation.</p>}
+        {deleted && <p role="status" className="rounded-lg border bg-success-soft p-3 text-success-strong">L'organisation a été supprimée.</p>}
         {data.length === 0 ? (
           <div className="flex flex-col items-center gap-4 rounded-xl border bg-surface px-6 py-12 text-center">
             <span className="flex size-12 items-center justify-center rounded-xl bg-brand-soft text-brand"><Building2Icon aria-hidden="true" /></span>

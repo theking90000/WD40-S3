@@ -2,10 +2,12 @@ mod buckets;
 mod create;
 mod credentials;
 mod current;
+mod delete;
 mod get;
 mod list;
 mod members;
 mod pending;
+mod update;
 
 use axum::{
     Json, Router,
@@ -27,7 +29,10 @@ use super::auth::CurrentUser;
 
 pub(super) fn router(db: DatabaseConnection) -> Router<DatabaseConnection> {
     let organization = Router::new()
-        .route("/api/organizations/{organization_id}", get(get::handle))
+        .route(
+            "/api/organizations/{organization_id}",
+            get(get::handle).patch(update::handle).delete(delete::handle),
+        )
         .nest(
             "/api/organizations/{organization_id}",
             members::router()
@@ -80,6 +85,28 @@ fn user_email(user: &CurrentUser) -> Result<&str, Error> {
         return Err(Error::new(StatusCode::FORBIDDEN, "email_not_verified"));
     }
     Ok(email)
+}
+
+fn validate_name(name: &str) -> Result<&str, Error> {
+    let name = name.trim();
+    if !(1..=128).contains(&name.chars().count()) {
+        return Err(Error::new(StatusCode::BAD_REQUEST, "invalid_name"));
+    }
+    Ok(name)
+}
+
+fn name_write_error(error: DbErr) -> Error {
+    #[cfg(any(feature = "sqlite", feature = "postgres"))]
+    if let DbErr::Exec(portal_db::sea_orm::RuntimeErr::SqlxError(source))
+    | DbErr::Query(portal_db::sea_orm::RuntimeErr::SqlxError(source)) = &error
+        && let Some(database) = source.as_database_error()
+        && database.is_unique_violation()
+        && (database.constraint() == Some("idx-organizations-name")
+            || database.message() == "UNIQUE constraint failed: organizations.name")
+    {
+        return Error::new(StatusCode::CONFLICT, "organization_name_taken");
+    }
+    Error::from(error)
 }
 
 pub(super) struct Error {

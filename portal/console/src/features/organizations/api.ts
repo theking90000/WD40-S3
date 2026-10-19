@@ -122,10 +122,82 @@ export async function createOrganization(user: CurrentUser, name: string) {
   return organization;
 }
 
+function requireSession(session: number) {
+  if (session !== querySession()) throw new DOMException("Session changed", "AbortError");
+}
+
+async function organizationWrite(
+  user: CurrentUser,
+  organizationId: string,
+  method: "PATCH" | "DELETE",
+  body?: { name: string },
+) {
+  const session = querySession();
+  try {
+    const response = await api(`organizations/${encodeURIComponent(organizationId)}`, { method, body });
+    requireSession(session);
+    if (response.status !== (method === "DELETE" ? 204 : 200)) {
+      throw new AuthError("invalid_organization_response", 502);
+    }
+    const result: unknown = method === "DELETE" ? undefined : await response.json().catch(() => null);
+    requireSession(session);
+    return { body: result, session };
+  } catch (error) {
+    requireSession(session);
+    if (error instanceof AuthError) {
+      if (error.code === "owner_required" || error.code === "organization_not_found") {
+        await refreshOrganizations(user).catch(() => {});
+      } else if (error.code === "organization_not_empty") {
+        await invalidateOrganization(user, organizationId, session).catch(() => {});
+      }
+    }
+    requireSession(session);
+    throw error;
+  }
+}
+
+export async function updateOrganization(user: CurrentUser, organizationId: string, name: string) {
+  const trimmed = name.trim();
+  if (!trimmed || Array.from(trimmed).length > 128) throw new AuthError("invalid_name", 400);
+  const { body, session } = await organizationWrite(user, organizationId, "PATCH", { name: trimmed });
+  requireSession(session);
+  if (!isOrganization(body) || body.id !== organizationId || body.name !== trimmed) {
+    throw new AuthError("invalid_organization_response", 502);
+  }
+  const listKey = organizationsQuery(user).queryKey;
+  const detailsKey = organizationQuery(user, organizationId).queryKey;
+  await Promise.all([
+    queryClient.cancelQueries({ queryKey: listKey, exact: true }),
+    queryClient.cancelQueries({ queryKey: detailsKey, exact: true }),
+  ]);
+  requireSession(session);
+  queryClient.setQueryData<Organization[]>(listKey, (previous) => previous?.map((item) => item.id === organizationId ? body : item));
+  queryClient.setQueryData<OrganizationDetails>(detailsKey, (previous) => previous ? { ...previous, ...body } : undefined);
+  return body;
+}
+
+export async function deleteOrganization(user: CurrentUser, organizationId: string) {
+  const { session } = await organizationWrite(user, organizationId, "DELETE");
+  requireSession(session);
+  const listKey = organizationsQuery(user).queryKey;
+  const organizationKey = [...listKey, organizationId];
+  await Promise.all([
+    queryClient.cancelQueries({ queryKey: listKey, exact: true }),
+    queryClient.cancelQueries({ queryKey: organizationKey }),
+  ]);
+  requireSession(session);
+  queryClient.removeQueries({ queryKey: organizationKey });
+  queryClient.setQueryData<Organization[]>(listKey, (previous) => previous?.filter(({ id }) => id !== organizationId));
+}
+
 export function organizationErrorMessage(error: unknown) {
   if (error instanceof AuthError) {
     if (error.code === "invalid_name") return "Le nom doit contenir entre 1 et 128 caractères.";
     if (error.code === "organization_name_taken") return "Une organisation porte déjà ce nom.";
+    if (error.code === "organization_not_empty") return "Cette organisation contient encore des buckets ou des clés d'accès. Elle ne peut pas être supprimée.";
+    if (error.code === "owner_required") return "Seul un propriétaire peut modifier ou supprimer cette organisation.";
+    if (error.code === "organization_not_found") return "Cette organisation n'existe plus ou vous n'y avez plus accès.";
+    if (error.code === "csrf_rejected") return "La requête a été refusée. Rechargez la page et réessayez.";
     if (error.code === "email_required") return "Votre compte doit fournir une adresse email pour accéder aux organisations.";
     if (error.code === "email_not_verified") return "Une adresse email vérifiée est nécessaire pour accéder aux organisations.";
     if (error.status === 401) return "Votre session a expiré. Reconnectez-vous pour continuer.";

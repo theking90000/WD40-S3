@@ -11,6 +11,8 @@ import { bucketErrorMessage, organizationBucketsQuery } from "~/features/organiz
 import { BucketAccessBadge } from "~/features/organizations/buckets/components/access";
 import { BucketDetails } from "~/features/organizations/buckets/components/bucket-details";
 import { AddMemberDialog } from "~/features/organizations/members/components/add-member";
+import { EditOrganizationDialog } from "~/features/organizations/components/edit-organization";
+import { DeleteOrganizationDialog } from "~/features/organizations/components/delete-organization";
 import { useOrganization, useOrganizations } from "~/features/organizations/router.ts";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -22,8 +24,8 @@ export const handle = { title: "Vue d'ensemble" };
 
 export default function OrganizationHome() {
   const organization = useOrganization();
-  const { user } = useOrganizations();
-  return organization ? <Overview key={JSON.stringify(organizationQuery(user, organization.id).queryKey)} user={user} organization={organization} /> : null;
+  const { user, error } = useOrganizations();
+  return organization ? <Overview key={JSON.stringify(organizationQuery(user, organization.id).queryKey)} user={user} organization={organization} disabled={!!error} /> : null;
 }
 
 function MetricCard({ title, tag, status = "Pas disponible", children }: {
@@ -55,7 +57,7 @@ function Unavailable({ icon: Icon, children }: { icon: LucideIcon; children: Rea
   );
 }
 
-function Overview({ user, organization }: { user: CurrentUser; organization: Organization }) {
+function Overview({ user, organization, disabled }: { user: CurrentUser; organization: Organization; disabled: boolean }) {
   const details = useQuery(organizationQuery(user, organization.id));
   const buckets = useQuery(organizationBucketsQuery(user, organization.id));
   const [notice, setNotice] = useState("");
@@ -113,6 +115,10 @@ function Overview({ user, organization }: { user: CurrentUser; organization: Org
           </Link>
         </div>
         {owner && <div className="flex w-full flex-wrap gap-2 min-[621px]:w-auto">
+          <EditOrganizationDialog user={user} organization={organization} disabled={disabled || !details.data || !!details.error}
+            onUpdated={() => setNotice("Le nom de l'organisation a été enregistré.")} restoreFocus={() => heading.current?.focus()} />
+          <DeleteOrganizationDialog user={user} organization={organization} disabled={disabled || !details.data || !!details.error}
+            empty={counts?.buckets === 0 && counts?.credentials === 0} restoreFocus={() => heading.current?.focus()} />
           <AddMemberDialog user={user} organizationId={organization.id} variant="outline" disabled={!details.data || !!details.error}
             onAdded={(email) => setNotice(`${email} a été ajouté à l'organisation.`)} onError={() => setNotice("")} />
           <Button asChild><Link to={`/${organization.id}/buckets/new`}><PlusIcon aria-hidden="true" />Créer un bucket</Link></Button>

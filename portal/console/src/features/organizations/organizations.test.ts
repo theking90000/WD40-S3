@@ -8,7 +8,7 @@ import { logout } from "../auth/session.ts";
 import type { CurrentUser } from "../auth/session.ts";
 import { authMiddleware, requireUserMiddleware, withUser } from "../auth/router.ts";
 import { organizationLoader, organizationMiddleware, selectionLoader } from "./router.ts";
-import { createOrganization, organizationErrorMessage, organizationsQuery, refreshOrganizations } from "./api.ts";
+import { createOrganization, deleteOrganization, organizationErrorMessage, organizationQuery, organizationsQuery, refreshOrganizations, updateOrganization } from "./api.ts";
 import type { Organization } from "./api.ts";
 import { currentUserKey, queryClient, resetQuerySession, setQueryUser } from "../../lib/query-client.ts";
 
@@ -108,6 +108,10 @@ test("organization cache and routing share requests and follow membership and se
   assert.equal(router.state.location.pathname, `/${first.id}/`);
   assert.equal(listings, 2);
   assert.equal(childLoads, 1);
+  await router.navigate("/?organization_deleted=1");
+  assert.equal(router.state.location.pathname, "/");
+  assert.equal(router.state.location.search, "?organization_deleted=1");
+  await router.navigate(`/${first.id}/`);
   await router.navigate(`/${first.id}/status`);
   await router.navigate(`/${first.id}/`);
   assert.equal(listings, 2);
@@ -230,4 +234,144 @@ test("organization cache and routing share requests and follow membership and se
   assert.equal(queryClient.getQueryCache().getAll().length, 1);
   await router.navigate(`/${first.id}/`);
   assert.equal(router.state.location.pathname, "/login");
+});
+
+test("organization mutations update shared caches, cancel old reads and reject late sessions", async (t) => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { location: { href: "http://localhost/" } },
+  });
+  t.after(() => {
+    resetQuerySession();
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  });
+  const alice: CurrentUser = {
+    issuer: "https://identity.example", subject: "alice", name: "Alice",
+    email: "alice@example.org", email_verified: true, roles: [], groups: [],
+  };
+  const bob = { ...alice, subject: "bob", email: "bob@example.org" };
+  const first: Organization = {
+    id: "e2b219e2-f69d-41cd-83b2-e3e791133b24", name: "First",
+    created_at: "2026-10-18T12:00:00+00:00", access: "OWNER",
+  };
+  const second: Organization = { ...first, id: "a2b219e2-f69d-41cd-83b2-e3e791133b24", name: "Second" };
+  const renamed = { ...first, name: "Renamed" };
+  const counts = { buckets: 0, credentials: 0, members: 2 };
+  const listKey = organizationsQuery(alice).queryKey;
+  const detailsKey = organizationQuery(alice, first.id).queryKey;
+  const memberKey = [...listKey, first.id, "members"];
+  const otherKey = organizationQuery(alice, second.id).queryKey;
+  let errorCode: string | undefined;
+  let malformed = false;
+  let readWait: Promise<void> | undefined;
+  let writeWait: Promise<void> | undefined;
+  let listing: Organization[] = [first, second];
+  let writes = 0;
+  let reads = 0;
+
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, options: RequestInit = {}) => {
+    const url = String(input);
+    if (options.method === "PATCH" || options.method === "DELETE") {
+      writes += 1;
+      assert.equal(url, `/api/organizations/${first.id}`);
+      assert.equal(new Headers(options.headers).get("X-WD40-Portal"), "1");
+      assert.equal(options.credentials, "same-origin");
+      if (options.method === "PATCH") assert.deepEqual(JSON.parse(String(options.body)), { name: "Renamed" });
+      await writeWait;
+      if (errorCode) return Response.json({ error: errorCode }, { status: errorCode === "owner_required" ? 403 : 409 });
+      return options.method === "DELETE" ? new Response(null, { status: 204 })
+        : Response.json(malformed ? { ...renamed, id: second.id } : renamed);
+    }
+    reads += 1;
+    const snapshot = [...listing];
+    await readWait;
+    if (url === "/api/organizations") return Response.json(snapshot);
+    assert.equal(url, `/api/organizations/${first.id}`);
+    return Response.json({ ...first, counts });
+  });
+
+  setQueryUser(alice);
+  queryClient.setQueryData(listKey, listing);
+  queryClient.setQueryData(detailsKey, { ...first, counts });
+  queryClient.setQueryData(memberKey, ["member@example.org"]);
+  queryClient.setQueryData(otherKey, { ...second, counts });
+  const observer = new QueryObserver(queryClient, organizationsQuery(alice));
+  let observed: Organization[] | undefined;
+  const unsubscribe = observer.subscribe((result) => { observed = result.data; });
+  t.after(unsubscribe);
+
+  let releaseReads = () => {};
+  readWait = new Promise<void>((resolve) => { releaseReads = resolve; });
+  const oldList = queryClient.fetchQuery({ ...organizationsQuery(alice), staleTime: 0 }).catch(() => undefined);
+  const oldDetails = queryClient.fetchQuery({ ...organizationQuery(alice, first.id), staleTime: 0 }).catch(() => undefined);
+  await updateOrganization(alice, first.id, " Renamed ");
+  assert.equal(observed?.at(0)?.name, "Renamed");
+  assert.deepEqual(queryClient.getQueryData(detailsKey), { ...renamed, counts });
+  releaseReads();
+  await Promise.all([oldList, oldDetails]);
+  readWait = undefined;
+  assert.equal(queryClient.getQueryData(organizationsQuery(alice).queryKey)?.at(0)?.name, "Renamed");
+  assert.deepEqual(queryClient.getQueryData(memberKey), ["member@example.org"]);
+
+  const beforeInvalid = writes;
+  await assert.rejects(updateOrganization(alice, first.id, " "), (error) => error instanceof AuthError && error.code === "invalid_name");
+  await assert.rejects(updateOrganization(alice, first.id, "é".repeat(129)), (error) => error instanceof AuthError && error.code === "invalid_name");
+  assert.equal(writes, beforeInvalid);
+  const cached = queryClient.getQueryData(listKey);
+  errorCode = "organization_name_taken";
+  await assert.rejects(updateOrganization(alice, first.id, "Renamed"), (error) => error instanceof AuthError && error.code === "organization_name_taken");
+  assert.equal(queryClient.getQueryData(listKey), cached);
+  errorCode = undefined;
+  malformed = true;
+  await assert.rejects(updateOrganization(alice, first.id, "Renamed"), (error) => error instanceof AuthError && error.code === "invalid_organization_response");
+  assert.equal(queryClient.getQueryData(listKey), cached);
+  malformed = false;
+
+  errorCode = "organization_not_empty";
+  await assert.rejects(deleteOrganization(alice, first.id), (error) => error instanceof AuthError && error.code === "organization_not_empty");
+  assert.equal(queryClient.getQueryData(listKey), cached);
+  assert.equal(queryClient.getQueryState(detailsKey)?.isInvalidated, true);
+  errorCode = undefined;
+
+  const inaccessible = { ...first, access: "MEMBER" as const };
+  listing = [inaccessible, second];
+  errorCode = "owner_required";
+  await assert.rejects(updateOrganization(alice, first.id, "Renamed"), (error) => error instanceof AuthError && error.code === "owner_required");
+  assert.equal(queryClient.getQueryData(organizationsQuery(alice).queryKey)?.at(0)?.access, "MEMBER");
+  errorCode = undefined;
+
+  listing = [renamed, second];
+  queryClient.setQueryData(listKey, listing);
+  readWait = new Promise<void>((resolve) => { releaseReads = resolve; });
+  const oldDeletionList = queryClient.fetchQuery({ ...organizationsQuery(alice), staleTime: 0 }).catch(() => undefined);
+  await deleteOrganization(alice, first.id);
+  assert.deepEqual(queryClient.getQueryData(listKey), [second]);
+  assert.equal(queryClient.getQueryData(detailsKey), undefined);
+  assert.equal(queryClient.getQueryData(memberKey), undefined);
+  assert.deepEqual(queryClient.getQueryData(otherKey), { ...second, counts });
+  releaseReads();
+  await oldDeletionList;
+  readWait = undefined;
+  assert.deepEqual(queryClient.getQueryData(listKey), [second]);
+  unsubscribe();
+
+  for (const operation of ["PATCH", "DELETE", "LATE_ERROR"] as const) {
+    resetQuerySession();
+    setQueryUser(alice);
+    let releaseWrite = () => {};
+    writeWait = new Promise<void>((resolve) => { releaseWrite = resolve; });
+    errorCode = operation === "LATE_ERROR" ? "owner_required" : undefined;
+    const pending = operation === "PATCH" ? updateOrganization(alice, first.id, "Renamed") : deleteOrganization(alice, first.id);
+    const readsBefore = reads;
+    setQueryUser(bob);
+    const bobKey = organizationsQuery(bob).queryKey;
+    queryClient.setQueryData(bobKey, [second]);
+    releaseWrite();
+    await assert.rejects(pending, (error) => error instanceof DOMException && error.name === "AbortError");
+    assert.equal(queryClient.getQueryData(listKey), undefined);
+    assert.deepEqual(queryClient.getQueryData(bobKey), [second]);
+    assert.equal(reads, readsBefore);
+  }
 });

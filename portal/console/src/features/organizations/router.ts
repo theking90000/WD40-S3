@@ -29,8 +29,9 @@ async function loadOrganizations(args: LoaderFunctionArgs, user: CurrentUser) {
 export const selectionLoader = withUser(async (args) => {
   const organizations = await loadOrganizations(args, args.user);
   const organization = organizations.at(0);
+  const params = new URL(args.request.url).searchParams;
   if (organizations.length === 1 && organization
-    && !new URL(args.request.url).searchParams.has("organization_unavailable")) {
+    && !params.has("organization_unavailable") && !params.has("organization_deleted")) {
     throw replace(consolePath(`${organization.id}/`));
   }
   return null;

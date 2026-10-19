@@ -4,14 +4,14 @@ use axum::{
     http::{HeaderMap, StatusCode},
 };
 use portal_db::{
-    DatabaseConnection, DbErr, OrganizationMemberAccess, organization, organization_member,
+    DatabaseConnection, OrganizationMemberAccess, organization, organization_member,
     sea_orm::{ActiveModelTrait, Set, TransactionTrait},
 };
 use serde::Deserialize;
 
 use crate::api::auth::{CurrentUser, browser_request};
 
-use super::{Error, OrganizationResponse, user_email};
+use super::{Error, OrganizationResponse, name_write_error, user_email, validate_name};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -28,10 +28,7 @@ pub(super) async fn handle(
     browser_request(&headers).map_err(|_| Error::new(StatusCode::FORBIDDEN, "csrf_rejected"))?;
     let email = user_email(&user)?;
     let Json(request) = payload?;
-    let name = request.name.trim();
-    if !(1..=128).contains(&name.chars().count()) {
-        return Err(Error::new(StatusCode::BAD_REQUEST, "invalid_name"));
-    }
+    let name = validate_name(&request.name)?;
 
     let transaction = db.begin().await?;
     let organization = organization::ActiveModel {
@@ -40,7 +37,7 @@ pub(super) async fn handle(
     }
     .insert(&transaction)
     .await
-    .map_err(insert_error)?;
+    .map_err(name_write_error)?;
     organization_member::ActiveModel {
         organization_id: Set(organization.id),
         email: Set(email.to_owned()),
@@ -62,25 +59,11 @@ pub(super) async fn handle(
     ))
 }
 
-fn insert_error(error: DbErr) -> Error {
-    #[cfg(any(feature = "sqlite", feature = "postgres"))]
-    if let DbErr::Exec(portal_db::sea_orm::RuntimeErr::SqlxError(source))
-    | DbErr::Query(portal_db::sea_orm::RuntimeErr::SqlxError(source)) = &error
-        && let Some(database) = source.as_database_error()
-        && database.is_unique_violation()
-        && (database.constraint() == Some("idx-organizations-name")
-            || database.message() == "UNIQUE constraint failed: organizations.name")
-    {
-        return Error::new(StatusCode::CONFLICT, "organization_name_taken");
-    }
-    Error::from(error)
-}
-
 #[cfg(all(test, feature = "sqlite"))]
 mod tests {
     use super::*;
     use portal_db::{
-        Database, Migrator, MigratorTrait,
+        Database, DbErr, Migrator, MigratorTrait,
         sea_orm::{EntityTrait, PaginatorTrait},
     };
 
@@ -198,7 +181,7 @@ mod tests {
         .await;
         match duplicate_id {
             Err(error) => {
-                if insert_error(error).status != StatusCode::INTERNAL_SERVER_ERROR {
+                if name_write_error(error).status != StatusCode::INTERNAL_SERVER_ERROR {
                     return Err(DbErr::Custom(
                         "UUID conflict was not an internal error".to_owned(),
                     ));
