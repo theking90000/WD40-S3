@@ -26,6 +26,13 @@ struct Args {
 #[tokio::main]
 async fn main() -> io::Result<()> {
     let args = Args::parse();
+    #[cfg(feature = "embedded-s3")]
+    if args.embedded_s3.s3_listen == Some(args.portal.listen) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "--s3-listen must differ from --listen; omit it to share the portal listener",
+        ));
+    }
     let db = Database::connect(args.portal.database_url.as_str())
         .await
         .map_err(|error| io::Error::other(format!("Cannot connect to portal database: {error}")))?;
@@ -79,15 +86,15 @@ async fn serve(args: Args, db: &DatabaseConnection) -> io::Result<()> {
     } else {
         axum::Router::new().nest_service(basename, router)
     };
+    #[cfg(feature = "embedded-s3")]
+    if let Some(s3) = s3 {
+        return s3.serve(listener, router, basename).await;
+    }
     eprintln!(
         "Portal listening on {}{}/",
         listener.local_addr()?,
         basename
     );
-    #[cfg(feature = "embedded-s3")]
-    if let Some(s3) = s3 {
-        return s3.serve(listener, router).await;
-    }
     axum::serve(listener, router)
         .with_graceful_shutdown(async {
             if let Err(error) = tokio::signal::ctrl_c().await {

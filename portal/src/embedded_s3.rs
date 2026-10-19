@@ -1,6 +1,6 @@
 //! Optional S3 bootstrap and host routing for the standalone portal.
 
-use std::{io, num::NonZeroUsize, sync::Arc, time::Duration};
+use std::{io, net::SocketAddr, num::NonZeroUsize, sync::Arc, time::Duration};
 
 use access_controller::AccessController;
 use axum::{Router, body::Body};
@@ -32,12 +32,15 @@ use tokio_tcp_pool::{Endpoint, Pool, PoolConfig, Route, rustls};
 
 #[derive(clap::Args)]
 pub struct EmbeddedS3Args {
-    /// Initialize S3 storage and serve S3 requests on the portal listener.
+    /// Initialize S3 storage and serve S3 requests.
     #[arg(long, env = "WD40_PORTAL_EMBEDDED_S3", requires = "s3_host")]
     pub embedded_s3: bool,
     /// S3 endpoint domain, also accepting bucket.<domain> requests.
     #[arg(long, env = "WD40_PORTAL_S3_HOST", requires = "embedded_s3")]
     s3_host: Option<String>,
+    /// Optional dedicated S3 address; otherwise share the portal listener.
+    #[arg(long, env = "WD40_PORTAL_S3_LISTEN", requires = "embedded_s3")]
+    pub s3_listen: Option<SocketAddr>,
     #[command(flatten)]
     adapter: S3AdapterOptions,
     #[command(flatten)]
@@ -137,6 +140,7 @@ impl EmbeddedS3Args {
         .into_service_with_host(s3_host);
         Ok(EmbeddedS3 {
             host: host.into(),
+            listen: self.s3_listen,
             service,
         })
     }
@@ -145,74 +149,134 @@ impl EmbeddedS3Args {
 #[derive(Clone)]
 pub struct EmbeddedS3 {
     host: Arc<str>,
+    listen: Option<SocketAddr>,
     service: S3Service,
 }
 
+#[derive(Clone, Copy)]
+enum ListenerMode {
+    Shared,
+    Portal,
+    S3,
+}
+
 impl EmbeddedS3 {
-    pub async fn serve(self, listener: TcpListener, router: Router) -> io::Result<()> {
+    pub async fn serve(
+        self,
+        listener: TcpListener,
+        router: Router,
+        basename: &str,
+    ) -> io::Result<()> {
+        let s3_listener = match self.listen {
+            Some(address) => Some(TcpListener::bind(address).await.map_err(|error| {
+                io::Error::new(
+                    error.kind(),
+                    format!("Cannot bind S3 listener on {address}: {error}"),
+                )
+            })?),
+            None => None,
+        };
+        let s3_address = match &s3_listener {
+            Some(listener) => listener.local_addr()?,
+            None => listener.local_addr()?,
+        };
+        eprintln!(
+            "Portal listening on {}{}/",
+            listener.local_addr()?,
+            basename
+        );
         eprintln!(
             "Embedded S3 listening on {} for {} and its bucket subdomains",
-            listener.local_addr()?,
-            self.host
+            s3_address, self.host
         );
         let portal = TowerToHyperService::new(router);
-        let service = service_fn(move |request: Request<Incoming>| {
-            let s3 = self.clone();
-            let portal = portal.clone();
-            async move {
-                let host = match request_host(&request) {
-                    Ok(host) => host,
-                    Err(()) => {
-                        let mut response = Response::new(Body::from("Invalid Host header"));
-                        *response.status_mut() = StatusCode::BAD_REQUEST;
-                        return Ok::<_, io::Error>(response);
-                    }
-                };
-                let is_s3 = host.as_str() == s3.host.as_ref()
-                    || host
-                        .strip_suffix(s3.host.as_ref())
-                        .is_some_and(|prefix| prefix.ends_with('.') && prefix.len() > 1);
-                if is_s3 {
-                    s3.service
-                        .call(request.map(s3_adapter::s3s::Body::from))
-                        .await
-                        .map(|response| response.map(Body::new))
-                        .map_err(io::Error::other)
-                } else {
-                    match portal.call(request).await {
-                        Ok(response) => Ok(response),
-                        Err(never) => match never {},
-                    }
-                }
-            }
-        });
         let graceful = GracefulShutdown::new();
         let shutdown = tokio::signal::ctrl_c();
         tokio::pin!(shutdown);
         let result = loop {
-            tokio::select! {
-                biased;
+            let incoming = tokio::select! {
                 result = &mut shutdown => break result,
                 incoming = listener.accept() => {
-                    let (socket, _) = match incoming {
-                        Ok(incoming) => incoming,
-                        Err(error) => break Err(error),
+                    let mode = if s3_listener.is_some() {
+                        ListenerMode::Portal
+                    } else {
+                        ListenerMode::Shared
                     };
-                    let connection = http1::Builder::new()
-                        .serve_connection(TokioIo::new(socket), service.clone());
-                    let connection = graceful.watch(connection);
-                    tokio::spawn(async move {
-                        if let Err(error) = connection.await {
-                            eprintln!("Portal HTTP connection failed: {error}");
-                        }
-                    });
+                    incoming.map(|(socket, _)| (socket, mode))
                 }
-            }
+                incoming = async {
+                    match &s3_listener {
+                        Some(listener) => listener.accept().await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    incoming.map(|(socket, _)| (socket, ListenerMode::S3))
+                }
+            };
+            let (socket, mode) = match incoming {
+                Ok(incoming) => incoming,
+                Err(error) => break Err(error),
+            };
+            let s3 = self.clone();
+            let portal = portal.clone();
+            let service = service_fn(move |request: Request<Incoming>| {
+                let s3 = s3.clone();
+                let portal = portal.clone();
+                async move { s3.handle(request, &portal, mode).await }
+            });
+            let connection = http1::Builder::new().serve_connection(TokioIo::new(socket), service);
+            let connection = graceful.watch(connection);
+            tokio::spawn(async move {
+                if let Err(error) = connection.await {
+                    eprintln!("Portal HTTP connection failed: {error}");
+                }
+            });
         };
         drop(listener);
-        drop(service);
+        drop(s3_listener);
+        drop(portal);
+        drop(self);
         graceful.shutdown().await;
         result
+    }
+
+    async fn handle(
+        &self,
+        request: Request<Incoming>,
+        portal: &TowerToHyperService<Router>,
+        mode: ListenerMode,
+    ) -> io::Result<Response<Body>> {
+        if !matches!(mode, ListenerMode::Portal) {
+            let host = match request_host(&request) {
+                Ok(host) => host,
+                Err(()) => {
+                    let mut response = Response::new(Body::from("Invalid Host header"));
+                    *response.status_mut() = StatusCode::BAD_REQUEST;
+                    return Ok(response);
+                }
+            };
+            let is_s3 = host.as_str() == self.host.as_ref()
+                || host
+                    .strip_suffix(self.host.as_ref())
+                    .is_some_and(|prefix| prefix.ends_with('.') && prefix.len() > 1);
+            if is_s3 {
+                return self
+                    .service
+                    .call(request.map(s3_adapter::s3s::Body::from))
+                    .await
+                    .map(|response| response.map(Body::new))
+                    .map_err(io::Error::other);
+            }
+            if matches!(mode, ListenerMode::S3) {
+                let mut response = Response::new(Body::empty());
+                *response.status_mut() = StatusCode::NOT_FOUND;
+                return Ok(response);
+            }
+        }
+        match portal.call(request).await {
+            Ok(response) => Ok(response),
+            Err(never) => match never {},
+        }
     }
 }
 
