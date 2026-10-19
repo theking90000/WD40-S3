@@ -33,7 +33,7 @@ export function EditCredentialDialog({ user, organizationId, credential, disable
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
       <DialogTrigger asChild>
-        <Button ref={trigger} type="button" variant="ghost" size="icon-sm" disabled={disabled} title="Modifier la portée" aria-label={`Modifier la portée de la clé ${credential.key_id}`}><PencilIcon aria-hidden="true" className="size-3.5" /></Button>
+        <Button ref={trigger} type="button" variant="ghost" size="icon-sm" disabled={disabled} title="Modifier les accès" aria-label={`Modifier les accès de la clé ${credential.key_id}`}><PencilIcon aria-hidden="true" className="size-3.5" /></Button>
       </DialogTrigger>
       <DialogContent showCloseButton={!mutation.isPending} onCloseAutoFocus={(event) => {
         if (!trigger.current?.isConnected || trigger.current.disabled) {
@@ -42,11 +42,13 @@ export function EditCredentialDialog({ user, organizationId, credential, disable
         }
       }}>
         <DialogHeader>
-          <DialogTitle>Modifier la portée</DialogTitle>
-          <DialogDescription className="break-all">Clé {credential.key_id}. La sélection fournie remplacera la sélection actuelle.</DialogDescription>
+          <DialogTitle>Modifier les accès</DialogTitle>
+          <DialogDescription className="break-words">Choisissez les buckets et les permissions de la clé <span className="break-all font-mono">{credential.key_id}</span>.</DialogDescription>
         </DialogHeader>
         {open && <CredentialAccessForm user={user} organizationId={organizationId}
-          initialInput={credential.access_type === "ALL" ? { access_type: "ALL" } : { access_type: "RESTRICTED", bucket_names: credential.bucket_names }}
+          initialInput={credential.access_type === "ALL"
+            ? { access_type: "ALL", permissions: credential.permissions }
+            : { access_type: "RESTRICTED", bucket_names: credential.bucket_names, permissions: credential.permissions }}
           pending={mutation.isPending} disabled={disabled} error={mutation.error} submitLabel="Enregistrer"
           onEdit={() => { if (mutation.isError) mutation.reset(); }}
           onSubmit={(input) => mutation.mutate(input)} onCancel={() => changeOpen(false)} />}

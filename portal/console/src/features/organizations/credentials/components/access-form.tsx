@@ -2,8 +2,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCwIcon, SearchIcon } from "lucide-react";
 import type { CurrentUser } from "~/features/auth/session.ts";
-import type { Credential, CredentialInput } from "~/features/organizations/credentials/api.ts";
-import { credentialErrorMessage } from "~/features/organizations/credentials/api.ts";
+import type { Credential, CredentialInput, CredentialPermission } from "~/features/organizations/credentials/api.ts";
+import { CREDENTIAL_PERMISSIONS, credentialErrorMessage } from "~/features/organizations/credentials/api.ts";
 import { bucketErrorMessage, organizationBucketsQuery } from "~/features/organizations/buckets/api.ts";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -11,6 +11,23 @@ import { Field, FieldDescription, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "~/components/ui/native-select";
 import { Skeleton } from "~/components/ui/skeleton";
+
+const permissionLabels: Record<CredentialPermission, string> = {
+  READ: "Lecture",
+  WRITE: "Écriture",
+  LIST: "Liste",
+  DELETE: "Suppression",
+};
+
+export function CredentialPermissions({ credential }: { credential: Credential }) {
+  if (credential.permissions.length === 0) return <Badge variant="neutral">Aucune permission</Badge>;
+  if (credential.permissions.length === CREDENTIAL_PERMISSIONS.length) return <Badge variant="neutral">Toutes les permissions</Badge>;
+  return <div className="flex flex-wrap gap-1">
+    {CREDENTIAL_PERMISSIONS.filter((permission) => credential.permissions.includes(permission)).map((permission) => (
+      <Badge key={permission} variant="neutral" title={permissionLabels[permission]}>{permission}</Badge>
+    ))}
+  </div>;
+}
 
 export function CredentialScope({ credential }: { credential: Credential }) {
   if (credential.access_type === "ALL") return <Badge variant="neutral">Tous les buckets</Badge>;
@@ -37,20 +54,25 @@ export function CredentialAccessForm({ user, organizationId, initialInput, pendi
   onCancel(): void;
   submitLabel: string;
 }) {
-  const [input, setInput] = useState<CredentialInput>(initialInput ?? { access_type: "ALL" });
+  const [input, setInput] = useState<CredentialInput>(initialInput ?? { access_type: "ALL", permissions: [...CREDENTIAL_PERMISSIONS] });
   const [search, setSearch] = useState("");
   const scopeId = useId();
   const hintId = useId();
   const selectionId = useId();
   const unavailableId = useId();
+  const permissionsHintId = useId();
+  const selectAll = useRef<HTMLInputElement | null>(null);
   const errorMessage = useRef<HTMLParagraphElement | null>(null);
   const { data: buckets, error: bucketsError, isFetching, refetch } = useQuery({
     ...organizationBucketsQuery(user, organizationId), enabled: input.access_type === "RESTRICTED",
   });
   const names = input.access_type === "RESTRICTED" ? input.bucket_names : [];
   const originalNames = initialInput?.access_type === "RESTRICTED" ? initialInput.bucket_names : [];
-  const unchanged = initialInput?.access_type === input.access_type
-    && originalNames.length === names.length && originalNames.every((name, index) => name === names[index]);
+  const unchanged = initialInput !== undefined && initialInput.access_type === input.access_type
+    && originalNames.length === names.length && originalNames.every((name) => names.includes(name))
+    && initialInput.permissions.length === input.permissions.length
+    && initialInput.permissions.every((permission) => input.permissions.includes(permission))
+    && !error;
   const available = new Set(buckets?.map((bucket) => bucket.name));
   const unavailable = buckets ? names.filter((name) => !available.has(name)) : [];
   const valid = input.access_type === "ALL" || (buckets !== undefined && !bucketsError && unavailable.length === 0);
@@ -60,6 +82,10 @@ export function CredentialAccessForm({ user, organizationId, initialInput, pendi
   useEffect(() => {
     if (error) errorMessage.current?.focus();
   }, [error]);
+
+  useEffect(() => {
+    if (selectAll.current) selectAll.current.indeterminate = input.permissions.length > 0 && input.permissions.length < CREDENTIAL_PERMISSIONS.length;
+  }, [input.permissions.length]);
 
   function changeInput(next: CredentialInput) {
     setInput(next);
@@ -72,11 +98,11 @@ export function CredentialAccessForm({ user, organizationId, initialInput, pendi
       if (!pending && !disabled && valid && !unchanged) onSubmit(input);
     }}>
       <Field>
-        <FieldLabel htmlFor={scopeId}>Portée</FieldLabel>
+        <FieldLabel htmlFor={scopeId}>Portée des buckets</FieldLabel>
         <NativeSelect id={scopeId} name="access_type" value={input.access_type} disabled={pending || disabled} aria-describedby={hintId}
           onChange={(event) => {
-            if (event.target.value === "ALL") changeInput({ access_type: "ALL" });
-            if (event.target.value === "RESTRICTED") changeInput({ access_type: "RESTRICTED", bucket_names: [] });
+            if (event.target.value === "ALL") changeInput({ access_type: "ALL", permissions: input.permissions });
+            if (event.target.value === "RESTRICTED") changeInput({ access_type: "RESTRICTED", bucket_names: [], permissions: input.permissions });
           }}>
           <NativeSelectOption value="ALL">Tous les buckets</NativeSelectOption>
           <NativeSelectOption value="RESTRICTED">Buckets sélectionnés</NativeSelectOption>
@@ -110,7 +136,7 @@ export function CredentialAccessForm({ user, organizationId, initialInput, pendi
                     <input type="checkbox" className="size-3.5 shrink-0 accent-foreground" checked={names.includes(bucket.name)} disabled={!!bucketsError}
                       onChange={(event) => {
                         const next = event.target.checked ? [...names, bucket.name].sort() : names.filter((name) => name !== bucket.name);
-                        changeInput({ access_type: "RESTRICTED", bucket_names: next });
+                        changeInput({ access_type: "RESTRICTED", bucket_names: next, permissions: input.permissions });
                       }} />
                     <span className="min-w-0 break-all font-mono">{bucket.name}</span>
                   </label>
@@ -120,11 +146,36 @@ export function CredentialAccessForm({ user, organizationId, initialInput, pendi
           {unavailable.length > 0 && <div id={unavailableId} role="alert" className="space-y-2 rounded-lg border bg-destructive-soft p-3 text-xs text-destructive-strong">
             <p>Ces buckets ne sont plus disponibles dans l'organisation :</p>
             <ul className="space-y-1 break-all font-mono">{unavailable.map((name) => <li key={name}>{name}</li>)}</ul>
-            <Button type="button" variant="outline" size="sm" onClick={() => changeInput({ access_type: "RESTRICTED", bucket_names: names.filter((name) => available.has(name)) })}>Retirer de la sélection</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => changeInput({ access_type: "RESTRICTED", bucket_names: names.filter((name) => available.has(name)), permissions: input.permissions })}>Retirer de la sélection</Button>
           </div>}
           <p id={selectionId} className="text-[10.5px] text-muted-foreground" aria-live="polite">{names.length === 0 ? "Aucun bucket autorisé." : `${names.length} bucket${names.length > 1 ? "s" : ""} sélectionné${names.length > 1 ? "s" : ""}.`}</p>
         </fieldset>
       )}
+      <fieldset disabled={pending || disabled} className="min-w-0 space-y-3" aria-describedby={permissionsHintId}>
+        <legend className="mb-3 text-xs font-semibold">Permissions</legend>
+        <label className="flex cursor-pointer items-center gap-3 rounded-lg border bg-background px-3 py-2.5 text-xs font-semibold has-disabled:cursor-not-allowed has-disabled:opacity-50">
+          <input ref={selectAll} type="checkbox" className="size-3.5 shrink-0 accent-foreground"
+            checked={input.permissions.length === CREDENTIAL_PERMISSIONS.length}
+            aria-checked={input.permissions.length > 0 && input.permissions.length < CREDENTIAL_PERMISSIONS.length ? "mixed" : input.permissions.length === CREDENTIAL_PERMISSIONS.length}
+            onChange={(event) => changeInput({ ...input, permissions: event.target.checked ? [...CREDENTIAL_PERMISSIONS] : [] })} />
+          Tout sélectionner
+        </label>
+        <div className="grid gap-2 min-[461px]:grid-cols-2">
+          {CREDENTIAL_PERMISSIONS.map((permission) => <label key={permission}
+            className="flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-xs hover:bg-accent has-disabled:cursor-not-allowed has-disabled:opacity-50">
+            <input type="checkbox" name="permissions" value={permission} className="size-3.5 shrink-0 accent-foreground"
+              checked={input.permissions.includes(permission)} onChange={(event) => {
+                const checked = event.target.checked;
+                changeInput({ ...input, permissions: CREDENTIAL_PERMISSIONS.filter((item) => item === permission ? checked : input.permissions.includes(item)) });
+              }} />
+            <span className="min-w-0"><span className="block font-mono font-semibold">{permission}</span><span className="text-[10px] text-muted-foreground">{permissionLabels[permission]}</span></span>
+          </label>)}
+        </div>
+        <p className="text-[10.5px] text-muted-foreground" aria-live="polite">{input.permissions.length === 0
+          ? "Aucune permission accordée par cette clé."
+          : `${input.permissions.length} permission${input.permissions.length > 1 ? "s" : ""} sélectionnée${input.permissions.length > 1 ? "s" : ""}.`}</p>
+        <p id={permissionsHintId} className="text-[10.5px] text-muted-foreground">Ces permissions s'appliquent aux buckets autorisés. Les accès publics des buckets restent applicables.</p>
+      </fieldset>
       {error && <p ref={errorMessage} tabIndex={-1} role="alert" className="rounded-lg border bg-destructive-soft p-3 text-xs text-destructive-strong">{credentialErrorMessage(error)}</p>}
       <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
         <Button type="button" variant="outline" disabled={pending} onClick={onCancel}>Annuler</Button>

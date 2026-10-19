@@ -6,7 +6,7 @@ import type { CurrentUser } from "~/features/auth/session.ts";
 import type { Organization } from "~/features/organizations/api.ts";
 import type { CredentialAccessType } from "~/features/organizations/credentials/api.ts";
 import { credentialErrorMessage, organizationCredentialsQuery } from "~/features/organizations/credentials/api.ts";
-import { CredentialScope } from "~/features/organizations/credentials/components/access-form";
+import { CredentialPermissions, CredentialScope } from "~/features/organizations/credentials/components/access-form";
 import { CopyValue } from "~/components/copy-value";
 import { S3Connection } from "~/components/s3-connection";
 import { DeleteCredentialDialog } from "~/features/organizations/credentials/components/delete-credential";
@@ -90,19 +90,25 @@ function CredentialsPage({ user, organization }: { user: CurrentUser; organizati
             <caption className="sr-only">Clés d'accès de {organization.name}</caption>
             <TableHeader><TableRow>
               <TableHead scope="col">Identifiant</TableHead>
-              <TableHead scope="col" className="hidden w-48 min-[761px]:table-cell">Portée</TableHead>
-              <TableHead scope="col" className="hidden w-36 min-[961px]:table-cell">Créée le</TableHead>
+              <TableHead scope="col" className="hidden w-40 min-[761px]:table-cell">Portée</TableHead>
+              <TableHead scope="col" className="hidden w-44 min-[1161px]:table-cell">Permissions</TableHead>
+              <TableHead scope="col" className="hidden w-32 min-[1361px]:table-cell">Créée le</TableHead>
               {owner && <TableHead scope="col" className="w-20"><span className="sr-only">Actions</span></TableHead>}
             </TableRow></TableHeader>
             <TableBody>{filtered.map((credential) => <TableRow key={credential.key_id}>
               <TableCell>
                 <div className="flex flex-wrap items-center gap-1"><code className="min-w-0 select-all break-all font-mono text-[10.5px]">{credential.key_id}</code><CopyValue value={credential.key_id} label="Copier l'identifiant" compact /></div>
-                <div className="mt-1 space-y-1 text-[10px] text-muted-foreground"><div className="min-[761px]:hidden"><CredentialScope credential={credential} /></div><time className="min-[961px]:hidden" dateTime={credential.created_at}>Créée le {dateFormat.format(new Date(credential.created_at))}</time></div>
+                <div className="mt-1 space-y-1.5 text-[10px] text-muted-foreground">
+                  <div className="min-[761px]:hidden"><CredentialScope credential={credential} /></div>
+                  <div className="min-[1161px]:hidden"><span className="sr-only">Permissions : </span><CredentialPermissions credential={credential} /></div>
+                  <time className="min-[1361px]:hidden" dateTime={credential.created_at}>Créée le {dateFormat.format(new Date(credential.created_at))}</time>
+                </div>
               </TableCell>
               <TableCell className="hidden min-[761px]:table-cell"><CredentialScope credential={credential} /></TableCell>
-              <TableCell className="hidden text-muted-foreground min-[961px]:table-cell"><time dateTime={credential.created_at}>{dateFormat.format(new Date(credential.created_at))}</time></TableCell>
+              <TableCell className="hidden min-[1161px]:table-cell"><CredentialPermissions credential={credential} /></TableCell>
+              <TableCell className="hidden text-muted-foreground min-[1361px]:table-cell"><time dateTime={credential.created_at}>{dateFormat.format(new Date(credential.created_at))}</time></TableCell>
               {owner && <TableCell className="text-right"><div className="flex items-center justify-end gap-1">
-                <EditCredentialDialog user={user} organizationId={organization.id} credential={credential} disabled={!!error} restoreFocus={() => heading.current?.focus()} onUpdated={(updated) => setNotice(`La portée de la clé ${updated.key_id} a été enregistrée.`)} />
+                <EditCredentialDialog user={user} organizationId={organization.id} credential={credential} disabled={!!error} restoreFocus={() => heading.current?.focus()} onUpdated={(updated) => setNotice(`Les accès de la clé ${updated.key_id} ont été enregistrés.`)} />
                 <DeleteCredentialDialog user={user} organizationId={organization.id} credential={credential} disabled={!!error} restoreFocus={() => heading.current?.focus()} onDeleted={(keyId) => setNotice(`La clé ${keyId} a été supprimée du portail.`)} />
               </div></TableCell>}
             </TableRow>)}</TableBody>

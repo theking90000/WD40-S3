@@ -6,12 +6,15 @@ import { invalidateOrganization, organizationsQuery, refreshOrganizations } from
 import { organizationBucketsQuery } from "../buckets/api.ts";
 
 export type CredentialAccessType = "ALL" | "RESTRICTED";
+export const CREDENTIAL_PERMISSIONS = ["READ", "WRITE", "LIST", "DELETE"] as const;
+export type CredentialPermission = typeof CREDENTIAL_PERMISSIONS[number];
 
 export interface Credential {
   organization_id: string;
   key_id: string;
   access_type: CredentialAccessType;
   bucket_names: string[];
+  permissions: CredentialPermission[];
   created_at: string;
 }
 
@@ -20,11 +23,17 @@ export interface CreatedCredential extends Credential {
 }
 
 export type CredentialInput =
-  | { access_type: "ALL" }
-  | { access_type: "RESTRICTED"; bucket_names: string[] };
+  | { access_type: "ALL"; permissions: CredentialPermission[] }
+  | { access_type: "RESTRICTED"; bucket_names: string[]; permissions: CredentialPermission[] };
 
 function isKeyId(value: string) {
   return value.length === 20 && /^[A-Za-z0-9]+$/.test(value);
+}
+
+function isPermissions(value: unknown): value is CredentialPermission[] {
+  return Array.isArray(value)
+    && value.every((permission: unknown) => CREDENTIAL_PERMISSIONS.some((allowed) => permission === allowed))
+    && new Set(value).size === value.length;
 }
 
 function isCredential(value: unknown, organizationId: string): value is Credential {
@@ -37,6 +46,7 @@ function isCredential(value: unknown, organizationId: string): value is Credenti
     && "bucket_names" in value && Array.isArray(value.bucket_names)
     && value.bucket_names.every((name: unknown) => typeof name === "string")
     && new Set(value.bucket_names).size === value.bucket_names.length
+    && "permissions" in value && isPermissions(value.permissions)
     && (value.access_type !== "ALL" || value.bucket_names.length === 0);
 }
 
@@ -47,21 +57,26 @@ function metadata(value: Credential): Credential {
     key_id: value.key_id,
     access_type: value.access_type,
     bucket_names: [...value.bucket_names].sort(),
+    permissions: CREDENTIAL_PERMISSIONS.filter((permission) => value.permissions.includes(permission)),
     created_at: value.created_at,
   };
 }
 
 function requestBody(input: CredentialInput): CredentialInput {
-  if (input.access_type === "ALL") return { access_type: "ALL" };
+  if (!isPermissions(input.permissions)) throw new AuthError("invalid_permissions", 400);
+  const permissions = CREDENTIAL_PERMISSIONS.filter((permission) => input.permissions.includes(permission));
+  if (input.access_type === "ALL") return { access_type: "ALL", permissions };
   const bucketNames = [...input.bucket_names].sort();
   if (new Set(bucketNames).size !== bucketNames.length) {
     throw new AuthError("invalid_bucket_selection", 400);
   }
-  return { access_type: "RESTRICTED", bucket_names: bucketNames };
+  return { access_type: "RESTRICTED", bucket_names: bucketNames, permissions };
 }
 
 function matchesInput(credential: Credential, input: CredentialInput) {
   if (credential.access_type !== input.access_type) return false;
+  if (credential.permissions.length !== input.permissions.length
+    || !credential.permissions.every((permission) => input.permissions.includes(permission))) return false;
   if (input.access_type === "ALL") return credential.bucket_names.length === 0;
   return credential.bucket_names.length === input.bucket_names.length
     && credential.bucket_names.every((name, index) => name === input.bucket_names[index]);
@@ -202,13 +217,15 @@ export function credentialErrorMessage(error: unknown) {
     switch (error.code) {
       case "invalid_key_id": return "L'identifiant doit contenir exactement 20 caractères alphanumériques.";
       case "invalid_bucket_selection": return "Sélectionnez des buckets existants de cette organisation, sans doublons.";
+      case "invalid_permissions": return "Sélectionnez les permissions READ, WRITE, LIST et DELETE, sans doublons.";
+      case "synchronization_failed": return "La synchronisation avec WD40 a échoué. Les changements peuvent être enregistrés sans être appliqués. Actualisez la liste avant de réessayer.";
       case "credential_not_found": return "Cette clé n'est plus disponible. La liste a été actualisée.";
       case "owner_required": return "Seul un propriétaire peut créer, modifier ou supprimer une clé d'accès.";
       case "organization_not_found": return "Cette organisation n'existe pas ou vous n'y avez plus accès.";
       case "email_required": return "Votre compte doit fournir une adresse email pour consulter les clés d'accès.";
       case "email_not_verified": return "Une adresse email vérifiée est nécessaire pour consulter les clés d'accès.";
       case "invalid_credentials_response": return "Le service a renvoyé des données de clés invalides.";
-      case "invalid_request": return "Vérifiez la portée et la sélection de buckets de la clé.";
+      case "invalid_request": return "Vérifiez la portée, les buckets et les permissions de la clé.";
       case "csrf_rejected": return "La requête a été refusée. Rechargez la page avant de réessayer.";
       case "payload_too_large": return "La sélection de buckets dépasse la taille autorisée.";
       case "key_generation_failed": return "La génération de la clé a échoué. Réessayez dans un instant.";

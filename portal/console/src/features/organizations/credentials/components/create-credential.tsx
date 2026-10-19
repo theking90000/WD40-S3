@@ -7,7 +7,7 @@ import type { Organization } from "~/features/organizations/api.ts";
 import type { CreatedCredential, CredentialInput } from "~/features/organizations/credentials/api.ts";
 import { createOrganizationCredential } from "~/features/organizations/credentials/api.ts";
 import { AuthError } from "~/lib/api.ts";
-import { CredentialAccessForm, CredentialScope } from "./access-form";
+import { CredentialAccessForm, CredentialPermissions, CredentialScope } from "./access-form";
 import { CopyValue } from "~/components/copy-value";
 import { S3Connection } from "~/components/s3-connection";
 import { Button } from "~/components/ui/button";
@@ -61,7 +61,7 @@ export function CreateCredentialPage({ user, organization }: { user: CurrentUser
           <div className="space-y-2">
             <p className="text-[10.5px] font-semibold text-muted-foreground">Stockage</p>
             <h1 className="text-page-title">Créer une clé d'accès</h1>
-            <p className="text-muted-foreground">Choisissez les buckets accessibles dans {organization.name}.</p>
+            <p className="text-muted-foreground">Choisissez les buckets accessibles et les permissions de la clé dans {organization.name}.</p>
           </div>
           <div className="grid items-start gap-5 min-[961px]:grid-cols-[minmax(0,1fr)_280px]">
             <div className="space-y-5 rounded-xl border bg-surface p-5 min-[621px]:p-6">
@@ -79,7 +79,7 @@ export function CreateCredentialPage({ user, organization }: { user: CurrentUser
             </div>
             <aside className="space-y-4">
               <div className="space-y-3 rounded-xl border bg-surface p-5">
-                <p className="text-xs text-muted-foreground">Cette clé donne accès aux buckets sélectionnés.</p>
+                <p className="text-xs text-muted-foreground">Les permissions choisies s'appliquent à tous les buckets autorisés pour cette clé.</p>
               </div>
               <div className="space-y-2 rounded-xl border bg-surface p-5 text-xs"><p className="text-muted-foreground">Organisation</p><p className="break-words font-semibold">{organization.name}</p></div>
             </aside>
@@ -116,7 +116,10 @@ function CredentialCreated({ credential, organizationName, onNew, onFinish }: {
           <code className="block select-all break-all font-mono text-xs">{credential.key_id}</code>
         </div>
         <S3Connection compact />
-        <div className="space-y-2"><h2 className="text-xs font-semibold">Portée</h2><CredentialScope credential={credential} /></div>
+        <div className="grid gap-4 min-[621px]:grid-cols-2">
+          <div className="space-y-2"><h2 className="text-xs font-semibold">Buckets accessibles</h2><CredentialScope credential={credential} /></div>
+          <div className="space-y-2"><h2 className="text-xs font-semibold">Permissions</h2><CredentialPermissions credential={credential} /></div>
+        </div>
         <p className="text-xs text-muted-foreground">Si vous perdez ce secret, supprimez la clé et créez-en une nouvelle.</p>
         <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
           <Button type="button" variant="ghost" onClick={onNew}>Créer une autre clé</Button>
