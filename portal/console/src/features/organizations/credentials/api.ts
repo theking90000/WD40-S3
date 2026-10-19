@@ -205,6 +205,7 @@ export function credentialErrorMessage(error: unknown) {
       case "credential_not_found": return "Cette clé n'est plus disponible. La liste a été actualisée.";
       case "owner_required": return "Seul un propriétaire peut créer, modifier ou supprimer une clé d'accès.";
       case "organization_not_found": return "Cette organisation n'existe pas ou vous n'y avez plus accès.";
+      case "email_required": return "Votre compte doit fournir une adresse email pour consulter les clés d'accès.";
       case "email_not_verified": return "Une adresse email vérifiée est nécessaire pour consulter les clés d'accès.";
       case "invalid_credentials_response": return "Le service a renvoyé des données de clés invalides.";
       case "invalid_request": return "Vérifiez la portée et la sélection de buckets de la clé.";

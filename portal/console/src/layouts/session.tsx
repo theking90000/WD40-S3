@@ -30,7 +30,9 @@ export function ErrorBoundary() {
   return (
     <AuthFailure
       title={error instanceof AuthError && error.code === "email_not_verified"
-        ? "Vérifiez votre adresse email" : "Console indisponible"}
+        ? "Vérifiez votre adresse email"
+        : error instanceof AuthError && error.code === "email_required"
+          ? "Adresse email nécessaire" : "Console indisponible"}
       description={organizationErrorMessage(error)}
     />
   );

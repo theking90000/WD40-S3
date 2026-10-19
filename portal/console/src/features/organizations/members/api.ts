@@ -123,6 +123,7 @@ export function memberErrorMessage(error: unknown) {
       case "owner_required": return "Seul un propriétaire peut ajouter ou retirer des membres et modifier leur rôle.";
       case "self_update_forbidden": return "Vous ne pouvez pas modifier votre propre rôle.";
       case "organization_not_found": return "Cette organisation n'existe pas ou vous n'y avez plus accès.";
+      case "email_required": return "Votre compte doit fournir une adresse email pour consulter les membres.";
       case "email_not_verified": return "Une adresse email vérifiée est nécessaire pour consulter les membres.";
     }
     if (error.status === 401) return "Votre session a expiré. Reconnectez-vous pour continuer.";

@@ -14,9 +14,6 @@ export function consolePath(path = "") {
 }
 
 async function loadOrganizations(args: LoaderFunctionArgs, user: CurrentUser) {
-  if (!user.email?.trim() || user.email_verified !== true) {
-    throw new AuthError("email_not_verified", 403);
-  }
   try {
     return await queryClient.fetchQuery(organizationsQuery(user));
   } catch (error) {

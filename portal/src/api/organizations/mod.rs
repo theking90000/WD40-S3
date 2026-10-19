@@ -69,11 +69,17 @@ impl OrganizationResponse {
     }
 }
 
-fn verified_email(user: &CurrentUser) -> Result<&str, Error> {
-    user.email
+fn user_email(user: &CurrentUser) -> Result<&str, Error> {
+    let email = user
+        .email
         .as_deref()
-        .filter(|email| !email.trim().is_empty() && user.email_verified == Some(true))
-        .ok_or_else(|| Error::new(StatusCode::FORBIDDEN, "email_not_verified"))
+        .filter(|email| !email.trim().is_empty())
+        .ok_or_else(|| Error::new(StatusCode::FORBIDDEN, "email_required"))?;
+    #[cfg(feature = "verified-email")]
+    if user.email_verified != Some(true) {
+        return Err(Error::new(StatusCode::FORBIDDEN, "email_not_verified"));
+    }
+    Ok(email)
 }
 
 pub(super) struct Error {
@@ -155,5 +161,52 @@ impl IntoResponse for Error {
             }),
         )
             .into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn user(email: Option<&str>, email_verified: Option<bool>) -> CurrentUser {
+        CurrentUser {
+            issuer: "https://identity.example".to_owned(),
+            subject: "alice".to_owned(),
+            name: None,
+            email: email.map(str::to_owned),
+            email_verified,
+            roles: Vec::new(),
+            groups: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn email_verification_follows_feature() -> Result<(), String> {
+        let email = " Alice@example.org ";
+        for verified in [Some(true), Some(false), None] {
+            match user_email(&user(Some(email), verified)) {
+                Ok(value) if (!cfg!(feature = "verified-email") || verified == Some(true))
+                    && value == email => {}
+                Err(error) if cfg!(feature = "verified-email") && verified != Some(true)
+                    && error.status == StatusCode::FORBIDDEN
+                    && error.code == "email_not_verified" => {}
+                _ => return Err(format!("unexpected email result for verification {verified:?}")),
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn missing_email_is_always_rejected() -> Result<(), String> {
+        for email in [None, Some(""), Some(" \t\n")] {
+            for verified in [Some(true), Some(false), None] {
+                match user_email(&user(email, verified)) {
+                    Err(error) if error.status == StatusCode::FORBIDDEN
+                        && error.code == "email_required" => {}
+                    _ => return Err(format!("unexpected result for email {email:?}")),
+                }
+            }
+        }
+        Ok(())
     }
 }

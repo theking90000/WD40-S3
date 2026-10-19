@@ -5,6 +5,7 @@ edition.workspace = true
 
 [features]
 default = ["sqlite"]
+verified-email = []
 sqlite = ["portal-db/sqlite"]
 postgres = ["portal-db/postgres"]
 cli = ["dep:clap", "s3-credentials-registry/cli", "policy-registry/cli"]

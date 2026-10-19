@@ -9,7 +9,7 @@ use portal_db::{
 
 use crate::api::auth::CurrentUser;
 
-use super::{Error, OrganizationResponse, verified_email};
+use super::{Error, OrganizationResponse, user_email};
 
 #[derive(FromQueryResult)]
 struct OrganizationRow {
@@ -23,7 +23,7 @@ pub(super) async fn handle(
     State(db): State<DatabaseConnection>,
     Extension(user): Extension<CurrentUser>,
 ) -> Result<Json<Vec<OrganizationResponse>>, Error> {
-    let email = verified_email(&user)?;
+    let email = user_email(&user)?;
     let organizations = organization_member::Entity::find()
         .inner_join(organization::Entity)
         .filter(organization_member::Column::Email.eq(email))

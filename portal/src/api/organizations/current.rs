@@ -13,7 +13,7 @@ use serde::Deserialize;
 
 use crate::api::auth::{CurrentUser, browser_request};
 
-use super::{Error, verified_email};
+use super::{Error, user_email};
 
 /// The authenticated user's membership in the organization selected by the URL.
 #[derive(Clone, Copy)]
@@ -55,7 +55,7 @@ pub(super) async fn resolve(
     let Path(path) = path?;
     let id = Uuid::parse_str(&path.organization_id)
         .map_err(|_| Error::new(StatusCode::BAD_REQUEST, "invalid_organization_id"))?;
-    let email = verified_email(&user)?;
+    let email = user_email(&user)?;
     let member = organization_member::Entity::find_by_id((id, email.to_owned()))
         .one(&db)
         .await?

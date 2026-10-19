@@ -12,7 +12,7 @@ use portal_db::{
 };
 use serde::Deserialize;
 
-use crate::api::{auth::CurrentUser, organizations::verified_email};
+use crate::api::{auth::CurrentUser, organizations::user_email};
 
 use super::{CurrentOrganization, Error, MemberResponse};
 
@@ -43,7 +43,7 @@ pub(super) async fn handle(
 ) -> Result<Json<MemberResponse>, Error> {
     organization.require_owner()?;
     let Path(path) = path?;
-    if path.email == verified_email(&user)? {
+    if path.email == user_email(&user)? {
         return Err(Error::new(StatusCode::FORBIDDEN, "self_update_forbidden"));
     }
     let Json(request) = payload?;

@@ -154,6 +154,7 @@ export function bucketErrorMessage(error: unknown) {
       case "bucket_not_found": return "Ce bucket n'est plus disponible. La liste a été actualisée.";
       case "owner_required": return "Seul un propriétaire peut créer un bucket ou modifier son accès.";
       case "organization_not_found": return "Cette organisation n'existe pas ou vous n'y avez plus accès.";
+      case "email_required": return "Votre compte doit fournir une adresse email pour consulter les buckets.";
       case "email_not_verified": return "Une adresse email vérifiée est nécessaire pour consulter les buckets.";
       case "invalid_buckets_response": return "Le service a renvoyé des données de buckets invalides.";
       case "invalid_request": return "Vérifiez le nom et le niveau d'accès du bucket.";

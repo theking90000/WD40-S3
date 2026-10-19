@@ -39,7 +39,7 @@ test("organization cache and routing share requests and follow membership and se
   let creations = 0;
   let childLoads = 0;
   let childActions = 0;
-  let listingError = false;
+  let listingError: string | null = null;
   let listingWait: Promise<void> | undefined;
   let creationWait: Promise<void> | undefined;
   let nameTaken = false;
@@ -64,7 +64,7 @@ test("organization cache and routing share requests and follow membership and se
     listings += 1;
     const snapshot = [...organizations];
     await listingWait;
-    return listingError ? Response.json({ error: "email_not_verified" }, { status: 403 }) : Response.json(snapshot);
+    return listingError ? Response.json({ error: listingError }, { status: 403 }) : Response.json(snapshot);
   });
 
   const routes: RouteObject[] = [{
@@ -183,15 +183,34 @@ test("organization cache and routing share requests and follow membership and se
   assert.deepEqual(observed, []);
   unsubscribe();
 
-  listingError = true;
+  listingError = "email_not_verified";
   await assert.rejects(refreshOrganizations(alice), (error) => error instanceof AuthError && error.status === 403);
-  listingError = false;
-  currentUser = { ...alice, email_verified: false };
-  await queryClient.invalidateQueries({ queryKey: currentUserKey, exact: true, refetchType: "none" });
-  const beforeUnverified = listings;
-  await router.navigate("/");
-  assert.equal(listings, beforeUnverified);
-  assert.ok(Object.values(router.state.errors ?? {}).some((error) => error instanceof AuthError && error.code === "email_not_verified"));
+  // The backend decides whether email verification is required.
+  for (const [email, email_verified, backendError] of [
+    [alice.email, false, null],
+    [alice.email, null, null],
+    [alice.email, false, "email_not_verified"],
+    [null, null, "email_required"],
+    ["", true, "email_required"],
+  ] as const) {
+    listingError = backendError;
+    currentUser = { ...alice, email, email_verified };
+    await queryClient.invalidateQueries({ queryKey: currentUserKey, exact: true, refetchType: "none" });
+    await queryClient.invalidateQueries({ queryKey: organizationsQuery(currentUser).queryKey, exact: true, refetchType: "none" });
+    const beforeListing = listings;
+    await router.navigate("/");
+    assert.equal(listings, beforeListing + 1);
+    if (backendError) {
+      assert.ok(Object.values(router.state.errors ?? {}).some((error) => error instanceof AuthError
+        && error.status === 403 && error.code === backendError));
+      assert.equal(organizationErrorMessage(new AuthError(backendError, 403)), backendError === "email_required"
+        ? "Votre compte doit fournir une adresse email pour accéder aux organisations."
+        : "Une adresse email vérifiée est nécessaire pour accéder aux organisations.");
+    } else {
+      assert.equal(router.state.errors, null);
+    }
+  }
+  listingError = null;
 
   currentUser = { ...alice, subject: "bob", email: "bob@example.org" };
   await queryClient.invalidateQueries({ queryKey: currentUserKey, exact: true, refetchType: "none" });

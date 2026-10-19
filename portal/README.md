@@ -58,6 +58,10 @@ SQLite is enabled by default. To build for PostgreSQL only, use
 `--no-default-features --features standalone,postgres` and supply a PostgreSQL
 database URL at runtime. Both drivers can be enabled with `--features postgres`.
 
+Email verification is optional by default. Build with
+`--features standalone,verified-email` to require `email_verified: true` from the
+OIDC provider for organization access. A non-empty email is required in both modes.
+
 Cargo runs `build.rs` to execute `npm ci` and `npm run build`. Vite and React Router
 generate the prerendered pages and browser assets under `console/build/client/`.
 `rust-embed` embeds that directory in debug and release builds. Build failures stop
@@ -370,7 +374,8 @@ The handler returns the `CurrentUser` placed in request extensions:
 included in UserInfo; absent claims produce empty lists. They do not grant portal
 permissions automatically. Identity is the `(issuer, subject)` pair. Portal
 organization memberships are stored separately in the portal database and matched
-by verified email. Profile claims, roles and groups come from the provider; their
+by email. The `verified-email` feature additionally requires a verified email.
+Profile claims, roles and groups come from the provider; their
 freshness and revocation behavior depend on its introspection and UserInfo
 implementations.
 
@@ -406,8 +411,10 @@ error body is logged.
 
 ## Organizations API
 
-All endpoints require the authentication cookie and a non-empty email with
-`email_verified: true` in the provider's UserInfo. Memberships use the email
+All endpoints require the authentication cookie and a non-empty email in the
+provider's UserInfo. With the `verified-email` feature enabled, they additionally
+require `email_verified: true`; otherwise, false or absent verification is accepted.
+Memberships use the email
 exactly as returned, without case conversion. Changing that email changes which
 memberships are accessible. Provider roles and groups do not grant organization
 access.
@@ -502,7 +509,8 @@ creation timestamp. It returns `201` with:
 
 An existing membership returns `409 member_already_exists`, including concurrent
 duplicate additions. Its access is never overwritten. The membership becomes
-usable when the person authenticates with that exact verified email.
+usable when the person authenticates with that exact email. Verification is
+required only when the `verified-email` feature is enabled.
 
 ### GET /api/organizations/{id}/members
 
@@ -532,7 +540,7 @@ Encode the target email as a URL path segment, as for DELETE, and send:
 Only `access` is accepted, with the exact value `MEMBER` or `OWNER`. An owner can
 promote or demote another member in the selected organization. Changing their own
 access is forbidden, including requests that keep the current role, and returns
-`403 self_update_forbidden`. Identity uses the same exact verified email as
+`403 self_update_forbidden`. Identity uses the same exact email as
 organization membership lookup.
 
 Returns `200` with the updated member object, preserving its email and creation
@@ -550,7 +558,8 @@ use `{ "error": "code" }`:
 | `400` | `invalid_organization_id` | Organization identifier is not a UUID. |
 | `400` | `invalid_path` | Path parameters could not be decoded. |
 | `401` | `unauthenticated` | Missing or invalid authentication cookie. |
-| `403` | `email_not_verified` | Email is absent, empty or not verified. |
+| `403` | `email_required` | Email is absent or empty, regardless of the feature configuration. |
+| `403` | `email_not_verified` | Email is not verified and the `verified-email` feature is enabled. |
 | `403` | `csrf_rejected` | Missing or invalid custom header, or rejected fetch context. |
 | `403` | `owner_required` | Caller is a member but not an owner. |
 | `403` | `self_update_forbidden` | Caller attempted to change their own member access. |
@@ -954,6 +963,10 @@ Authentication failures are not retried automatically. Logout or an identity
 change cancels private queries and drops their results while preserving the
 corresponding authenticated or anonymous user result.
 
+The console sends organization requests without checking the user's email or
+verification state locally. It displays `email_required` and `email_not_verified`
+errors returned by the backend, so the same console supports both feature modes.
+
 `features/organizations/router.ts` checks the URL's organization before child loaders run.
 An ID missing from a cached list triggers one refresh before access is refused.
 Components use `useOrganizations()` and `useOrganization()` to read that same cache;
@@ -962,7 +975,7 @@ navigation so components follow any change of authenticated identity.
 
 The chooser redirects automatically when exactly one organization is available.
 An empty list offers creation and manual refresh, and explains that a proprietor
-can add the user's verified email. Multiple organizations require an explicit
+can add the user's email. Multiple organizations require an explicit
 selection. Unavailable organizations return to the chooser with a message.
 The left navigation switches organizations above the workspace links and offers
 the same creation dialog, including in the mobile navigation drawer.

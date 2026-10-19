@@ -58,7 +58,7 @@ export function AddMemberDialog({ user, organizationId, disabled, onAdded, onErr
               value={email} onChange={(event) => setEmail(event.target.value)} required disabled={mutation.isPending}
               aria-invalid={mutation.isError} aria-describedby={`${hintId}${mutation.isError ? ` ${errorId}` : ""}`} />
             <FieldDescription id={hintId}>
-              L'accès est accordé immédiatement. La personne devra se connecter avec cette adresse vérifiée exacte, en respectant la casse. Aucun email d'invitation n'est envoyé.
+              L'accès est accordé immédiatement. La personne devra se connecter avec cette adresse exacte, en respectant la casse. Aucun email d'invitation n'est envoyé.
             </FieldDescription>
             {mutation.isError && <FieldError id={errorId}>{memberErrorMessage(mutation.error)}</FieldError>}
           </Field>

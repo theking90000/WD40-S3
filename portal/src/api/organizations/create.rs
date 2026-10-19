@@ -11,7 +11,7 @@ use serde::Deserialize;
 
 use crate::api::auth::{CurrentUser, browser_request};
 
-use super::{Error, OrganizationResponse, verified_email};
+use super::{Error, OrganizationResponse, user_email};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -26,7 +26,7 @@ pub(super) async fn handle(
     payload: Result<Json<Request>, JsonRejection>,
 ) -> Result<(StatusCode, Json<OrganizationResponse>), Error> {
     browser_request(&headers).map_err(|_| Error::new(StatusCode::FORBIDDEN, "csrf_rejected"))?;
-    let email = verified_email(&user)?;
+    let email = user_email(&user)?;
     let Json(request) = payload?;
     let name = request.name.trim();
     if !(1..=128).contains(&name.chars().count()) {
