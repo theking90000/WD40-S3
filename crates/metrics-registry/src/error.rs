@@ -8,6 +8,12 @@ use std::{error::Error as StdError, fmt, time::Duration};
 /// [`Error::Backend`] does not guarantee that a mutation was rolled back.
 #[derive(Debug)]
 pub enum Error {
+    /// The local storage backend is not implemented yet.
+    LocalUnavailable,
+    /// Initialization policies are invalid, with a description of the reason.
+    InvalidConfig(&'static str),
+    /// A required column family was not opened by the caller.
+    MissingColumnFamily(&'static str),
     /// A record violates the input contract, with a description of the reason.
     InvalidRecord(&'static str),
     /// A query violates the input contract, with a description of the reason.
@@ -26,6 +32,15 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::LocalUnavailable => {
+                write!(formatter, "local metrics storage is not available yet")
+            }
+            Self::InvalidConfig(reason) => {
+                write!(formatter, "invalid metrics configuration: {reason}")
+            }
+            Self::MissingColumnFamily(name) => {
+                write!(formatter, "missing metrics column family: {name}")
+            }
             Self::InvalidRecord(reason) => write!(formatter, "invalid metrics record: {reason}"),
             Self::InvalidQuery(reason) => write!(formatter, "invalid metrics query: {reason}"),
             Self::ResolutionUnavailable(resolution) => {

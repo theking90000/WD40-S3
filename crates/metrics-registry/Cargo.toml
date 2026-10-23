@@ -2,3 +2,6 @@
 name = "metrics-registry"
 version.workspace = true
 edition.workspace = true
+
+[dependencies]
+rocksdb = { version = "0.25", default-features = false, features = ["bindgen-runtime"] }

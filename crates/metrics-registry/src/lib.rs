@@ -1,14 +1,17 @@
-//! Contracts for recording and querying metrics in batches over a namespace of keys.
+//! Batch recording and querying interfaces over a namespace of keys.
 //!
 //! [`MetricsRegistry`] accepts absolute gauge values and counter increments through
 //! [`Record`] batches, and reads current or historical values through [`Query`]
 //! batches. Implementations own persistence, system time, caches and retention.
-//! This crate defines the API without providing a storage implementation.
+//! [`LocalRegistry::new`] accepts an already opened RocksDB database and a shared
+//! retention [`Config`]. Recording and querying are not implemented yet and return
+//! [`Error::LocalUnavailable`].
 //!
 //! # Examples
 //!
 //! Record stored bytes and a request count for one key, then query the stored-byte
-//! current and request history using a caller-supplied registry implementation.
+//! current and request history through the registry enum. These operations return
+//! [`Error::LocalUnavailable`] until the local backend is implemented.
 //!
 //! ```
 //! use std::time::{Duration, SystemTime};
@@ -17,9 +20,10 @@
 //!     Error, Metric, MetricKind, MetricQuery, MetricRecord, MetricsRegistry,
 //!     Query, QueryResult, Record, Selection,
 //! };
+//! use metrics_registry::traits::MetricsRegistry as _;
 //!
 //! async fn record_and_query(
-//!     registry: &impl MetricsRegistry,
+//!     registry: &MetricsRegistry,
 //! ) -> Result<Vec<QueryResult>, Error> {
 //!     let records = [Record {
 //!         key: "/buckets/photos/object-a".to_owned(),
@@ -65,14 +69,41 @@
 //! }
 //! ```
 
+pub mod config;
 pub mod error;
+pub mod local;
 pub mod metrics;
 #[path = "trait.rs"]
 pub mod traits;
 
+pub use config::{Config, RetentionPolicy};
 pub use error::Error;
+pub use local::LocalRegistry;
 pub use metrics::Metric;
 pub use traits::{
-    MetricKind, MetricQuery, MetricRecord, MetricResult, MetricsRegistry, Point, Query,
-    QueryResult, Record, Selection,
+    MetricKind, MetricQuery, MetricRecord, MetricResult, Point, Query, QueryResult, Record,
+    Selection,
 };
+
+/// Selects the metrics registry implementation at runtime.
+///
+/// The shared recording and querying contract is [`traits::MetricsRegistry`].
+#[derive(Clone, Debug)]
+pub enum MetricsRegistry {
+    /// Uses the local backend.
+    Local(LocalRegistry),
+}
+
+impl traits::MetricsRegistry for MetricsRegistry {
+    async fn record(&self, records: &[Record]) -> Result<(), Error> {
+        match self {
+            Self::Local(registry) => traits::MetricsRegistry::record(registry, records).await,
+        }
+    }
+
+    async fn query(&self, queries: &[Query]) -> Result<Vec<QueryResult>, Error> {
+        match self {
+            Self::Local(registry) => traits::MetricsRegistry::query(registry, queries).await,
+        }
+    }
+}
