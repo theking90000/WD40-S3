@@ -1,3 +1,5 @@
+//! Batch inputs, query results and the metrics registry contract.
+
 use std::{
     future::Future,
     ops::Range,
@@ -6,6 +8,8 @@ use std::{
 
 use crate::{Error, Metric};
 
+/// How a recorded value changes a metric.
+///
 /// Gauges receive absolute values; counters receive nonnegative increments.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MetricKind {
@@ -18,9 +22,12 @@ pub enum MetricKind {
 /// One gauge assignment or counter increment for a metric and kind.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MetricRecord {
+    /// Metric to update.
     pub metric: Metric,
+    /// Whether `value` replaces a gauge or increments a counter.
     pub kind: MetricKind,
     /// Absolute value for a gauge, or a nonnegative increment for a counter.
+    ///
     /// Assigning zero to a gauge may decrease its previous value.
     pub value: i64,
 }
@@ -31,28 +38,40 @@ pub struct Record {
     /// Opaque, nonempty key, without application-specific semantics.
     pub key: String,
     /// Ancestor string prefixes, applied independently to every metric below.
+    ///
+    /// Each prefix must match the beginning of `key`.
     /// Empty prefixes select the whole namespace; duplicates count only once.
     pub aggregates: Vec<String>,
+    /// Metric updates to apply to this key.
     pub metrics: Vec<MetricRecord>,
 }
 
+/// Which current or historical values a query requests.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Selection {
-    /// Exact gauge current. Counters have no resolution-independent current.
+    /// The exact gauge current.
+    ///
+    /// Counters have no resolution-independent current in this API.
     Current,
+    /// Historical values at a configured resolution over an absolute time range.
     History {
         /// A nonzero, configured window duration.
         resolution: Duration,
         /// Absolute interval, start inclusive and end exclusive.
+        ///
         /// Intersecting windows are returned whole and aligned to the Unix epoch.
         range: Range<SystemTime>,
     },
 }
 
+/// One metric and the current or historical values to read for it.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MetricQuery {
+    /// Metric to read.
     pub metric: Metric,
+    /// Whether the metric is a gauge or a counter.
     pub kind: MetricKind,
+    /// Current values or a historical time range.
     pub selection: Selection,
 }
 
@@ -60,38 +79,52 @@ pub struct MetricQuery {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Query {
     /// Overlapping and duplicate prefixes never double-count a key.
+    ///
     /// An empty list selects no keys; an empty string selects every key.
     pub prefixes: Vec<String>,
+    /// Metric selections, in the order expected in [`QueryResult::metrics`].
     pub metrics: Vec<MetricQuery>,
 }
 
+/// A metric's value for one historical window.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Point {
     /// Beginning of the window, aligned to the Unix epoch at the query resolution.
     pub start: SystemTime,
     /// End-of-window gauge value or the counter total within this window.
+    ///
     /// For the open window, gauges report their current value.
     pub value: i64,
     /// False only for the window currently in progress.
     pub complete: bool,
 }
 
+/// Values returned for one [`MetricQuery`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MetricResult {
+    /// The exact gauge current requested by [`Selection::Current`].
     Current(i64),
-    /// One point per intersecting window, ordered by increasing start time.
+    /// Historical points ordered by increasing start time.
     History(Vec<Point>),
 }
 
+/// Results for one [`Query`], preserving its metric order.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct QueryResult {
     /// Same length and order as the corresponding query's metrics.
     pub metrics: Vec<MetricResult>,
 }
 
+/// Persistent batch recording and querying over a namespace of keys.
+///
+/// Implementations manage time, aggregate caches and historical retention.
+/// Callers submit gauge assignments or counter increments and request current or
+/// historical values. See the [crate example](crate) for a complete batch.
 pub trait MetricsRegistry {
-    /// Validates and atomically applies the entire batch using system time.
-    /// Success awaits durable persistence; backend errors need not mean rollback.
+    /// Records gauge assignments and counter increments as one atomic batch.
+    ///
+    /// The whole batch is validated before applying mutations. Success awaits
+    /// durable persistence, and timestamps are assigned internally using system time.
     /// Empty batches succeed without changes. Zero counter increments create no
     /// buckets; assigning zero to a gauge is still an assignment.
     ///
@@ -107,11 +140,29 @@ pub trait MetricsRegistry {
     /// Cache reconstruction must remain correct under concurrent writes.
     /// Historical retention and physical cleanup are implementation-owned and
     /// never expire a gauge's current value.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] when an input violates the record contract,
+    /// including a negative counter increment or an aggregate that is not a key
+    /// prefix. Returns [`Error::Overflow`] when a required calculation cannot be
+    /// represented, or [`Error::Backend`] when an implementation operation fails.
+    /// Backend failures do not guarantee that the batch was rolled back.
     fn record(&self, records: &[Record]) -> impl Future<Output = Result<(), Error>> + Send;
 
-    /// Reads the whole batch from one consistent view. Results preserve request
-    /// order; one invalid query rejects the batch. Empty batches return no results.
+    /// Reads a batch of metric selections from one consistent view.
+    ///
+    /// Results preserve query order and the metric order within each query.
+    /// One invalid query rejects the batch. Empty batches return no results.
     /// Valid caches and source reads must produce the same values.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidQuery`] when a selection or time range is invalid,
+    /// [`Error::ResolutionUnavailable`] when the requested resolution is not
+    /// available, or [`Error::HistoryExpired`] when the requested precision is no
+    /// longer retained. Returns [`Error::Overflow`] when a result cannot be
+    /// represented, or [`Error::Backend`] when an implementation operation fails.
     fn query(
         &self,
         queries: &[Query],

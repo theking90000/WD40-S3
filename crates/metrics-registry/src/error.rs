@@ -1,14 +1,25 @@
+//! Failures returned by metrics registry operations.
+
 use std::{error::Error as StdError, fmt, time::Duration};
 
+/// An invalid request or a failed metrics registry operation.
+///
 /// Validation errors reject the request before applying any mutations.
-/// Backend failures do not guarantee that a mutation was rolled back.
+/// [`Error::Backend`] does not guarantee that a mutation was rolled back.
 #[derive(Debug)]
 pub enum Error {
+    /// A record violates the input contract, with a description of the reason.
     InvalidRecord(&'static str),
+    /// A query violates the input contract, with a description of the reason.
     InvalidQuery(&'static str),
+    /// The requested history resolution is not available in this registry.
     ResolutionUnavailable(Duration),
+    /// Requested history is no longer retained at the selected resolution.
     HistoryExpired,
+    /// A numeric result or time calculation cannot be represented.
     Overflow,
+    /// An implementation-specific operation failed; [`std::error::Error::source`]
+    /// exposes the underlying error.
     Backend(Box<dyn StdError + Send + Sync>),
 }
 
