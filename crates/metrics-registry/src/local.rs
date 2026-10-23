@@ -6,13 +6,18 @@ use rocksdb::DB;
 
 use crate::{Config, Error, Query, QueryResult, Record, traits::MetricsRegistry};
 
+mod codec;
+mod storage;
+
+use storage::Storage;
+
 /// Shared handle to a caller-opened RocksDB database.
 ///
 /// Clones retain the same database and configuration. Both registry operations return
 /// [`Error::LocalUnavailable`] until local storage is implemented.
 #[derive(Clone, Debug)]
 pub struct LocalRegistry {
-    _database: Arc<DB>,
+    _storage: Arc<Storage>,
     _config: Arc<Config>,
 }
 
@@ -48,13 +53,8 @@ impl LocalRegistry {
     /// ```
     pub fn new(database: DB, config: Config) -> Result<Self, Error> {
         config.validate()?;
-        for name in ["current", "history", "aggregates"] {
-            if database.cf_handle(name).is_none() {
-                return Err(Error::MissingColumnFamily(name));
-            }
-        }
         Ok(Self {
-            _database: Arc::new(database),
+            _storage: Arc::new(Storage::new(database)?),
             _config: Arc::new(config),
         })
     }

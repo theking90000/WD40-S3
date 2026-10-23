@@ -3,8 +3,7 @@
 /// A metric identifier shared by records and queries.
 ///
 /// Persist the explicit numeric identifier; never renumber or reuse one.
-/// Identifier 2, formerly `Objects`, remains reserved. The numeric representation
-/// does not itself define a serialization format.
+/// The local backend encodes this identifier as a big-endian `u16`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[repr(u16)]
 pub enum Metric {

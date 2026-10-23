@@ -14,6 +14,8 @@ pub enum Error {
     InvalidConfig(&'static str),
     /// A required column family was not opened by the caller.
     MissingColumnFamily(&'static str),
+    /// A storage key or value has an invalid or unsupported binary representation.
+    CorruptData(&'static str),
     /// A record violates the input contract, with a description of the reason.
     InvalidRecord(&'static str),
     /// A query violates the input contract, with a description of the reason.
@@ -40,6 +42,9 @@ impl fmt::Display for Error {
             }
             Self::MissingColumnFamily(name) => {
                 write!(formatter, "missing metrics column family: {name}")
+            }
+            Self::CorruptData(reason) => {
+                write!(formatter, "invalid metrics storage data: {reason}")
             }
             Self::InvalidRecord(reason) => write!(formatter, "invalid metrics record: {reason}"),
             Self::InvalidQuery(reason) => write!(formatter, "invalid metrics query: {reason}"),
