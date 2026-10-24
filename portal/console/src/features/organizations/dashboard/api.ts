@@ -28,6 +28,21 @@ export interface OrganizationDashboard {
   buckets: BucketUsage[];
 }
 
+export type UploadPeriod = "7d" | "30d";
+
+export interface UploadPoint {
+  start: number;
+  uploaded_bytes: number;
+  complete: boolean;
+}
+
+export interface OrganizationUploads {
+  generated_at: number;
+  period: DashboardPeriod;
+  total_uploaded_bytes: number;
+  points: UploadPoint[];
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -58,34 +73,74 @@ function isDashboard(value: unknown): value is OrganizationDashboard {
     && new Set(value.buckets.map((bucket) => bucket.name)).size === value.buckets.length;
 }
 
+function isUploads(value: unknown, selectedPeriod: UploadPeriod): value is OrganizationUploads {
+  if (!isRecord(value) || !isRecord(value.period)) return false;
+  const { from, to, resolution_seconds } = value.period;
+  const days = selectedPeriod === "7d" ? 7 : 30;
+  const day = 86_400;
+  return isTimestamp(value.generated_at)
+    && isTimestamp(from) && isTimestamp(to)
+    && from < to && to === value.generated_at
+    && resolution_seconds === day && from % day === 0
+    && from + (days - 1) * day === Math.floor(value.generated_at / day) * day
+    && isCount(value.total_uploaded_bytes)
+    && Array.isArray(value.points) && value.points.length === days
+    && value.points.every((point: unknown, index: number) => isRecord(point)
+      && isTimestamp(point.start) && point.start === from + index * day
+      && isCount(point.uploaded_bytes) && typeof point.complete === "boolean"
+      && (index === days - 1 || point.complete));
+}
+
 function requireSession(session: number) {
   if (session !== querySession()) throw new DOMException("Session changed", "AbortError");
+}
+
+async function readDashboardResponse<T>(
+  user: CurrentUser,
+  path: string,
+  signal: AbortSignal,
+  validate: (body: unknown) => body is T,
+): Promise<T> {
+  const session = querySession();
+  try {
+    const response = await api(path, { signal });
+    requireSession(session);
+    const body: unknown = await response.json().catch((error: unknown) => {
+      if (error instanceof SyntaxError) return null;
+      throw error;
+    });
+    requireSession(session);
+    if (!validate(body)) throw new AuthError("invalid_dashboard_response", 502, session);
+    return body;
+  } catch (error) {
+    requireSession(session);
+    if (error instanceof AuthError && error.code === "organization_not_found") {
+      await refreshOrganizations(user).catch(() => {});
+    }
+    requireSession(session);
+    throw error;
+  }
 }
 
 export function organizationDashboardQuery(user: CurrentUser, organizationId: string) {
   return queryOptions({
     queryKey: [...organizationsQuery(user).queryKey, organizationId, "dashboard"],
-    queryFn: async ({ signal }): Promise<OrganizationDashboard> => {
-      const session = querySession();
-      try {
-        const response = await api(`organizations/${encodeURIComponent(organizationId)}/dashboard`, { signal });
-        requireSession(session);
-        const body: unknown = await response.json().catch((error: unknown) => {
-          if (error instanceof SyntaxError) return null;
-          throw error;
-        });
-        requireSession(session);
-        if (!isDashboard(body)) throw new AuthError("invalid_dashboard_response", 502, session);
-        return body;
-      } catch (error) {
-        requireSession(session);
-        if (error instanceof AuthError && error.code === "organization_not_found") {
-          await refreshOrganizations(user).catch(() => {});
-        }
-        requireSession(session);
-        throw error;
-      }
-    },
+    queryFn: ({ signal }) => readDashboardResponse(user,
+      `organizations/${encodeURIComponent(organizationId)}/dashboard`, signal, isDashboard),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    retry: (count, error) => count < 1 && error.name !== "AbortError"
+      && !(error instanceof AuthError && error.status < 500),
+  });
+}
+
+export function organizationUploadsQuery(user: CurrentUser, organizationId: string, period: UploadPeriod) {
+  return queryOptions({
+    queryKey: [...organizationsQuery(user).queryKey, organizationId, "dashboard", "uploads", period],
+    queryFn: ({ signal }) => readDashboardResponse(user,
+      `organizations/${encodeURIComponent(organizationId)}/dashboard/uploads?period=${period}`, signal,
+      (body): body is OrganizationUploads => isUploads(body, period)),
     staleTime: 30_000,
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,

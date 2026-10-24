@@ -617,8 +617,8 @@ The daily resolution must be configured with at least 30 days of retention for
 both periods. Default registry policies already satisfy this requirement. Registry
 failures, unsupported resolutions, expired history and invalid results return
 HTTP 503 with `{"error":"metrics_unavailable"}`. Database failures return HTTP
-500 with `{"error":"database_error"}`. This route supplies data only; it does
-not connect the console chart.
+500 with `{"error":"database_error"}`. The console reads this route
+independently of the summary dashboard.
 
 ### Organization members
 
@@ -1160,8 +1160,32 @@ counts and recent bucket metadata independently of metrics failures.
 the `fr-BE` locale. The distribution sorts buckets by descending
 storage usage, with named percentage bars. Organizations without buckets and
 buckets with no measured storage have separate empty states. Zero totals do not
-produce invalid percentages. The 7/30-day chart and recent activity remain
-unavailable until their corresponding APIs are implemented.
+produce invalid percentages. Recent activity remains unavailable until its API
+is implemented.
+
+`organizationUploadsQuery(user, organizationId, period)` reads
+`dashboard/uploads?period=7d` or `period=30d`. Its key extends the dashboard key
+with `uploads` and the selected period. It uses the same HTTP client, session
+guards, refresh intervals and error handling as the summary query. Response
+validation requires safe nonnegative byte counts, a daily resolution, ordered
+UTC-midnight timestamps, exactly 7 or 30 points including today, and boolean
+completion flags with previous days closed. Server totals are preserved.
+
+`components/uploads-chart.tsx` replaces the overview's chart placeholder. It
+starts on 7 days and observes only the selected period. Period caches stay
+separate, and uncached periods display a skeleton rather than data from the
+previous selection. Initial errors show a retry button; refresh errors retain
+the last successful series for that period. A zero-only series has a dedicated
+empty state. The chart runs independently of the summary cards and distribution.
+
+The daily histogram uses an SVG and existing theme colors without another chart
+dependency. Axis byte units adapt to the series, and all dates use UTC.
+Hovering, focusing or tapping a daily bar shows its date, volume and current-day
+status, with exact byte counts available on selection. Every bar is keyboard
+focusable, and a screen-reader table contains the daily counts. Small screens
+show fewer date labels. `formatBytes` accepts an optional reference value to
+keep all vertical axis labels in the same unit. Chart date formatters also live
+in `dashboard/format.ts`.
 
 Session-generation checks reject late responses and errors, including changes
 during response parsing or membership refresh. An `organization_not_found` error

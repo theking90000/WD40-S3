@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { ArrowRightIcon, ChartColumnIcon, ChevronRightIcon, DatabaseIcon, HistoryIcon, KeyRoundIcon, UsersIcon } from "lucide-react";
+import { ArrowRightIcon, ChevronRightIcon, DatabaseIcon, HistoryIcon, KeyRoundIcon, UsersIcon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { CurrentUser } from "~/features/auth/session.ts";
 import type { Organization } from "~/features/organizations/api.ts";
@@ -14,6 +14,7 @@ import { organizationDashboardQuery } from "~/features/organizations/dashboard/a
 import { BucketDistribution } from "~/features/organizations/dashboard/components/bucket-distribution";
 import { DashboardMetrics } from "~/features/organizations/dashboard/components/dashboard-metrics";
 import { DashboardStatus } from "~/features/organizations/dashboard/components/dashboard-status";
+import { UploadsChart } from "~/features/organizations/dashboard/components/uploads-chart";
 import { useOrganization, useOrganizations } from "~/features/organizations/router.ts";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -105,16 +106,7 @@ function Overview({ user, organization }: { user: CurrentUser; organization: Org
       <DashboardMetrics data={dashboard.data} loading={dashboard.isPending} />
 
       <div className="grid gap-3.5 min-[1161px]:grid-cols-[minmax(0,1.7fr)_minmax(275px,0.82fr)]">
-        <Card className="min-w-0 gap-0 pb-0">
-          <CardHeader className="flex flex-wrap items-start justify-between gap-3">
-            <div className="space-y-1"><h2 className="text-card-title">Volume ajouté</h2><CardDescription>Go ajoutés par jour sur la période</CardDescription></div>
-            <div role="group" aria-label="Période du graphique" title="Statistiques non disponibles" className="flex gap-0.5 rounded-lg border bg-background p-0.5">
-              <Button type="button" variant="outline" size="xs" disabled>7 j</Button>
-              <Button type="button" variant="ghost" size="xs" disabled>30 j</Button>
-            </div>
-          </CardHeader>
-          <Unavailable icon={ChartColumnIcon}>Statistiques non disponibles</Unavailable>
-        </Card>
+        <UploadsChart user={user} organizationId={organization.id} />
         <BucketDistribution data={dashboard.data} loading={dashboard.isPending} />
       </div>
 
