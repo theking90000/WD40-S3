@@ -6,7 +6,7 @@ edition.workspace = true
 [features]
 default = []
 cli = ["dep:clap", "blob-system/cli"]
-standalone = ["cli", "dep:hyper", "dep:hyper-util", "tokio/rt-multi-thread", "tokio/net", "tokio/signal", "dep:tokio-tcp-pool", "dep:webpki-roots", "dep:backends", "backends/cli", "dep:blob-registry", "blob-registry/cli", "dep:file-registry", "file-registry/cli", "dep:stream-registry", "stream-registry/cli", "dep:policy-registry", "policy-registry/cli", "object-registry/cli", "s3-credentials-registry/cli", "s3-multipart-registry/cli"]
+standalone = ["cli", "dep:hyper", "dep:hyper-util", "tokio/rt-multi-thread", "tokio/net", "tokio/signal", "dep:tokio-tcp-pool", "dep:webpki-roots", "dep:backends", "backends/cli", "dep:blob-registry", "blob-registry/cli", "dep:file-registry", "file-registry/cli", "dep:stream-registry", "stream-registry/cli", "policy-registry/cli", "object-registry/cli", "s3-credentials-registry/cli", "s3-multipart-registry/cli"]
 
 [[bin]]
 name = "s3-adapter"
@@ -31,7 +31,7 @@ backends = { path = "../backends", optional = true }
 blob-registry = { path = "../blob-registry", optional = true }
 file-registry = { path = "../file-registry", optional = true }
 stream-registry = { path = "../stream-registry", optional = true }
-policy-registry = { path = "../policy-registry", optional = true }
+policy-registry = { path = "../policy-registry" }
 s3s = "0.17"
 clap = { version = "4", features = ["derive", "env"], optional = true }
 hyper = { version = "1", features = ["server", "http1"], optional = true }

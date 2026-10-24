@@ -5,10 +5,10 @@ use s3s::{
         CompleteMultipartUploadOutput, CopyObjectInput, CopyObjectOutput,
         CreateMultipartUploadInput, CreateMultipartUploadOutput, DeleteObjectInput,
         DeleteObjectOutput, DeleteObjectsInput, DeleteObjectsOutput, GetObjectInput,
-        GetObjectOutput, HeadObjectInput, HeadObjectOutput, ListMultipartUploadsInput,
-        ListMultipartUploadsOutput, ListObjectsInput, ListObjectsOutput, ListObjectsV2Input,
-        ListObjectsV2Output, ListPartsInput, ListPartsOutput, PutObjectInput, PutObjectOutput,
-        UploadPartInput, UploadPartOutput,
+        GetObjectOutput, HeadObjectInput, HeadObjectOutput, ListBucketsInput, ListBucketsOutput,
+        ListMultipartUploadsInput, ListMultipartUploadsOutput, ListObjectsInput, ListObjectsOutput,
+        ListObjectsV2Input, ListObjectsV2Output, ListPartsInput, ListPartsOutput, PutObjectInput,
+        PutObjectOutput, UploadPartInput, UploadPartOutput,
     },
 };
 
@@ -84,6 +84,13 @@ impl s3s::S3 for S3Adapter {
         req: S3Request<ListObjectsInput>,
     ) -> S3Result<S3Response<ListObjectsOutput>> {
         request::list_objects::list_objects(self, req).await
+    }
+
+    async fn list_buckets(
+        &self,
+        req: S3Request<ListBucketsInput>,
+    ) -> S3Result<S3Response<ListBucketsOutput>> {
+        request::list_buckets::list_buckets(self, req).await
     }
 
     async fn list_objects_v2(

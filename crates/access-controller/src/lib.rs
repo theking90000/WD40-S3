@@ -9,7 +9,7 @@ mod error;
 
 use std::sync::Arc;
 
-use policy_registry::{PrincipalSelector, traits::PolicyRegistry as _};
+use policy_registry::{PolicySnapshot, PrincipalSelector, traits::PolicyRegistry as _};
 
 pub use compiled::CompiledPolicy;
 pub use error::Error;
@@ -81,7 +81,12 @@ impl AccessController {
     /// The returned snapshot can outlive this controller and be shared between
     /// threads. Later policy changes do not modify or revoke this value.
     pub async fn compile(&self, principal: Principal) -> Result<Arc<CompiledPolicy>, Error> {
-        let snapshot = match principal {
+        self.compile_snapshot(self.load_policies(principal).await?)
+    }
+
+    /// Loads the policies for a principal, including applicable global selectors.
+    pub async fn load_policies(&self, principal: Principal) -> Result<PolicySnapshot, Error> {
+        Ok(match principal {
             Principal::Anonymous => {
                 self.registry
                     .load_policies(&[PrincipalSelector::Everyone])
@@ -96,7 +101,11 @@ impl AccessController {
                     ])
                     .await?
             }
-        };
+        })
+    }
+
+    /// Compiles an already loaded snapshot using this controller's limits.
+    pub fn compile_snapshot(&self, snapshot: PolicySnapshot) -> Result<Arc<CompiledPolicy>, Error> {
         Ok(Arc::new(CompiledPolicy::from_snapshot(
             snapshot,
             self.limits,
