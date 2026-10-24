@@ -8,8 +8,6 @@ use std::{error::Error as StdError, fmt, time::Duration};
 /// [`Error::Backend`] does not guarantee that a mutation was rolled back.
 #[derive(Debug)]
 pub enum Error {
-    /// The local storage backend is not implemented yet.
-    LocalUnavailable,
     /// Initialization policies are invalid, with a description of the reason.
     InvalidConfig(&'static str),
     /// A required column family was not opened by the caller.
@@ -24,7 +22,8 @@ pub enum Error {
     ResolutionUnavailable(Duration),
     /// Requested history is no longer retained at the selected resolution.
     HistoryExpired,
-    /// A numeric result or time calculation cannot be represented.
+    /// A numeric result or time calculation cannot be represented, including an
+    /// overflow discovered when evaluating a deferred native addition.
     Overflow,
     /// An implementation-specific operation failed; [`std::error::Error::source`]
     /// exposes the underlying error.
@@ -34,9 +33,6 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::LocalUnavailable => {
-                write!(formatter, "local metrics storage is not available yet")
-            }
             Self::InvalidConfig(reason) => {
                 write!(formatter, "invalid metrics configuration: {reason}")
             }

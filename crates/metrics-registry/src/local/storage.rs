@@ -7,6 +7,7 @@ use rocksdb::{
 use crate::Error;
 
 use super::codec::{Key, Store, Value, prefix_end};
+use super::merge::Operand;
 
 #[derive(Debug)]
 pub(super) struct Storage {
@@ -47,9 +48,14 @@ impl Storage {
         Ok(())
     }
 
-    pub(super) fn delete(&self, batch: &mut WriteBatch, key: Key<'_>) -> Result<(), Error> {
+    pub(super) fn merge(
+        &self,
+        batch: &mut WriteBatch,
+        key: Key<'_>,
+        operand: Operand,
+    ) -> Result<(), Error> {
         let family = self.family(key.store())?;
-        batch.delete_cf(&family, key.encode()?);
+        batch.merge_cf(&family, key.encode()?, operand.encode());
         Ok(())
     }
 

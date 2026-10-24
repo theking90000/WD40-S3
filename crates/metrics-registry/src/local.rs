@@ -1,40 +1,96 @@
 //! Local metrics registry backend.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, RwLock};
 
-use rocksdb::DB;
+use rocksdb::{ColumnFamilyDescriptor, DB, Options};
 
 use crate::{Config, Error, Query, QueryResult, Record, traits::MetricsRegistry};
 
+mod aggregate;
 mod codec;
+mod merge;
+mod read;
+mod record;
 mod storage;
 
+use aggregate::Catalog;
+use codec::Store;
 use storage::Storage;
+
+const GAUGE_LOCKS: usize = 256;
 
 /// Shared handle to a caller-opened RocksDB database.
 ///
-/// Clones retain the same database and configuration. Both registry operations return
-/// [`Error::LocalUnavailable`] until local storage is implemented.
+/// Clones share the database, configuration, gauge locks and cache catalog.
+/// Counter writes use native additions. Gauge read-modify-write sequences use
+/// bounded, shared key locks. Unrelated gauge keys may share a lock by hash.
+/// Ordinary writers share access to the catalog; cold cache reconstruction takes
+/// exclusive access until its publication batch commits. Queries use snapshots
+/// without acquiring these locks. Blocking storage calls run on a worker pool.
+/// A cold reconstruction temporarily blocks all writers; warm cache additions
+/// do not take an exclusive aggregate lock.
+/// Historical retention cleanup is not implemented yet.
 #[derive(Clone, Debug)]
 pub struct LocalRegistry {
-    _storage: Arc<Storage>,
-    _config: Arc<Config>,
+    storage: Arc<Storage>,
+    config: Arc<Config>,
+    gauges: Arc<[Mutex<()>; GAUGE_LOCKS]>,
+    caches: Arc<RwLock<Catalog>>,
 }
 
 impl LocalRegistry {
+    /// Builds the three column family descriptors with the required native merge
+    /// operators, preserving caller-supplied tuning options.
+    ///
+    /// Pass these descriptors to [`DB::open_cf_descriptors`] when opening or
+    /// reopening the database. Merge operators must be installed before `new`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::{error::Error, path::Path, time::Duration};
+    /// use metrics_registry::{Config, LocalRegistry, RetentionPolicy};
+    /// use rocksdb::{DB, DBCompressionType, Options};
+    ///
+    /// fn open(path: &Path) -> Result<LocalRegistry, Box<dyn Error + Send + Sync>> {
+    ///     let mut options = Options::default();
+    ///     options.create_if_missing(true);
+    ///     options.create_missing_column_families(true);
+    ///     options.set_compression_type(DBCompressionType::None);
+    ///     let database = DB::open_cf_descriptors(
+    ///         &options, path, LocalRegistry::column_families(&options),
+    ///     )?;
+    ///     Ok(LocalRegistry::new(database, Config {
+    ///         policies: vec![RetentionPolicy {
+    ///             resolution: Duration::from_secs(300),
+    ///             retention: Duration::from_secs(86_400),
+    ///         }],
+    ///     })?)
+    /// }
+    /// ```
+    pub fn column_families(options: &Options) -> [ColumnFamilyDescriptor; 3] {
+        Store::ALL.map(|store| {
+            let mut options = options.clone();
+            merge::configure(store, &mut options);
+            ColumnFamilyDescriptor::new(store.name(), options)
+        })
+    }
+
     /// Validates shared retention policies and retains an initialized database.
     ///
     /// The caller must open the `current`, `history` and `aggregates` column
-    /// families. This constructor does not open, configure or write to the
-    /// database. Configuration is retained in memory and applies to every key
-    /// and metric.
+    /// families using [`Self::column_families`]. This constructor does not open,
+    /// configure or write to the database. Configuration is retained in memory
+    /// and applies to every key and metric. The binding cannot inspect installed
+    /// merge callbacks; databases opened with other descriptors are unsupported.
     ///
     /// # Errors
     ///
     /// Returns [`Error::InvalidConfig`] if policies are empty, resolutions are
     /// zero, fractional or duplicated, or a retention is shorter than its
     /// resolution. Returns [`Error::MissingColumnFamily`] if a required column
-    /// family is unavailable.
+    /// family is unavailable. Returns [`Error::CorruptData`] or [`Error::Backend`]
+    /// if the existing cache catalog cannot be read.
     ///
     /// # Examples
     ///
@@ -53,19 +109,33 @@ impl LocalRegistry {
     /// ```
     pub fn new(database: DB, config: Config) -> Result<Self, Error> {
         config.validate()?;
+        let storage = Storage::new(database)?;
+        let caches = aggregate::catalog(&storage.snapshot())?;
         Ok(Self {
-            _storage: Arc::new(Storage::new(database)?),
-            _config: Arc::new(config),
+            storage: Arc::new(storage),
+            config: Arc::new(config),
+            gauges: Arc::new(std::array::from_fn(|_| Mutex::new(()))),
+            caches: Arc::new(RwLock::new(caches)),
         })
     }
 }
 
 impl MetricsRegistry for LocalRegistry {
-    async fn record(&self, _records: &[Record]) -> Result<(), Error> {
-        Err(Error::LocalUnavailable)
+    async fn record(&self, records: &[Record]) -> Result<(), Error> {
+        let updates = record::prepare(records)?;
+        if updates.is_empty() {
+            return Ok(());
+        }
+        let registry = self.clone();
+        blocking::unblock(move || record::apply(&registry, updates)).await
     }
 
-    async fn query(&self, _queries: &[Query]) -> Result<Vec<QueryResult>, Error> {
-        Err(Error::LocalUnavailable)
+    async fn query(&self, queries: &[Query]) -> Result<Vec<QueryResult>, Error> {
+        if queries.is_empty() {
+            return Ok(Vec::new());
+        }
+        let registry = self.clone();
+        let queries = queries.to_vec();
+        blocking::unblock(move || read::query(&registry, &queries)).await
     }
 }

@@ -76,8 +76,10 @@ pub(super) struct GaugeValue {
 #[derive(Clone, Copy, Debug)]
 pub(super) enum Value {
     Gauge(GaugeValue),
-    Total(i64),
-    Valid,
+    Total(i128),
+    Cache(Option<i128>),
+    Valid(bool),
+    Overflow,
 }
 
 impl Key<'_> {
@@ -155,7 +157,13 @@ impl Key<'_> {
                 require_total(kind, total)?;
                 bytes.extend_from_slice(&total.to_be_bytes());
             }
-            (ValueFormat::Valid, Value::Valid) => {}
+            (ValueFormat::Cache, Value::Cache(Some(total))) => {
+                bytes.push(1);
+                bytes.extend_from_slice(&total.to_be_bytes());
+            }
+            (ValueFormat::Cache, Value::Cache(None)) => bytes.push(0),
+            (ValueFormat::Valid, Value::Valid(valid)) => bytes.push(u8::from(valid)),
+            (ValueFormat::Total(_) | ValueFormat::Cache, Value::Overflow) => bytes.push(2),
             _ => return Err(Error::CorruptData("value does not match its storage key")),
         }
         Ok(bytes)
@@ -170,11 +178,29 @@ impl Key<'_> {
                 sequence: reader.u64()?,
             }),
             ValueFormat::Total(kind) => {
-                let total = i64::from_be_bytes(reader.take()?);
+                if bytes == [2] {
+                    return Ok(Value::Overflow);
+                }
+                // Source counters written before wide totals used eight bytes.
+                let total = if bytes.len() == 8 {
+                    i128::from(i64::from_be_bytes(reader.take()?))
+                } else {
+                    i128::from_be_bytes(reader.take()?)
+                };
                 require_total(kind, total)?;
                 Value::Total(total)
             }
-            ValueFormat::Valid => Value::Valid,
+            ValueFormat::Cache => match reader.byte()? {
+                0 => Value::Cache(None),
+                1 => Value::Cache(Some(i128::from_be_bytes(reader.take()?))),
+                2 => Value::Overflow,
+                _ => return Err(Error::CorruptData("unknown cache state")),
+            },
+            ValueFormat::Valid => match reader.byte()? {
+                0 => Value::Valid(false),
+                1 => Value::Valid(true),
+                _ => return Err(Error::CorruptData("unknown history cache state")),
+            },
         };
         reader.finish()?;
         Ok(value)
@@ -191,9 +217,8 @@ impl Key<'_> {
                 entry: CacheEntry::Valid,
                 ..
             } => ValueFormat::Valid,
-            Self::AggregateCurrent(series) | Self::AggregateHistory { series, .. } => {
-                ValueFormat::Total(series.kind)
-            }
+            Self::AggregateCurrent(_) => ValueFormat::Cache,
+            Self::AggregateHistory { series, .. } => ValueFormat::Total(series.kind),
         }
     }
 }
@@ -365,7 +390,7 @@ fn require_gauge(kind: MetricKind) -> Result<(), Error> {
     Ok(())
 }
 
-fn require_total(kind: MetricKind, total: i64) -> Result<(), Error> {
+fn require_total(kind: MetricKind, total: i128) -> Result<(), Error> {
     if kind == MetricKind::Counter && total < 0 {
         return Err(Error::CorruptData("negative counter total"));
     }
@@ -375,6 +400,7 @@ fn require_total(kind: MetricKind, total: i64) -> Result<(), Error> {
 enum ValueFormat {
     Gauge,
     Total(MetricKind),
+    Cache,
     Valid,
 }
 

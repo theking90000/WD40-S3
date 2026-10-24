@@ -11,7 +11,7 @@ use crate::{Error, Metric};
 /// How a recorded value changes a metric.
 ///
 /// Gauges receive absolute values; counters receive nonnegative increments.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum MetricKind {
     /// Replace the current value using an internally timestamped assignment.
     Gauge,
@@ -41,6 +41,8 @@ pub struct Record {
     ///
     /// Each prefix must match the beginning of `key`.
     /// Empty prefixes select the whole namespace; duplicates count only once.
+    /// A requested prefix is maintained across all matching updates of the same
+    /// metric and kind in the batch, including updates from other records.
     pub aggregates: Vec<String>,
     /// Metric updates to apply to this key.
     pub metrics: Vec<MetricRecord>,
@@ -131,22 +133,26 @@ pub trait MetricsRegistry {
     /// Gauge values carry an internal timestamp, with an internal tie-breaker for
     /// equal timestamps. The newest assignment wins; repeated assignments to a
     /// gauge within one batch follow input order. No timestamp is caller-supplied.
-    /// For each winning assignment, the implementation atomically derives the
-    /// change from the previous accepted value and applies that change to history
-    /// and aggregates. Superseded assignments must not alter those sums.
+    /// Each winning assignment atomically replaces the current value and the
+    /// absolute gauge value in its historical windows. Aggregate maintenance uses
+    /// the difference from the previous accepted value. Superseded assignments
+    /// must not alter history or aggregates.
     ///
     /// Requested aggregate caches are maintained by addition when valid and
     /// rebuilt internally when needed. Other affected caches are invalidated.
     /// Cache reconstruction must remain correct under concurrent writes.
-    /// Historical retention and physical cleanup are implementation-owned and
-    /// never expire a gauge's current value.
+    /// Counter totals and aggregate calculations use a wider internal integer.
+    /// Native additions can detect stored-total overflow only when evaluated;
+    /// output conversion to `i64` is checked by [`Self::query`].
+    /// Historical retention is implementation-owned and never expires a gauge's
+    /// current value. See the backend documentation for cleanup availability.
     ///
     /// # Errors
     ///
     /// Returns [`Error::InvalidRecord`] when an input violates the record contract,
     /// including a negative counter increment or an aggregate that is not a key
-    /// prefix. Returns [`Error::Overflow`] when a required calculation cannot be
-    /// represented, or [`Error::Backend`] when an implementation operation fails.
+    /// prefix. Returns [`Error::Overflow`] when input grouping or gauge preparation
+    /// cannot be represented, or [`Error::Backend`] when an operation fails.
     /// Backend failures do not guarantee that the batch was rolled back.
     fn record(&self, records: &[Record]) -> impl Future<Output = Result<(), Error>> + Send;
 
@@ -162,7 +168,8 @@ pub trait MetricsRegistry {
     /// [`Error::ResolutionUnavailable`] when the requested resolution is not
     /// available, or [`Error::HistoryExpired`] when the requested precision is no
     /// longer retained. Returns [`Error::Overflow`] when a result cannot be
-    /// represented, or [`Error::Backend`] when an implementation operation fails.
+    /// represented or an evaluated native total has overflowed, or
+    /// [`Error::Backend`] when an implementation operation fails.
     fn query(
         &self,
         queries: &[Query],

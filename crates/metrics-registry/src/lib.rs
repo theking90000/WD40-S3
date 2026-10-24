@@ -4,14 +4,17 @@
 //! [`Record`] batches, and reads current or historical values through [`Query`]
 //! batches. Implementations own persistence, system time, caches and retention.
 //! [`LocalRegistry::new`] accepts an already opened RocksDB database and a shared
-//! retention [`Config`]. Recording and querying are not implemented yet and return
-//! [`Error::LocalUnavailable`].
+//! retention [`Config`]. Use [`LocalRegistry::column_families`] when opening the
+//! database to install the required native merge operators. Counters use native
+//! additions; gauges coordinate read-modify-write operations by source key.
+//! Recording maintains requested caches and invalidates other affected caches.
+//! Queries use one snapshot and reconstruct their results when caches are invalid.
+//! Historical retention cleanup is not implemented yet.
 //!
 //! # Examples
 //!
 //! Record stored bytes and a request count for one key, then query the stored-byte
-//! current and request history through the registry enum. These operations return
-//! [`Error::LocalUnavailable`] until the local backend is implemented.
+//! current and request history through the registry enum.
 //!
 //! ```
 //! use std::time::{Duration, SystemTime};
