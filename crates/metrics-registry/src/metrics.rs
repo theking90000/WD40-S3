@@ -19,7 +19,7 @@ pub enum Metric {
     SuccessRequestCount = 5,
     /// Number of failed or abandoned requests.
     FailedRequestCount = 6,
-    /// Number of objects currently stored.
+    /// Number of visible objects, updated through signed gauge deltas.
     StoredObjects = 7,
 }
 

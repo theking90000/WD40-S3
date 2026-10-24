@@ -37,13 +37,20 @@ impl MetricsContext {
         context
     }
 
-    /// Unknown legacy publishers contribute only to the bucket namespace.
-    pub(super) fn stored_object(credential_id: Option<&str>, bucket: &str, key: &str) -> Self {
-        let mut context = match credential_id {
-            Some(id) => Self::bucket(Some(id), bucket),
-            None => Self {
-                destinations: vec![Self::bucket_destination(Some(bucket))],
-            },
+    pub(super) fn stored_bucket(bucket: &str, key: &str) -> Self {
+        let mut context = Self {
+            destinations: vec![Self::bucket_destination(Some(bucket))],
+        };
+        context.append_object_key(key);
+        context
+    }
+
+    pub(super) fn stored_credential(credential_id: &str, bucket: &str, key: &str) -> Self {
+        let mut context = Self {
+            destinations: vec![Self::credential_destination(
+                Some(credential_id),
+                Some(bucket),
+            )],
         };
         context.append_object_key(key);
         context
@@ -70,7 +77,7 @@ impl MetricsContext {
         by_bucket
     }
 
-    fn build(credential_id: Option<&str>, bucket: Option<&str>) -> Self {
+    fn credential_destination(credential_id: Option<&str>, bucket: Option<&str>) -> Destination {
         let credential = utf8_percent_encode(
             credential_id.unwrap_or(crate::metadata::UNAUTHENTICATED_CREDENTIAL),
             SEGMENT,
@@ -84,8 +91,15 @@ impl MetricsContext {
             let suffix = format!("{}/", utf8_percent_encode(bucket, SEGMENT));
             by_credential.key.push_str(&suffix);
         }
+        by_credential
+    }
+
+    fn build(credential_id: Option<&str>, bucket: Option<&str>) -> Self {
         Self {
-            destinations: vec![Self::bucket_destination(bucket), by_credential],
+            destinations: vec![
+                Self::bucket_destination(bucket),
+                Self::credential_destination(credential_id, bucket),
+            ],
         }
     }
 

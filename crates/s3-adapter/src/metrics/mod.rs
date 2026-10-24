@@ -8,11 +8,10 @@
 //!
 //! S3 routing starts each tracker and gives ownership to its handler. The handler
 //! decides when to finish or transfers ownership into a streaming response.
-//! StoredBytes mutations run in this same task independently of request outcomes.
-//! Queueing transfers ownership, so abandoning a handler cannot cancel a queued
-//! store or delete between its commit and metric publication.
+//! Object mutations run independently in the adapter and send prepared gauge
+//! deltas here. Their sender keeps publication alive after request cancellation.
 //!
-//! StoredBytes records changes, not an automatic inventory. Before enabling it
+//! Storage gauges record changes, not an automatic inventory. Before enabling them
 //! over existing data, establish a one-time baseline without concurrent writers.
 //! Re-enabling collection after unrecorded mutations also requires reconciliation.
 //! Legacy versions without attribution contribute only to the bucket namespace.
@@ -25,13 +24,11 @@ use std::{
     },
 };
 
-use metrics_registry::MetricsRegistry;
-use object_registry::{BlobId, DeleteResult, Metadata, ObjectRegistry, StoreResult, VersionId};
-use s3s::{S3Error, S3Result};
+use metrics_registry::{MetricsRegistry, Record};
 use tokio::sync::{mpsc, oneshot};
 
 mod context;
-mod stored;
+pub(crate) mod stored;
 mod task;
 
 pub use context::MetricsContext;
@@ -81,7 +78,7 @@ pub struct RequestMetrics {
     totals: Totals,
     shared: Arc<SharedTotals>,
     completion: Option<oneshot::Sender<Completion>>,
-    mutations: mpsc::Sender<stored::Mutation>,
+    stored_updates: mpsc::Sender<Vec<Record>>,
 }
 
 impl RequestMetrics {
@@ -93,7 +90,7 @@ impl RequestMetrics {
         let context = Arc::new(context);
         let shared = Arc::new(SharedTotals::default());
         let (sender, receiver) = oneshot::channel();
-        let (mutations, queued) = mpsc::channel(1);
+        let (stored_updates, queued) = mpsc::channel(1);
 
         runtime.spawn(task::run(
             registry.clone(),
@@ -108,7 +105,7 @@ impl RequestMetrics {
             totals: Totals::default(),
             shared,
             completion: Some(sender),
-            mutations,
+            stored_updates,
         })
     }
 
@@ -117,44 +114,9 @@ impl RequestMetrics {
         &self.context
     }
 
-    pub(crate) async fn store_object(
-        &mut self,
-        objects: &ObjectRegistry,
-        key: &str,
-        blob_id: BlobId,
-        metadata: Metadata,
-    ) -> S3Result<StoreResult> {
-        let (reply, result) = oneshot::channel();
-        self.mutations
-            .send(stored::Mutation::Store {
-                objects: objects.clone(),
-                key: key.to_owned(),
-                blob_id,
-                metadata,
-                reply,
-            })
-            .await
-            .map_err(|_| s3s::s3_error!(InternalError, "metrics mutation task stopped"))?;
-        result.await.map_err(S3Error::internal_error)?
-    }
-
-    pub(crate) async fn delete_object_version(
-        &mut self,
-        objects: &ObjectRegistry,
-        key: &str,
-        version_id: Option<VersionId>,
-    ) -> S3Result<DeleteResult> {
-        let (reply, result) = oneshot::channel();
-        self.mutations
-            .send(stored::Mutation::Delete {
-                objects: objects.clone(),
-                key: key.to_owned(),
-                version_id,
-                reply,
-            })
-            .await
-            .map_err(|_| s3s::s3_error!(InternalError, "metrics mutation task stopped"))?;
-        result.await.map_err(S3Error::internal_error)?
+    /// Keeps gauge publication alive while a detached mutation is in progress.
+    pub(crate) fn stored_updates(&self) -> mpsc::Sender<Vec<Record>> {
+        self.stored_updates.clone()
     }
 
     /// Counts bytes consumed from the incoming body, before backend writes.

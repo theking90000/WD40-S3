@@ -10,6 +10,7 @@ mod error;
 mod metadata;
 #[cfg(feature = "metrics")]
 pub mod metrics;
+mod mutation;
 mod request;
 mod s3;
 
@@ -99,42 +100,6 @@ impl S3Adapter {
             .as_ref()
             .map(|registry| metrics::RequestMetrics::start(registry, context()))
             .transpose()
-    }
-
-    /// Publishes prepared object metadata through the request task when tracked.
-    pub(crate) async fn store_object(
-        &self,
-        key: &str,
-        blob_id: blob_system::BlobId,
-        metadata: object_registry::Metadata,
-        #[cfg(feature = "metrics")] metrics: &mut Option<metrics::RequestMetrics>,
-    ) -> s3s::S3Result<object_registry::StoreResult> {
-        #[cfg(feature = "metrics")]
-        if let Some(metrics) = metrics.as_mut() {
-            return metrics
-                .store_object(&self.objects, key, blob_id, metadata)
-                .await;
-        }
-        object_registry::traits::ObjectRegistry::store(&self.objects, key, blob_id, metadata)
-            .await
-            .map_err(error::object_registry_error)
-    }
-
-    pub(crate) async fn delete_object_version(
-        &self,
-        key: &str,
-        version_id: Option<object_registry::VersionId>,
-        #[cfg(feature = "metrics")] metrics: &mut Option<metrics::RequestMetrics>,
-    ) -> s3s::S3Result<object_registry::DeleteResult> {
-        #[cfg(feature = "metrics")]
-        if let Some(metrics) = metrics.as_mut() {
-            return metrics
-                .delete_object_version(&self.objects, key, version_id)
-                .await;
-        }
-        object_registry::traits::ObjectRegistry::delete(&self.objects, key, version_id)
-            .await
-            .map_err(error::object_registry_error)
     }
 
     /// Builds a service for an application-owned Hyper or Tower server.

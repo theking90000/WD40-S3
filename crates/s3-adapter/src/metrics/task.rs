@@ -3,18 +3,17 @@
 use std::{io, sync::Arc, time::Duration};
 
 use metrics_registry::{
-    Metric, MetricKind, MetricRecord, MetricsRegistry, traits::MetricsRegistry as _,
+    Metric, MetricKind, MetricRecord, MetricsRegistry, Record, traits::MetricsRegistry as _,
 };
 use tokio::sync::{mpsc, oneshot};
 
-use super::stored::Mutation;
 use super::{Completion, MetricsContext, RequestOutcome, SharedTotals, Totals};
 
 const FLUSH_INTERVAL: Duration = Duration::from_secs(5);
 
 enum Event {
     Complete(Completion),
-    Mutation(Option<Mutation>),
+    Stored(Option<Vec<Record>>),
     Flush,
 }
 
@@ -23,12 +22,12 @@ pub(super) async fn run(
     context: Arc<MetricsContext>,
     shared: Arc<SharedTotals>,
     mut completion: oneshot::Receiver<Completion>,
-    mut mutations: mpsc::Receiver<Mutation>,
+    mut stored_updates: mpsc::Receiver<Vec<Record>>,
 ) {
     publish(&registry, &context, vec![counter(Metric::RequestCount, 1)]).await;
 
     let mut previous = Totals::default();
-    let mut mutations_open = true;
+    let mut stored_updates_open = true;
     loop {
         // Select only the next observation. Once a registry write starts, it is
         // awaited to completion even if the request ends during that write.
@@ -38,24 +37,23 @@ pub(super) async fn run(
                 totals: shared.snapshot(),
                 outcome: RequestOutcome::Failed,
             })),
-            mutation = mutations.recv(), if mutations_open => Event::Mutation(mutation),
+            records = stored_updates.recv(), if stored_updates_open => Event::Stored(records),
             _ = tokio::time::sleep(FLUSH_INTERVAL) => Event::Flush,
         };
         let finished = match event {
-            Event::Mutation(Some(mutation)) => {
-                mutation.apply(&registry).await;
+            Event::Stored(Some(records)) => {
+                publish_records(&registry, records).await;
                 continue;
             }
-            Event::Mutation(None) => {
-                mutations_open = false;
+            Event::Stored(None) => {
+                stored_updates_open = false;
                 continue;
             }
             Event::Complete(end) => {
-                // Cancellation must not discard a mutation already accepted by
-                // the bounded queue. Finish those before publishing the outcome.
-                mutations.close();
-                while let Some(mutation) = mutations.recv().await {
-                    mutation.apply(&registry).await;
+                // Detached mutations retain a sender. Wait for them to submit
+                // their deltas even if the request has already been dropped.
+                while let Some(records) = stored_updates.recv().await {
+                    publish_records(&registry, records).await;
                 }
                 Some(end)
             }
@@ -123,7 +121,11 @@ async fn publish(registry: &MetricsRegistry, context: &MetricsContext, metrics: 
     if metrics.is_empty() {
         return;
     }
-    if let Err(error) = registry.record(context.records(metrics)).await {
+    publish_records(registry, context.records(metrics)).await;
+}
+
+async fn publish_records(registry: &MetricsRegistry, records: Vec<Record>) {
+    if let Err(error) = registry.record(records).await {
         eprintln!("S3 metrics recording failed: {error}");
     }
 }
