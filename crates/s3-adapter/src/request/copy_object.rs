@@ -1,5 +1,3 @@
-use std::time::SystemTime;
-
 use access_controller::Action;
 use object_registry::{Metadata, VersionId, traits::ObjectRegistry as _};
 use s3s::{
@@ -64,8 +62,8 @@ pub(crate) async fn copy_object(
     let blob_id = record
         .blob_id
         .ok_or_else(|| s3s::s3_error!(InternalError, "object has no blob reference"))?;
-    let object_metadata = copy_metadata(&mut input, record.metadata)?;
-    let last_modified = SystemTime::now().into();
+    let mut object_metadata = copy_metadata(&mut input, record.metadata)?;
+    let last_modified = metadata::set_last_modified(&mut object_metadata)?;
 
     // Finalized blobs are immutable. A new object version can share their bytes.
     // A store flush error does not imply that the new version was rolled back.
@@ -127,6 +125,7 @@ fn validate_input(input: &CopyObjectInput) -> S3Result<()> {
                 || key.contains('\0')
                 || key.eq_ignore_ascii_case("size")
                 || key.eq_ignore_ascii_case("content-type")
+                || key.eq_ignore_ascii_case("last-modified")
         })
     }) {
         return Err(s3s::s3_error!(

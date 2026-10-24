@@ -38,6 +38,7 @@ pub(crate) async fn get_object(
     let mut metadata = record.metadata;
     let length = metadata::take_size(&mut metadata)?;
     let content_type = metadata::take_content_type(&mut metadata)?;
+    let last_modified = metadata::take_last_modified(&mut metadata)?;
 
     let (selected, content_length, content_range) = select_range(req.input.range, length)?;
     // Read the same exclusive-end selection used to build the response headers.
@@ -52,6 +53,7 @@ pub(crate) async fn get_object(
         content_range,
         content_type: Some(content_type),
         e_tag: Some(metadata::etag_from_version(record.version_id)),
+        last_modified: Some(last_modified),
         metadata: Some(metadata.into_iter().collect()),
         version_id: Some(record.version_id.to_string()),
         body: Some(body),

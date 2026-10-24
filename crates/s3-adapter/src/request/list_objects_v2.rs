@@ -306,10 +306,12 @@ pub(crate) async fn list_page(
                     state.last_common_prefix = Some(group);
                 } else {
                     let size = metadata::take_size(&mut record.metadata)?;
+                    let last_modified = metadata::take_last_modified(&mut record.metadata)?;
                     contents.push(Object {
                         key: Some(encode_value(key.to_owned(), encode)),
                         size: Some(metadata::content_length(size)?),
                         e_tag: Some(metadata::etag_from_version(record.version_id)),
+                        last_modified: Some(last_modified),
                         ..Default::default()
                     });
                 }

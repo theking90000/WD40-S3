@@ -1,7 +1,36 @@
 //! Interprets the object metadata conventions used by the adapters.
 
+use std::time::SystemTime;
+
 use object_registry::{Metadata, VersionId};
-use s3s::{S3Error, S3Result, dto::ETag};
+use s3s::{
+    S3Error, S3Result,
+    dto::{ETag, Timestamp, TimestampFormat},
+};
+
+pub(crate) fn set_last_modified(metadata: &mut Metadata) -> S3Result<Timestamp> {
+    let timestamp = Timestamp::from(SystemTime::now());
+    let mut value = Vec::new();
+    timestamp
+        .format(TimestampFormat::DateTime, &mut value)
+        .map_err(S3Error::internal_error)?;
+    let value = String::from_utf8(value).map_err(S3Error::internal_error)?;
+    // Return the persisted millisecond precision, including in CopyObject.
+    let timestamp =
+        Timestamp::parse(TimestampFormat::DateTime, &value).map_err(S3Error::internal_error)?;
+    metadata.insert("last-modified".to_owned(), value);
+    Ok(timestamp)
+}
+
+pub(crate) fn take_last_modified(metadata: &mut Metadata) -> S3Result<Timestamp> {
+    match metadata.remove("last-modified") {
+        Some(value) => {
+            Timestamp::parse(TimestampFormat::DateTime, &value).map_err(S3Error::internal_error)
+        }
+        // Objects written before timestamps were stored use the Unix epoch.
+        None => Ok(SystemTime::UNIX_EPOCH.into()),
+    }
+}
 
 pub(crate) fn take_size(metadata: &mut Metadata) -> S3Result<u64> {
     metadata

@@ -45,6 +45,7 @@ pub(crate) async fn put_object(
             .unwrap_or_else(|| "application/octet-stream".to_owned()),
     );
 
+    metadata::set_last_modified(&mut object_metadata)?;
     let version_id = adapter
         .objects
         .store(&key, blob_id, object_metadata)
@@ -217,6 +218,7 @@ fn validate_input(input: &PutObjectInput) -> S3Result<Option<u64>> {
                 || key.contains('\0')
                 || key.eq_ignore_ascii_case("size")
                 || key.eq_ignore_ascii_case("content-type")
+                || key.eq_ignore_ascii_case("last-modified")
         })
     }) {
         return Err(s3s::s3_error!(

@@ -5,7 +5,7 @@ use s3s::{
     dto::{CreateMultipartUploadInput, CreateMultipartUploadOutput, StorageClass},
 };
 
-use crate::{S3Adapter, access::S3Access, to_key};
+use crate::{S3Adapter, access::S3Access, metadata, to_key};
 
 pub(crate) async fn create_multipart_upload_access(
     access: &S3Access,
@@ -43,6 +43,7 @@ pub(crate) async fn create_multipart_upload(
 
     // The registries do not share a transaction. A failure can leave an open
     // blob behind, and a flush error does not imply rollback.
+    metadata::set_last_modified(&mut metadata)?;
     let upload_id = adapter
         .multipart
         .create(MultipartUpload {
@@ -77,6 +78,7 @@ fn validate_input(input: &CreateMultipartUploadInput) -> S3Result<()> {
                 || key.contains('\0')
                 || key.eq_ignore_ascii_case("size")
                 || key.eq_ignore_ascii_case("content-type")
+                || key.eq_ignore_ascii_case("last-modified")
         })
     }) {
         return Err(s3s::s3_error!(

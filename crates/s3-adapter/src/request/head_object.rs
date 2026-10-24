@@ -36,6 +36,7 @@ pub(crate) async fn head_object(
     let length = metadata::take_size(&mut metadata)?;
     let content_length = metadata::content_length(length)?;
     let content_type = metadata::take_content_type(&mut metadata)?;
+    let last_modified = metadata::take_last_modified(&mut metadata)?;
 
     let version_id = record.version_id.to_string();
 
@@ -44,6 +45,7 @@ pub(crate) async fn head_object(
         content_length: Some(content_length),
         content_type: Some(content_type),
         e_tag: Some(metadata::etag_from_version(record.version_id)),
+        last_modified: Some(last_modified),
         metadata: Some(metadata.into_iter().collect()),
         version_id: Some(version_id),
         ..Default::default()

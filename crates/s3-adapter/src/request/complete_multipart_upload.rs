@@ -93,6 +93,10 @@ pub(crate) async fn complete_multipart_upload(
     upload
         .metadata
         .insert("size".to_owned(), length.to_string());
+    // Keep the initiation date, with completion time for older sessions.
+    if !upload.metadata.contains_key("last-modified") {
+        metadata::set_last_modified(&mut upload.metadata)?;
+    }
     let version_id = adapter
         .objects
         .store(&to_key!(input), upload.blob_id, upload.metadata)
