@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { ArrowRightIcon, ChartColumnIcon, ChartPieIcon, ChevronRightIcon, DatabaseIcon, HistoryIcon, KeyRoundIcon, UsersIcon } from "lucide-react";
+import { ArrowRightIcon, ChartColumnIcon, ChevronRightIcon, DatabaseIcon, HistoryIcon, KeyRoundIcon, UsersIcon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { CurrentUser } from "~/features/auth/session.ts";
 import type { Organization } from "~/features/organizations/api.ts";
@@ -10,6 +10,10 @@ import { organizationErrorMessage, organizationQuery } from "~/features/organiza
 import { bucketErrorMessage, organizationBucketsQuery } from "~/features/organizations/buckets/api.ts";
 import { BucketAccessBadge } from "~/features/organizations/buckets/components/access";
 import { BucketDetails } from "~/features/organizations/buckets/components/bucket-details";
+import { organizationDashboardQuery } from "~/features/organizations/dashboard/api.ts";
+import { BucketDistribution } from "~/features/organizations/dashboard/components/bucket-distribution";
+import { DashboardMetrics } from "~/features/organizations/dashboard/components/dashboard-metrics";
+import { DashboardStatus } from "~/features/organizations/dashboard/components/dashboard-status";
 import { useOrganization, useOrganizations } from "~/features/organizations/router.ts";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -25,26 +29,6 @@ export default function OrganizationHome() {
   return organization ? <Overview key={JSON.stringify(organizationQuery(user, organization.id).queryKey)} user={user} organization={organization} /> : null;
 }
 
-function MetricCard({ title, tag, status = "Pas disponible", children }: {
-  title: string;
-  tag?: string;
-  status?: string;
-  children?: ReactNode;
-}) {
-  return (
-    <Card className="min-h-[130px] gap-0 p-4">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="font-sans text-[11.5px] font-medium text-muted-foreground">{title}</h2>
-        {tag && <span className="text-[10px] text-muted-foreground">{tag}</span>}
-      </div>
-      <p className="mt-3 font-display text-metric tabular-nums" aria-label="Valeur indisponible">—</p>
-      <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-3 text-[10px] text-muted-foreground">
-        <span>{status}</span>{children}
-      </div>
-    </Card>
-  );
-}
-
 function Unavailable({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) {
   return (
     <div className="flex min-h-54 flex-1 flex-col items-center justify-center gap-3 px-5 py-8 text-center text-xs text-muted-foreground">
@@ -57,6 +41,7 @@ function Unavailable({ icon: Icon, children }: { icon: LucideIcon; children: Rea
 function Overview({ user, organization }: { user: CurrentUser; organization: Organization }) {
   const details = useQuery(organizationQuery(user, organization.id));
   const buckets = useQuery(organizationBucketsQuery(user, organization.id));
+  const dashboard = useQuery(organizationDashboardQuery(user, organization.id));
   const [notice, setNotice] = useState("");
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -106,9 +91,6 @@ function Overview({ user, organization }: { user: CurrentUser; organization: Org
               </Link>
             </Badge>)}
           </div>
-          <Link to={`/${organization.id}/credentials#s3-connection`} className="inline-flex items-center gap-1.5 text-[10.5px] text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
-            Configurer un client S3<ArrowRightIcon aria-hidden="true" className="size-3" />
-          </Link>
         </div>
       </div>
 
@@ -118,14 +100,9 @@ function Overview({ user, organization }: { user: CurrentUser; organization: Org
         <Button type="button" variant="outline" size="sm" disabled={details.isFetching} onClick={() => void details.refetch()}>Réessayer</Button>
       </div>}
 
-      <div className="grid gap-3 min-[621px]:grid-cols-2 min-[1161px]:grid-cols-4">
-        <MetricCard title="Stockage utilisé" />
-        <MetricCard title="Objets stockés" tag="Total">
-          {counts && <Link to={`/${organization.id}/buckets`} className="underline-offset-4 hover:text-foreground hover:underline">{numberFormat.format(counts.buckets)} bucket{counts.buckets === 1 ? "" : "s"}</Link>}
-        </MetricCard>
-        <MetricCard title="Requêtes · 24 h" tag="S3 API" />
-        <MetricCard title="Volume de données transféré · 24 h" />
-      </div>
+      <DashboardStatus data={dashboard.data} error={dashboard.error} loading={dashboard.isPending}
+        refreshing={dashboard.isFetching} onRefresh={() => void dashboard.refetch()} />
+      <DashboardMetrics data={dashboard.data} loading={dashboard.isPending} />
 
       <div className="grid gap-3.5 min-[1161px]:grid-cols-[minmax(0,1.7fr)_minmax(275px,0.82fr)]">
         <Card className="min-w-0 gap-0 pb-0">
@@ -138,10 +115,7 @@ function Overview({ user, organization }: { user: CurrentUser; organization: Org
           </CardHeader>
           <Unavailable icon={ChartColumnIcon}>Statistiques non disponibles</Unavailable>
         </Card>
-        <Card className="min-w-0 gap-0 pb-0">
-          <CardHeader><h2 className="text-card-title">Répartition</h2><CardDescription>Par bucket</CardDescription></CardHeader>
-          <Unavailable icon={ChartPieIcon}>Répartition non disponible</Unavailable>
-        </Card>
+        <BucketDistribution data={dashboard.data} loading={dashboard.isPending} />
       </div>
 
       <div className="grid gap-3.5 min-[1161px]:grid-cols-[minmax(0,1.42fr)_minmax(300px,1fr)]">

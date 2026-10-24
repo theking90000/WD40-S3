@@ -555,7 +555,7 @@ object body bytes tracked by the S3 adapter, including partial failed transfers.
 Registry failures, unsupported resolutions, expired history and invalid metric
 totals return HTTP 503 with `{"error":"metrics_unavailable"}`. Database failures
 return HTTP 500 with `{"error":"database_error"}`. This endpoint does not supply
-the 7/30-day chart, and the console is not connected to it yet.
+the 7/30-day chart.
 
 ### Organization members
 
@@ -1084,7 +1084,21 @@ The query key extends `organizationsQuery(user).queryKey` with the organization 
 and `dashboard`. Data stays fresh for 30 seconds. When observed in the browser,
 the query refreshes every 60 seconds, with background polling disabled. These
 options do not start any requests until a consumer fetches or observes the query.
-The console does not display dashboard metrics yet.
+
+The overview observes this query once for its four metric cards and bucket
+distribution. Dashboard components live in `features/organizations/dashboard/components/`.
+Initial loading uses skeletons; initial failures show unavailable values and a
+retry button. Refresh failures retain the last successful values and show an
+error message. Refreshes run automatically while the overview is visible.
+The existing organization detail and bucket queries continue to provide resource
+counts and recent bucket metadata independently of metrics failures.
+
+`dashboard/format.ts` formats counts, decimal byte units and percentages with
+the `fr-BE` locale. The distribution sorts buckets by descending
+storage usage, with named percentage bars. Organizations without buckets and
+buckets with no measured storage have separate empty states. Zero totals do not
+produce invalid percentages. The 7/30-day chart and recent activity remain
+unavailable until their corresponding APIs are implemented.
 
 Session-generation checks reject late responses and errors, including changes
 during response parsing or membership refresh. An `organization_not_found` error
@@ -1117,7 +1131,7 @@ to login and a lost organization membership returns to the chooser. The Rust
 fallback serves direct `/members` loads under the configured deployment prefix.
 
 The focused integration check is available from `portal/console/` with
-`node --test src/features/auth/auth.test.ts src/features/organizations/organizations.test.ts src/features/organizations/dashboard/dashboard.test.ts`.
+`node --test src/features/auth/auth.test.ts src/features/organizations/organizations.test.ts src/features/organizations/dashboard/*.test.ts`.
 Node.js strips the TypeScript types directly.
 It uses mocked HTTP and a memory router, without
 an IdP or browser service.
