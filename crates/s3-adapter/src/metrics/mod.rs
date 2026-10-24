@@ -12,22 +12,13 @@
 
 use std::{
     io,
-    pin::Pin,
     sync::{
         Arc,
         atomic::{AtomicI64, Ordering},
     },
-    task::{Context, Poll},
 };
 
-use bytes::Bytes;
-use futures_util::Stream;
 use metrics_registry::MetricsRegistry;
-use s3s::{
-    StdError,
-    dto::StreamingBlob,
-    stream::{ByteStream, RemainingLength},
-};
 use tokio::sync::oneshot;
 
 mod context;
@@ -136,19 +127,6 @@ impl RequestMetrics {
         Ok(())
     }
 
-    /// Moves completion into the outgoing body, after backend prefetch.
-    pub(crate) fn track_download(self, body: StreamingBlob) -> StreamingBlob {
-        // HTTP may discard a known-empty body without ever polling it.
-        if body.remaining_length().exact() == Some(0) {
-            self.finish(RequestOutcome::Success);
-            return body;
-        }
-        StreamingBlob::new(DownloadBody {
-            body,
-            metrics: Some(self),
-        })
-    }
-
     /// Signals the final outcome and transfers remaining totals synchronously.
     /// Publication continues in the independent task after this method returns.
     pub fn finish(mut self, outcome: RequestOutcome) {
@@ -168,69 +146,5 @@ impl RequestMetrics {
 impl Drop for RequestMetrics {
     fn drop(&mut self) {
         self.complete(RequestOutcome::Failed);
-    }
-}
-
-/// Counts only chunks returned to the consumer. Dropping this body also drops
-/// its unfinished tracker, sending the final totals with a failed outcome.
-struct DownloadBody {
-    body: StreamingBlob,
-    metrics: Option<RequestMetrics>,
-}
-
-impl DownloadBody {
-    fn finish(&mut self, outcome: RequestOutcome) {
-        if let Some(metrics) = self.metrics.take() {
-            metrics.finish(outcome);
-        }
-    }
-}
-
-impl Stream for DownloadBody {
-    type Item = Result<Bytes, StdError>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let this = self.get_mut();
-        if this.metrics.is_none() {
-            return Poll::Ready(None);
-        }
-        match Pin::new(&mut this.body).poll_next(cx) {
-            Poll::Ready(Some(Ok(bytes))) => {
-                if let Some(metrics) = this.metrics.as_mut() {
-                    if let Err(error) = metrics.add_downloaded_bytes(bytes.len()) {
-                        this.finish(RequestOutcome::Failed);
-                        return Poll::Ready(Some(Err(Box::new(error))));
-                    }
-                }
-                Poll::Ready(Some(Ok(bytes)))
-            }
-            Poll::Ready(Some(Err(error))) => {
-                this.finish(RequestOutcome::Failed);
-                Poll::Ready(Some(Err(error)))
-            }
-            Poll::Ready(None) => {
-                this.finish(RequestOutcome::Success);
-                Poll::Ready(None)
-            }
-            Poll::Pending => Poll::Pending,
-        }
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        if self.metrics.is_none() {
-            (0, Some(0))
-        } else {
-            self.body.size_hint()
-        }
-    }
-}
-
-impl ByteStream for DownloadBody {
-    fn remaining_length(&self) -> RemainingLength {
-        if self.metrics.is_none() {
-            RemainingLength::new_exact(0)
-        } else {
-            self.body.remaining_length()
-        }
     }
 }

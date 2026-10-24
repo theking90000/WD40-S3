@@ -103,16 +103,18 @@ use std::{
     future::{Future, poll_fn},
     io,
     ops::Range,
+    task::Poll,
 };
 
 use blob_system::{BlobId, ReadBlob, ReadFrame};
 use bytes::Bytes;
-use futures_util::StreamExt;
 use s3s::{S3Error, S3Result, dto::StreamingBlob};
 use sync_wrapper::SyncStream;
 use tokio::sync::mpsc;
 
 use crate::S3Adapter;
+#[cfg(feature = "metrics")]
+use crate::metrics::{RequestMetrics, RequestOutcome};
 
 /// Reads the first frame before returning and drives CARBON during backpressure.
 /// Nonempty bodies require a Tokio runtime. Dropping the body stops the reader.
@@ -128,12 +130,18 @@ pub(crate) async fn read_blob(
     adapter: &S3Adapter,
     blob_id: BlobId,
     selected: Range<u64>,
+    #[cfg(feature = "metrics")] mut metrics: Option<RequestMetrics>,
 ) -> S3Result<StreamingBlob> {
     let expected = selected
         .end
         .checked_sub(selected.start)
         .ok_or_else(|| s3s::s3_error!(InvalidRange))?;
     if expected == 0 {
+        // HTTP may discard a known-empty body without ever polling it.
+        #[cfg(feature = "metrics")]
+        if let Some(metrics) = metrics {
+            metrics.finish(RequestOutcome::Success);
+        }
         return Ok(StreamingBlob::from_bytes(Bytes::new()));
     }
 
@@ -145,11 +153,49 @@ pub(crate) async fn read_blob(
         .await
         .ok_or_else(|| s3s::s3_error!(InternalError, "nonempty blob returned no frames"))?
         .map_err(S3Error::internal_error)?;
-    // Reinsert the prefetched chunk before exposing the remaining channel items.
-    // Polling this stream only receives; producer progression is independent of
-    // these polls. SyncStream provides the S3S type bound, not that progression.
-    let stream = futures_util::stream::poll_fn(move |cx| receiver.poll_recv(cx));
-    let stream = futures_util::stream::once(async move { Ok::<_, io::Error>(first) }).chain(stream);
+    // Count the prefetched chunk only when it is returned to the consumer.
+    // The stream owns the tracker, so abandoning it signals failure through Drop.
+    // Producer progression remains independent of these polls.
+    let mut first = Some(first);
+    let mut finished = false;
+    let stream = futures_util::stream::poll_fn(move |cx| {
+        if finished {
+            return Poll::Ready(None);
+        }
+        let next = match first.take() {
+            Some(bytes) => Poll::Ready(Some(Ok(bytes))),
+            None => receiver.poll_recv(cx),
+        };
+        match next {
+            Poll::Ready(Some(Ok(bytes))) => {
+                #[cfg(feature = "metrics")]
+                if let Some(tracker) = metrics.as_mut() {
+                    if let Err(error) = tracker.add_downloaded_bytes(bytes.len()) {
+                        finished = true;
+                        drop(metrics.take());
+                        receiver.close();
+                        return Poll::Ready(Some(Err(error)));
+                    }
+                }
+                Poll::Ready(Some(Ok(bytes)))
+            }
+            Poll::Ready(Some(Err(error))) => {
+                finished = true;
+                #[cfg(feature = "metrics")]
+                drop(metrics.take());
+                Poll::Ready(Some(Err(error)))
+            }
+            Poll::Ready(None) => {
+                finished = true;
+                #[cfg(feature = "metrics")]
+                if let Some(metrics) = metrics.take() {
+                    metrics.finish(RequestOutcome::Success);
+                }
+                Poll::Ready(None)
+            }
+            Poll::Pending => Poll::Pending,
+        }
+    });
     Ok(StreamingBlob::wrap(SyncStream::new(stream)))
 }
 

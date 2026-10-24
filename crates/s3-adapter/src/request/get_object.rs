@@ -46,12 +46,14 @@ pub(crate) async fn get_object(
     // The body module contains the temporary task/channel bridge needed to keep
     // CARBON progressing during HTTP backpressure. TODO(s3-body-progress): its
     // documented replacement must preserve this request-level range contract.
-    let body = body::read_blob(adapter, blob_id, selected).await?;
-    #[cfg(feature = "metrics")]
-    let body = match metrics {
-        Some(metrics) => metrics.track_download(body),
-        None => body,
-    };
+    let body = body::read_blob(
+        adapter,
+        blob_id,
+        selected,
+        #[cfg(feature = "metrics")]
+        metrics,
+    )
+    .await?;
 
     Ok(S3Response::new(GetObjectOutput {
         accept_ranges: Some("bytes".to_owned()),
