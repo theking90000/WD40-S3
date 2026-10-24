@@ -3146,6 +3146,7 @@ dependencies = [
  "getrandom 0.4.3",
  "hyper",
  "hyper-util",
+ "metrics-registry",
  "object-registry",
  "openidconnect",
  "policy-registry",

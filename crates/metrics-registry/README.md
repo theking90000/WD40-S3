@@ -78,19 +78,28 @@ code or enable tonic dependencies.
 ```sh
 cargo run -p metrics-registry --features cli,grpc-server -- \
   --listen 127.0.0.1:50057 \
-  --metrics-registry-path ./data/metrics-registry \
-  --metrics-registry-policy 300:86400 \
-  --metrics-registry-policy 3600:2592000
+  --metrics-registry-path ./data/metrics-registry
 ```
 
 The default listen address is `127.0.0.1:50057`; the default database directory
 is `./data/metrics-registry`. Ctrl-C requests graceful shutdown.
 
-At least one `--metrics-registry-policy RESOLUTION:RETENTION` is required for
-local storage. Both numbers are whole seconds. Resolutions must be nonzero and
-distinct; each retention must be at least as long as its resolution. The example
-configures five-minute windows retained for a day and hourly windows retained
-for thirty days. No retention defaults are supplied.
+When neither `--metrics-registry-policy` nor `WD40_METRICS_REGISTRY_POLICY` is
+supplied, the CLI uses these local history policies:
+
+| Resolution | Retention | Points per retention period | CLI value in seconds |
+| --- | --- | --- | --- |
+| 5 minutes | 6 hours | 72 | `300:21600` |
+| 30 minutes | 48 hours | 96 | `1800:172800` |
+| 1 hour | 14 days | 336 | `3600:1209600` |
+| 1 day | 1 year, 365 days | 365 | `86400:31536000` |
+
+Custom policies replace the defaults. Use
+`--metrics-registry-policy RESOLUTION:RETENTION`, with both numbers in whole
+seconds. Resolutions must be nonzero and distinct; each retention must be at
+least as long as its resolution. These defaults apply to
+`MetricsRegistryConfig`, including when used by the S3 adapter or embedded S3
+in the portal. Direct `LocalRegistry` callers supply their own `Config`.
 
 | Option | Environment variable |
 | --- | --- |

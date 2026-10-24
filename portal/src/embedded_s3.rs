@@ -17,6 +17,7 @@ use hyper::{
     service::{Service, service_fn},
 };
 use hyper_util::{rt::TokioIo, server::graceful::GracefulShutdown, service::TowerToHyperService};
+use metrics_registry::cli::MetricsRegistryConfig;
 use object_registry::cli::ObjectRegistryConfig;
 use policy_registry::PolicyRegistry;
 use s3_adapter::{
@@ -47,6 +48,8 @@ pub struct EmbeddedS3Args {
     objects: ObjectRegistryConfig,
     #[command(flatten)]
     multipart: S3MultipartRegistryConfig,
+    #[command(flatten)]
+    metrics: MetricsRegistryConfig,
     #[command(flatten)]
     blobs: BlobRegistryConfig,
     #[command(flatten)]
@@ -137,6 +140,7 @@ impl EmbeddedS3Args {
             self.multipart.open().await.map_err(io::Error::other)?,
             budget,
         )
+        .with_metrics(self.metrics.open().await.map_err(io::Error::other)?)
         .into_service_with_host(s3_host);
         Ok(EmbeddedS3 {
             host: host.into(),

@@ -17,11 +17,12 @@ pub struct MetricsRegistryConfig {
     pub metrics_registry_path: PathBuf,
 
     /// Local history policy as resolution:retention, both in whole seconds. Repeat for each resolution.
-    /// At least one policy is required when opening local storage.
+    /// Defaults to 5m:6h, 30m:48h, 1h:14d and 1d:365d.
     #[arg(
         long,
         global = true,
         env = "WD40_METRICS_REGISTRY_POLICY",
+        default_value = "300:21600,1800:172800,3600:1209600,86400:31536000",
         value_name = "RESOLUTION:RETENTION",
         value_delimiter = ',',
         value_parser = parse_policy
