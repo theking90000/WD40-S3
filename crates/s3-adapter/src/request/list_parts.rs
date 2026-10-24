@@ -27,6 +27,7 @@ pub(crate) async fn list_parts_access(
 pub(crate) async fn list_parts(
     adapter: &S3Adapter,
     req: S3Request<ListPartsInput>,
+    #[cfg(feature = "metrics")] metrics: Option<crate::metrics::RequestMetrics>,
 ) -> S3Result<S3Response<ListPartsOutput>> {
     let input = req.input;
     let (max_parts, marker) = validate_input(&input)?;
@@ -52,6 +53,8 @@ pub(crate) async fn list_parts(
         .await
         .map_err(S3Error::internal_error)?;
     let (parts, is_truncated, next_marker) = list_page(&registered, max_parts, marker)?;
+
+    success!(metrics);
 
     Ok(S3Response::new(ListPartsOutput {
         bucket: Some(input.bucket),

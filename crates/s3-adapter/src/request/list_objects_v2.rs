@@ -220,8 +220,10 @@ pub(super) fn common_prefix(key: &str, prefix: &str, delimiter: Option<&str>) ->
 pub(crate) async fn list_objects_v2(
     adapter: &S3Adapter,
     req: S3Request<ListObjectsV2Input>,
+    #[cfg(feature = "metrics")] metrics: Option<crate::metrics::RequestMetrics>,
 ) -> S3Result<S3Response<ListObjectsV2Output>> {
     let (response, _) = list_page(adapter, req, true).await?;
+    success!(metrics);
     Ok(response)
 }
 

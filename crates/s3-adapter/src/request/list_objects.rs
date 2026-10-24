@@ -40,9 +40,11 @@ pub(crate) async fn list_objects_access(
 pub(crate) async fn list_objects(
     adapter: &S3Adapter,
     req: S3Request<ListObjectsInput>,
+    #[cfg(feature = "metrics")] metrics: Option<crate::metrics::RequestMetrics>,
 ) -> S3Result<S3Response<ListObjectsOutput>> {
     let (response, next_marker) =
         list_objects_v2::list_page(adapter, req.map_input(to_v2), false).await?;
+    success!(metrics);
     Ok(response.map_output(|output| {
         let next_marker = if output.is_truncated == Some(true) && output.delimiter.is_some() {
             next_marker

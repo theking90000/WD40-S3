@@ -26,6 +26,7 @@ pub(crate) async fn upload_part_access(
 pub(crate) async fn upload_part(
     adapter: &S3Adapter,
     mut req: S3Request<UploadPartInput>,
+    #[cfg(feature = "metrics")] mut metrics: Option<crate::metrics::RequestMetrics>,
 ) -> S3Result<S3Response<UploadPartOutput>> {
     let (part_id, expected_length) = validate_input(&req.input)?;
     let upload_id = req
@@ -88,6 +89,12 @@ pub(crate) async fn upload_part(
         let Some(data) = next.transpose().map_err(body_error)? else {
             break;
         };
+        #[cfg(feature = "metrics")]
+        if let Some(metrics) = metrics.as_mut() {
+            metrics
+                .add_uploaded_bytes(data.len())
+                .map_err(S3Error::internal_error)?;
+        }
         check_chunk(writer.length(), data.len(), expected_length)?;
         if !data.is_empty() {
             writer
@@ -109,6 +116,8 @@ pub(crate) async fn upload_part(
         req.input.content_md5.as_deref(),
     )?;
     let stream_id = writer.close().await.map_err(S3Error::internal_error)?;
+
+    success!(metrics);
 
     Ok(S3Response::new(UploadPartOutput {
         e_tag: Some(ETag::Strong(stream_id.to_string())),

@@ -23,8 +23,11 @@ pub(crate) async fn delete_object_access(
 pub(crate) async fn delete_object(
     adapter: &S3Adapter,
     req: S3Request<DeleteObjectInput>,
+    #[cfg(feature = "metrics")] metrics: Option<crate::metrics::RequestMetrics>,
 ) -> S3Result<S3Response<DeleteObjectOutput>> {
-    Ok(S3Response::new(delete(adapter, &req.input).await?))
+    let response = S3Response::new(delete(adapter, &req.input).await?);
+    success!(metrics);
+    Ok(response)
 }
 
 pub(super) async fn delete(

@@ -36,6 +36,7 @@ async fn compile_policy(
 pub(crate) async fn delete_objects(
     adapter: &S3Adapter,
     mut req: S3Request<DeleteObjectsInput>,
+    #[cfg(feature = "metrics")] metrics: Option<crate::metrics::RequestMetrics>,
 ) -> S3Result<S3Response<DeleteObjectsOutput>> {
     validate_input(&req.input)?;
     let policy = match req.extensions.remove::<Arc<CompiledPolicy>>() {
@@ -67,6 +68,8 @@ pub(crate) async fn delete_objects(
         };
         record_result(&mut output, object, result, quiet);
     }
+
+    success!(metrics);
 
     Ok(S3Response::new(output))
 }

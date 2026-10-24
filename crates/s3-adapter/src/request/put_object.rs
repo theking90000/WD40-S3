@@ -25,9 +25,17 @@ pub(crate) async fn put_object_access(
 pub(crate) async fn put_object(
     adapter: &S3Adapter,
     mut req: S3Request<PutObjectInput>,
+    #[cfg(feature = "metrics")] mut metrics: Option<crate::metrics::RequestMetrics>,
 ) -> S3Result<S3Response<PutObjectOutput>> {
     let expected_length = validate_input(&req.input)?;
-    let (blob_id, length, checksum) = write_blob(adapter, &mut req, expected_length).await?;
+    let (blob_id, length, checksum) = write_blob(
+        adapter,
+        &mut req,
+        expected_length,
+        #[cfg(feature = "metrics")]
+        &mut metrics,
+    )
+    .await?;
 
     let key = to_key!(req.input);
     let mut object_metadata = req
@@ -52,6 +60,8 @@ pub(crate) async fn put_object(
         .await
         .map_err(error::object_registry_error)?;
 
+    success!(metrics);
+
     Ok(S3Response::new(PutObjectOutput {
         e_tag: Some(metadata::etag_from_version(version_id)),
         version_id: Some(version_id.to_string()),
@@ -73,6 +83,7 @@ async fn write_blob(
     adapter: &S3Adapter,
     req: &mut S3Request<PutObjectInput>,
     expected_length: Option<u64>,
+    #[cfg(feature = "metrics")] metrics: &mut Option<crate::metrics::RequestMetrics>,
 ) -> S3Result<(BlobId, u64, Checksum)> {
     let (mut hasher, trailer_names) = prepare_checksums(
         req,
@@ -90,7 +101,14 @@ async fn write_blob(
         .unwrap_or_else(|| StreamingBlob::from_bytes(Bytes::new()));
 
     let first = loop {
-        match body.next().await.transpose().map_err(body_error)? {
+        let chunk = body.next().await.transpose().map_err(body_error)?;
+        #[cfg(feature = "metrics")]
+        if let (Some(metrics), Some(data)) = (metrics.as_mut(), chunk.as_ref()) {
+            metrics
+                .add_uploaded_bytes(data.len())
+                .map_err(S3Error::internal_error)?;
+        }
+        match chunk {
             Some(data) if data.is_empty() => continue,
             first => break first,
         }
@@ -148,6 +166,12 @@ async fn write_blob(
 
             chunk = next.transpose().map_err(body_error)?;
             if let Some(data) = &chunk {
+                #[cfg(feature = "metrics")]
+                if let Some(metrics) = metrics.as_mut() {
+                    metrics
+                        .add_uploaded_bytes(data.len())
+                        .map_err(S3Error::internal_error)?;
+                }
                 check_chunk(writer.length(), data.len(), expected_length)?;
             }
         }

@@ -84,6 +84,7 @@ async fn load_buckets(
 pub(crate) async fn list_buckets(
     adapter: &S3Adapter,
     mut req: S3Request<ListBucketsInput>,
+    #[cfg(feature = "metrics")] metrics: Option<crate::metrics::RequestMetrics>,
 ) -> S3Result<S3Response<ListBucketsOutput>> {
     let buckets = match req.extensions.remove::<ListedBuckets>() {
         Some(buckets) => buckets,
@@ -92,7 +93,9 @@ pub(crate) async fn list_buckets(
             load_buckets(&access, req.credentials.as_ref()).await?
         }
     };
-    Ok(S3Response::new(list_page(req.input, buckets)?))
+    let response = S3Response::new(list_page(req.input, buckets)?);
+    success!(metrics);
+    Ok(response)
 }
 
 fn list_page(input: ListBucketsInput, buckets: ListedBuckets) -> S3Result<ListBucketsOutput> {

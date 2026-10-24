@@ -33,6 +33,7 @@ pub(crate) async fn list_multipart_uploads_access(
 pub(crate) async fn list_multipart_uploads(
     adapter: &S3Adapter,
     mut req: S3Request<ListMultipartUploadsInput>,
+    #[cfg(feature = "metrics")] metrics: Option<crate::metrics::RequestMetrics>,
 ) -> S3Result<S3Response<ListMultipartUploadsOutput>> {
     let (max_uploads, encode) = validate_input(&req.input)?;
     let mut cursor = initial_cursor(&req.input)?;
@@ -116,6 +117,8 @@ pub(crate) async fn list_multipart_uploads(
         next_key_marker = None;
         next_upload_id_marker = None;
     }
+    success!(metrics);
+
     Ok(S3Response::new(ListMultipartUploadsOutput {
         bucket: Some(input.bucket),
         prefix: Some(encode_value(prefix.to_owned(), encode)),

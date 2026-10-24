@@ -26,6 +26,7 @@ pub(crate) async fn copy_object_access(
 pub(crate) async fn copy_object(
     adapter: &S3Adapter,
     req: S3Request<CopyObjectInput>,
+    #[cfg(feature = "metrics")] metrics: Option<crate::metrics::RequestMetrics>,
 ) -> S3Result<S3Response<CopyObjectOutput>> {
     let mut input = req.input;
     validate_input(&input)?;
@@ -72,6 +73,8 @@ pub(crate) async fn copy_object(
         .store(&key, blob_id, object_metadata)
         .await
         .map_err(error::object_registry_error)?;
+
+    success!(metrics);
 
     Ok(S3Response::new(CopyObjectOutput {
         copy_object_result: Some(CopyObjectResult {

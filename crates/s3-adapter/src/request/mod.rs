@@ -19,6 +19,16 @@ macro_rules! reject_unsupported {
     }};
 }
 
+/// Finishes an optional tracker only when metrics are compiled in.
+macro_rules! success {
+    ($metrics:expr) => {{
+        #[cfg(feature = "metrics")]
+        if let Some(metrics) = $metrics {
+            metrics.finish($crate::metrics::RequestOutcome::Success);
+        }
+    }};
+}
+
 pub(crate) mod abort_multipart_upload;
 pub(crate) mod complete_multipart_upload;
 pub(crate) mod copy_object;

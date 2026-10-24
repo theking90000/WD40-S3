@@ -20,6 +20,7 @@ pub(crate) async fn head_object_access(
 pub(crate) async fn head_object(
     adapter: &S3Adapter,
     req: S3Request<HeadObjectInput>,
+    #[cfg(feature = "metrics")] metrics: Option<crate::metrics::RequestMetrics>,
 ) -> S3Result<S3Response<HeadObjectOutput>> {
     let record = adapter
         .objects
@@ -39,6 +40,8 @@ pub(crate) async fn head_object(
     let last_modified = metadata::take_last_modified(&mut metadata)?;
 
     let version_id = record.version_id.to_string();
+
+    success!(metrics);
 
     Ok(S3Response::new(HeadObjectOutput {
         accept_ranges: Some("bytes".to_owned()),

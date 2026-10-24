@@ -23,6 +23,7 @@ pub(crate) async fn abort_multipart_upload_access(
 pub(crate) async fn abort_multipart_upload(
     adapter: &S3Adapter,
     req: S3Request<AbortMultipartUploadInput>,
+    #[cfg(feature = "metrics")] metrics: Option<crate::metrics::RequestMetrics>,
 ) -> S3Result<S3Response<AbortMultipartUploadOutput>> {
     let input = req.input;
     validate_input(&input)?;
@@ -47,6 +48,8 @@ pub(crate) async fn abort_multipart_upload(
         .remove(&upload_id)
         .await
         .map_err(S3Error::internal_error)?;
+
+    success!(metrics);
 
     Ok(S3Response::new(AbortMultipartUploadOutput::default()))
 }
