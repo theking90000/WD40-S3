@@ -1,12 +1,13 @@
 //! Batch recording and querying interfaces over a namespace of keys.
 //!
-//! [`MetricsRegistry`] accepts absolute gauge values and counter increments through
+//! [`MetricsRegistry`] accepts signed gauge deltas and counter increments through
 //! [`Record`] batches, and reads current or historical values through [`Query`]
 //! batches. Implementations own persistence, system time, caches and retention.
 //! [`LocalRegistry::new`] accepts an already opened RocksDB database and a shared
 //! retention [`Config`]. Use [`LocalRegistry::column_families`] when opening the
-//! database to install the required native merge operators. Counters use native
-//! additions; gauges coordinate read-modify-write operations by source key.
+//! database to install the required native merge operators. Both kinds use
+//! native additions without application locks on source keys. Existing v1 data
+//! requires explicit conversion through [`LocalRegistry::migrate_v1`].
 //! Recording maintains requested caches and invalidates other affected caches.
 //! Queries use one snapshot and reconstruct their results when caches are invalid.
 //! Historical retention cleanup is not implemented yet.
@@ -16,8 +17,8 @@
 //!
 //! # Examples
 //!
-//! Record stored bytes and a request count for one key, then query the stored-byte
-//! current and request history through the registry enum.
+//! Add 150 stored bytes, subtract 40, and record one request for a key. Its current
+//! stored-byte value is 110. Query it and the request history through the enum.
 //!
 //! ```
 //! use std::time::{Duration, SystemTime};
@@ -39,6 +40,11 @@
 //!                 metric: Metric::StoredBytes,
 //!                 kind: MetricKind::Gauge,
 //!                 value: 150,
+//!             },
+//!             MetricRecord {
+//!                 metric: Metric::StoredBytes,
+//!                 kind: MetricKind::Gauge,
+//!                 value: -40,
 //!             },
 //!             MetricRecord {
 //!                 metric: Metric::RequestCount,

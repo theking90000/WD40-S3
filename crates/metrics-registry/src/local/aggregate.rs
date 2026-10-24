@@ -176,32 +176,24 @@ pub(super) fn reconstruct(view: &View<'_>, id: &CacheId) -> Result<Rebuilt, Erro
         let mut sum = 0_i128;
         let prefix = Key::Current(id.series()).encode()?;
         view.scan_prefix(Store::Current, &prefix, |_, value| {
-            let Value::Gauge(gauge) = value else {
-                return Err(Error::CorruptData("invalid source gauge"));
-            };
             sum = sum
-                .checked_add(i128::from(gauge.value))
+                .checked_add(total(Some(value))?)
                 .ok_or(Error::Overflow)?;
             Ok(())
         })?;
         return Ok(Rebuilt::Current(sum));
     };
     let mut reference = 0_i128;
-    let mut previous = BTreeMap::new();
     if id.kind == MetricKind::Gauge {
         let prefix = Key::Reference {
             resolution,
             series: id.series(),
         }
         .encode()?;
-        view.scan_prefix(Store::History, &prefix, |key, value| {
-            let (Key::Reference { series, .. }, Value::Gauge(gauge)) = (key, value) else {
-                return Err(Error::CorruptData("invalid source reference"));
-            };
+        view.scan_prefix(Store::History, &prefix, |_, value| {
             reference = reference
-                .checked_add(i128::from(gauge.value))
+                .checked_add(total(Some(value))?)
                 .ok_or(Error::Overflow)?;
-            previous.insert(series.key.to_owned(), gauge.value);
             Ok(())
         })?;
     }
@@ -219,19 +211,7 @@ pub(super) fn reconstruct(view: &View<'_>, id: &CacheId) -> Result<Rebuilt, Erro
             {
                 return Ok(());
             }
-            let delta = match (id.kind, value) {
-                (MetricKind::Gauge, Value::Gauge(gauge)) => {
-                    let old = previous
-                        .insert(series.key.to_owned(), gauge.value)
-                        .map_or(0, |value| value);
-                    i128::from(gauge.value)
-                        .checked_sub(i128::from(old))
-                        .ok_or(Error::Overflow)?
-                }
-                (MetricKind::Counter, Value::Total(total)) => total,
-                (_, Value::Overflow) => return Err(Error::Overflow),
-                _ => return Err(Error::CorruptData("invalid source window value")),
-            };
+            let delta = total(Some(value))?;
             let sum = windows.entry(start).or_insert(0_i128);
             *sum = sum.checked_add(delta).ok_or(Error::Overflow)?;
             Ok(())

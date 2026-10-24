@@ -1,4 +1,4 @@
-//! Connected gRPC client. Failed operations are not replayed.
+//! Connected protocol v2 client. Failed delta batches are not replayed.
 
 use tonic::{Status, transport::Endpoint};
 

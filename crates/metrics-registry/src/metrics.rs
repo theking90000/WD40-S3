@@ -7,7 +7,7 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[repr(u16)]
 pub enum Metric {
-    /// Number of bytes currently stored.
+    /// Number of bytes currently stored, updated through signed gauge deltas.
     StoredBytes = 1,
     /// Number of downloaded bytes.
     DownloadedBytes = 2,

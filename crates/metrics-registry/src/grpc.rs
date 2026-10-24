@@ -1,4 +1,4 @@
-//! Protocol v1 and a service delegating each complete batch to the injected registry.
+//! Protocol v2 and a service delegating each complete batch to the injected registry.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -12,7 +12,7 @@ use crate::{Error, MetricKind, MetricResult, Query, QueryResult, Record, Selecti
 use crate::{MetricQuery, MetricRecord};
 
 pub mod proto {
-    tonic::include_proto!("wd40.metrics_registry.v1");
+    tonic::include_proto!("wd40.metrics_registry.v2");
 }
 
 /// Maximum encoded or decoded message size for both transports.

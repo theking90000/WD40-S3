@@ -1,6 +1,6 @@
 # metrics-registry
 
-Record gauge assignments and counter increments in atomic batches, then query
+Record signed gauge deltas and counter increments in atomic batches, then query
 current gauges or historical windows. Local storage uses RocksDB. Optional gRPC
 transports expose the same API through a remote client or a relay.
 
@@ -12,7 +12,8 @@ transports expose the same API through a remote client or a relay.
 converted before returning the operation's future. All `u16` IDs are supported,
 including zero. Applications must keep their assignments stable and distinct.
 The built-in `Metric` enum supplies stored bytes, downloaded bytes, uploaded
-bytes and request count with IDs 1 through 4.
+bytes, request count, successful requests and failed requests with stable IDs
+1 through 6.
 
 ```rust
 use metrics_registry::{
@@ -46,10 +47,16 @@ RocksDB column families with `LocalRegistry::column_families(&options)` to insta
 the required native merge operators. The default feature set is empty; local
 operations run blocking storage work on a worker pool and need no Tokio runtime.
 
-Gauge values are absolute assignments; counter values are nonnegative increments.
+Gauge values are signed deltas; counter values are nonnegative increments.
+Gauges start at zero: recording `+150` followed by `-40` produces a current
+value of `110`. Gauge totals may be negative. Recording zero changes nothing
+for either kind; it does not reset a gauge. Repeated mutations of a series in
+one batch are summed, and a net-zero group has no effect. Neither kind uses a
+last-write-wins rule.
 The backend assigns record timestamps. Each record batch is validated before
 mutations and success awaits durable persistence. A backend or transport error
-does not guarantee rollback. Query batches preserve query and metric order and
+does not guarantee rollback. Deltas are not idempotent and must not be blindly
+replayed after an ambiguous error. Query batches preserve query and metric order and
 read one consistent view. Prefix unions do not double-count overlapping keys.
 An empty prefix list selects nothing; an empty string selects the whole namespace.
 
@@ -59,6 +66,33 @@ are aligned to the Unix epoch; `Point::complete` is false for the open window.
 Counters have no resolution-independent current selection. Configuration is not
 persisted and must be supplied again when opening the database. Historical
 retention cleanup is not implemented yet; current gauge values do not expire.
+History stores signed changes per window; gauge queries return their cumulative
+end-of-window values, carrying the value through windows without updates.
+Both kinds use native RocksDB additions with `i128` internal totals and checked
+`i64` query results. No source-key mutex or read-before-write is required.
+The cache catalogue still coordinates writers and cold cache reconstruction.
+
+## Storage and protocol upgrade
+
+Protocol `wd40.metrics_registry.v2` changes gauge mutations from assignments to
+deltas. Upgrade clients, relays and servers together. The v1 service is not
+exposed, preventing old clients from silently sending assignments as deltas.
+
+Local databases carry a version 2 marker in the default column family. Empty
+databases are initialized when constructing the registry. A nonempty legacy
+database is rejected until it is explicitly migrated. To migrate during local
+startup, add `--metrics-registry-migrate-v1`, or set
+`WD40_METRICS_REGISTRY_MIGRATE_V1=true`. The option cannot target a remote server.
+It succeeds without changes on an already migrated database.
+
+Library callers can invoke `LocalRegistry::migrate_v1(&database)` after opening
+with `LocalRegistry::column_families`, before `LocalRegistry::new`. Run this
+blocking operation without concurrent writers. It preserves current gauges and
+counters, converts historical assignments to signed deltas, and discards aggregate
+caches for reconstruction. All conversion writes and the marker commit in one
+durable atomic batch. Its memory use scales with converted rows and caches;
+it is an offline operation, not part of the normal recording path. Existing
+configuration is still supplied by the caller, rather than persisted by migration.
 
 ## Features
 
@@ -104,6 +138,7 @@ in the portal. Direct `LocalRegistry` callers supply their own `Config`.
 | Option | Environment variable |
 | --- | --- |
 | `--metrics-registry-path` | `WD40_METRICS_REGISTRY_PATH` |
+| `--metrics-registry-migrate-v1` | `WD40_METRICS_REGISTRY_MIGRATE_V1` |
 | `--metrics-registry-policy` | `WD40_METRICS_REGISTRY_POLICY` |
 | `--metrics-registry-endpoint` | `WD40_METRICS_REGISTRY_ENDPOINT` |
 | `--metrics-registry-ca` | `WD40_METRICS_REGISTRY_CA` |
@@ -132,7 +167,8 @@ Connections and remote operations require a Tokio runtime. Clones share their
 HTTP/2 channel, and each operation clones the generated client without an
 application mutex. Calls are not automatically replayed, split or redirected.
 There is no fallback to local storage. An ambiguous recording failure must not
-be blindly retried, because counter increments may already have been persisted.
+be blindly retried, because gauge deltas or counter increments may already have
+been persisted.
 
 A server can forward both RPCs through an injected remote registry:
 
@@ -153,7 +189,7 @@ When connecting programmatically, supply the desired
 
 ## Protocol and errors
 
-`wd40.metrics_registry.v1` exposes unary `Record` and `Query` RPCs. Each complete
+`wd40.metrics_registry.v2` exposes unary `Record` and `Query` RPCs. Each complete
 batch is one RPC and one backend operation. Protobuf messages carry typed records,
 queries, selections and results. Metric IDs must fit `u16`; unknown metric-kind
 enum values, missing required fields and invalid time encodings are rejected.

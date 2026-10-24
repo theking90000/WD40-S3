@@ -9,6 +9,9 @@ use crate::Error;
 use super::codec::{Key, Store, Value, prefix_end};
 use super::merge::Operand;
 
+pub(super) const FORMAT_KEY: &[u8] = b"wd40.metrics-registry.format";
+pub(super) const FORMAT_VERSION: &[u8] = b"2";
+
 #[derive(Debug)]
 pub(super) struct Storage {
     database: DB,
@@ -24,6 +27,44 @@ impl Storage {
         let storage = Self { database };
         for store in Store::ALL {
             storage.family(store)?;
+        }
+        match storage
+            .database
+            .get(FORMAT_KEY)
+            .map_err(backend)?
+            .as_deref()
+        {
+            Some(version) if version == FORMAT_VERSION => {}
+            Some(version) if version != b"1" => {
+                return Err(Error::CorruptData("unsupported metrics storage version"));
+            }
+            Some(_) => {
+                return Err(Error::CorruptData(
+                    "legacy metrics storage requires migrate_v1",
+                ));
+            }
+            None => {
+                for store in Store::ALL {
+                    let family = storage.family(store)?;
+                    let mut options = ReadOptions::default();
+                    options.set_total_order_seek(true);
+                    if storage
+                        .database
+                        .iterator_cf_opt(&family, options, IteratorMode::Start)
+                        .next()
+                        .transpose()
+                        .map_err(backend)?
+                        .is_some()
+                    {
+                        return Err(Error::CorruptData(
+                            "legacy metrics storage requires migrate_v1",
+                        ));
+                    }
+                }
+                let mut batch = WriteBatch::default();
+                batch.put(FORMAT_KEY, FORMAT_VERSION);
+                storage.write(batch)?;
+            }
         }
         Ok(storage)
     }

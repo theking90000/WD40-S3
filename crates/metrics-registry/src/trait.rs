@@ -10,17 +10,16 @@ use crate::Error;
 
 /// How a recorded value changes a metric.
 ///
-/// Gauges receive absolute values; counters receive nonnegative increments.
+/// Gauges receive signed deltas; counters receive nonnegative increments.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum MetricKind {
-    /// Replace the current value using an internally timestamped assignment.
-    // TODO(api): support signed gauge deltas applied atomically to the current value.
+    /// Add a signed delta to a current value initially equal to zero.
     Gauge,
     /// Add a nonnegative amount to the counter's historical windows.
     Counter,
 }
 
-/// One gauge assignment or counter increment for a metric and kind.
+/// One gauge delta or counter increment for a metric and kind.
 ///
 /// Metric identifiers are converted into `u16` when recording the owned batch.
 /// Custom metric types only need to implement `Into<u16>`.
@@ -28,11 +27,11 @@ pub enum MetricKind {
 pub struct MetricRecord<Metric = crate::Metric> {
     /// Metric to update.
     pub metric: Metric,
-    /// Whether `value` replaces a gauge or increments a counter.
+    /// Whether `value` is a signed gauge delta or a nonnegative counter increment.
     pub kind: MetricKind,
-    /// Absolute value for a gauge, or a nonnegative increment for a counter.
+    /// Signed delta for a gauge, or a nonnegative increment for a counter.
     ///
-    /// Assigning zero to a gauge may decrease its previous value.
+    /// Zero is a no-op for both kinds. A gauge may become negative.
     pub value: i64,
 }
 
@@ -162,31 +161,31 @@ pub struct QueryResult {
 /// Persistent batch recording and querying over a namespace of keys.
 ///
 /// Implementations manage time, aggregate caches and historical retention.
-/// Callers submit gauge assignments or counter increments and request current or
+/// Callers submit gauge deltas or counter increments and request current or
 /// historical values. See the [crate example](crate) for a complete batch.
 /// Batches are consumed so metric identifiers only require `Into<u16>`, without
 /// `Copy`, `Clone`, `Send` or `Sync`. Conversion happens before returning the future.
 /// Identifiers must be stable and distinct within the namespace.
 pub trait MetricsRegistry {
-    /// Records gauge assignments and counter increments as one atomic batch.
+    /// Records signed gauge deltas and counter increments as one atomic batch.
     ///
     /// The whole batch is validated before applying mutations. Success awaits
     /// durable persistence, and timestamps are assigned internally using system time.
-    /// Empty batches succeed without changes. Zero counter increments create no
-    /// buckets; assigning zero to a gauge is still an assignment.
+    /// Empty batches succeed without changes. Zero deltas create no buckets.
+    /// Repeated mutations of the same key, metric and kind are added together;
+    /// a net-zero group has no effect.
     ///
-    /// Gauge values carry an internal timestamp, with an internal tie-breaker for
-    /// equal timestamps. The newest assignment wins; repeated assignments to a
-    /// gauge within one batch follow input order. No timestamp is caller-supplied.
-    /// Each winning assignment atomically replaces the current value and the
-    /// absolute gauge value in its historical windows. Aggregate maintenance uses
-    /// the difference from the previous accepted value. Superseded assignments
-    /// must not alter history or aggregates.
+    /// Gauges start at zero and accumulate every signed delta. The same delta
+    /// updates the current value and each configured historical window atomically.
+    /// Historical queries accumulate these windows to return end-of-window values,
+    /// rather than exposing the deltas. Timestamps only select the receiving
+    /// backend's windows; there is no last-write-wins rule or caller timestamp.
+    /// Deltas are not idempotent. Replaying a batch applies its increments again.
     ///
     /// Requested aggregate caches are maintained by addition when valid and
     /// rebuilt internally when needed. Other affected caches are invalidated.
     /// Cache reconstruction must remain correct under concurrent writes.
-    /// Counter totals and aggregate calculations use a wider internal integer.
+    /// Gauge totals, counter totals and aggregates use a wider internal integer.
     /// Native additions can detect stored-total overflow only when evaluated;
     /// output conversion to `i64` is checked by [`Self::query`].
     /// Historical retention is implementation-owned and never expires a gauge's
@@ -196,7 +195,7 @@ pub trait MetricsRegistry {
     ///
     /// Returns [`Error::InvalidRecord`] when an input violates the record contract,
     /// including a negative counter increment or an aggregate that is not a key
-    /// prefix. Returns [`Error::Overflow`] when input grouping or gauge preparation
+    /// prefix. Returns [`Error::Overflow`] when input grouping
     /// cannot be represented, or [`Error::Backend`] when an operation fails.
     /// Backend failures do not guarantee that the batch was rolled back.
     fn record<Metric: Into<u16>>(

@@ -64,18 +64,8 @@ pub(super) enum Key<'a> {
     },
 }
 
-/// Assignment time is nanoseconds since the Unix epoch. The sequence orders
-/// assignments sharing a timestamp. Neither field is exposed by the public API.
-#[derive(Clone, Copy, Debug)]
-pub(super) struct GaugeValue {
-    pub value: i64,
-    pub timestamp: u64,
-    pub sequence: u64,
-}
-
 #[derive(Clone, Copy, Debug)]
 pub(super) enum Value {
-    Gauge(GaugeValue),
     Total(i128),
     Cache(Option<i128>),
     Valid(bool),
@@ -148,11 +138,6 @@ impl Key<'_> {
     pub(super) fn encode_value(self, value: Value) -> Result<Vec<u8>, Error> {
         let mut bytes = Vec::new();
         match (self.value_format(), value) {
-            (ValueFormat::Gauge, Value::Gauge(gauge)) => {
-                bytes.extend_from_slice(&gauge.value.to_be_bytes());
-                bytes.extend_from_slice(&gauge.timestamp.to_be_bytes());
-                bytes.extend_from_slice(&gauge.sequence.to_be_bytes());
-            }
             (ValueFormat::Total(kind), Value::Total(total)) => {
                 require_total(kind, total)?;
                 bytes.extend_from_slice(&total.to_be_bytes());
@@ -172,11 +157,6 @@ impl Key<'_> {
     pub(super) fn decode_value(self, bytes: &[u8]) -> Result<Value, Error> {
         let mut reader = Reader(bytes);
         let value = match self.value_format() {
-            ValueFormat::Gauge => Value::Gauge(GaugeValue {
-                value: i64::from_be_bytes(reader.take()?),
-                timestamp: reader.u64()?,
-                sequence: reader.u64()?,
-            }),
             ValueFormat::Total(kind) => {
                 if bytes == [2] {
                     return Ok(Value::Overflow);
@@ -208,11 +188,9 @@ impl Key<'_> {
 
     fn value_format(self) -> ValueFormat {
         match self {
-            Self::Current(_) | Self::Reference { .. } => ValueFormat::Gauge,
-            Self::Window { series, .. } => match series.kind {
-                MetricKind::Gauge => ValueFormat::Gauge,
-                MetricKind::Counter => ValueFormat::Total(MetricKind::Counter),
-            },
+            Self::Current(series)
+            | Self::Reference { series, .. }
+            | Self::Window { series, .. } => ValueFormat::Total(series.kind),
             Self::AggregateHistory {
                 entry: CacheEntry::Valid,
                 ..
@@ -398,7 +376,6 @@ fn require_total(kind: MetricKind, total: i128) -> Result<(), Error> {
 }
 
 enum ValueFormat {
-    Gauge,
     Total(MetricKind),
     Cache,
     Valid,

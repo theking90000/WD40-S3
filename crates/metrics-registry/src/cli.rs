@@ -16,6 +16,10 @@ pub struct MetricsRegistryConfig {
     )]
     pub metrics_registry_path: PathBuf,
 
+    /// Explicitly migrate local v1 absolute gauges to the v2 delta format before opening.
+    #[arg(long, global = true, env = "WD40_METRICS_REGISTRY_MIGRATE_V1")]
+    pub metrics_registry_migrate_v1: bool,
+
     /// Local history policy as resolution:retention, both in whole seconds. Repeat for each resolution.
     /// Defaults to 5m:6h, 30m:48h, 1h:14d and 1d:365d.
     #[arg(
@@ -51,6 +55,11 @@ impl MetricsRegistryConfig {
     pub async fn open(&self) -> Result<MetricsRegistry, Error> {
         #[cfg(feature = "grpc-client")]
         if let Some(uri) = &self.metrics_registry_endpoint {
+            if self.metrics_registry_migrate_v1 {
+                return Err(Error::InvalidConfig(
+                    "migration requires a local metrics database",
+                ));
+            }
             let endpoint = tonic::transport::Endpoint::from_shared(uri.clone()).map_err(|_| {
                 Error::Rpc(tonic::Status::invalid_argument(
                     "invalid registry endpoint URI",
@@ -87,6 +96,7 @@ impl MetricsRegistryConfig {
         };
         config.validate()?;
         let path = self.metrics_registry_path.clone();
+        let migrate_v1 = self.metrics_registry_migrate_v1;
         blocking::unblock(move || {
             let mut options = rocksdb::Options::default();
             options.create_if_missing(true);
@@ -98,6 +108,9 @@ impl MetricsRegistryConfig {
                 LocalRegistry::column_families(&options),
             )
             .map_err(|error| Error::Backend(Box::new(error)))?;
+            if migrate_v1 {
+                LocalRegistry::migrate_v1(&database)?;
+            }
             LocalRegistry::new(database, config).map(MetricsRegistry::Local)
         })
         .await

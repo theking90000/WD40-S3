@@ -1,6 +1,6 @@
 //! Local metrics registry backend.
 
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 
 use rocksdb::{ColumnFamilyDescriptor, DB, Options};
 
@@ -9,6 +9,7 @@ use crate::{Config, Error, Query, QueryResult, Record, traits::MetricsRegistry};
 mod aggregate;
 mod codec;
 mod merge;
+mod migrate;
 mod read;
 mod record;
 mod storage;
@@ -17,13 +18,10 @@ use aggregate::Catalog;
 use codec::Store;
 use storage::Storage;
 
-const GAUGE_LOCKS: usize = 256;
-
 /// Shared handle to a caller-opened RocksDB database.
 ///
-/// Clones share the database, configuration, gauge locks and cache catalog.
-/// Counter writes use native additions. Gauge read-modify-write sequences use
-/// bounded, shared key locks. Unrelated gauge keys may share a lock by hash.
+/// Clones share the database, configuration and cache catalog. Gauge and counter
+/// writes use native additions without application locks on individual keys.
 /// Ordinary writers share access to the catalog; cold cache reconstruction takes
 /// exclusive access until its publication batch commits. Queries use snapshots
 /// without acquiring these locks. Blocking storage calls run on a worker pool.
@@ -34,11 +32,23 @@ const GAUGE_LOCKS: usize = 256;
 pub struct LocalRegistry {
     storage: Arc<Storage>,
     config: Arc<Config>,
-    gauges: Arc<[Mutex<()>; GAUGE_LOCKS]>,
     caches: Arc<RwLock<Catalog>>,
 }
 
 impl LocalRegistry {
+    /// Converts legacy absolute gauges to the version 2 delta storage format.
+    ///
+    /// Open the database with [`Self::column_families`] first and run this
+    /// blocking operation before constructing a registry or starting writers.
+    /// Current values and counters are preserved. Historical gauge assignments
+    /// become deltas, and aggregate caches are discarded for reconstruction.
+    /// Conversion and the format marker commit in one durable atomic batch.
+    /// The batch uses memory proportional to the converted rows and caches.
+    /// Calling this on a version 2 database succeeds without changes.
+    pub fn migrate_v1(database: &DB) -> Result<(), Error> {
+        migrate::v1(database)
+    }
+
     /// Builds the three column family descriptors with the required native merge
     /// operators, preserving caller-supplied tuning options.
     ///
@@ -79,9 +89,11 @@ impl LocalRegistry {
     /// Validates shared retention policies and retains an initialized database.
     ///
     /// The caller must open the `current`, `history` and `aggregates` column
-    /// families using [`Self::column_families`]. This constructor does not open,
-    /// configure or write to the database. Configuration is retained in memory
-    /// and applies to every key and metric. The binding cannot inspect installed
+    /// families using [`Self::column_families`]. This constructor does not open or
+    /// configure the database. It initializes the format marker on an empty
+    /// database; legacy data requires an explicit [`Self::migrate_v1`] call.
+    /// Configuration is retained in memory and applies to every key and metric.
+    /// The binding cannot inspect installed
     /// merge callbacks; databases opened with other descriptors are unsupported.
     ///
     /// # Errors
@@ -114,7 +126,6 @@ impl LocalRegistry {
         Ok(Self {
             storage: Arc::new(storage),
             config: Arc::new(config),
-            gauges: Arc::new(std::array::from_fn(|_| Mutex::new(()))),
             caches: Arc::new(RwLock::new(caches)),
         })
     }

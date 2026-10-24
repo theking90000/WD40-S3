@@ -1,5 +1,5 @@
 syntax = "proto3";
-package wd40.metrics_registry.v1;
+package wd40.metrics_registry.v2;
 
 // One RPC per batch. Record timestamps are assigned by the receiving backend.
 service MetricsRegistry {
@@ -19,6 +19,7 @@ enum MetricKind {
 message MetricRecord {
   optional uint32 metric = 1;
   MetricKind kind = 2;
+  // Signed delta for gauges; nonnegative increment for counters.
   optional sint64 value = 3;
 }
 

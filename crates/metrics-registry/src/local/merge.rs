@@ -1,4 +1,4 @@
-//! Native numeric additions and cache invalidation. Gauges remain absolute puts.
+//! Native signed gauge additions, counter additions and cache invalidation.
 
 use rocksdb::{MergeOperands, Options};
 
@@ -35,13 +35,10 @@ impl Operand {
 }
 
 pub(super) fn configure(store: Store, options: &mut Options) {
-    if matches!(store, Store::Current) {
-        return;
-    }
     let name = match store {
-        Store::History => "metrics-history-i128-v1",
-        Store::Aggregates => "metrics-aggregates-i128-v1",
-        Store::Current => return,
+        Store::Current => "metrics-current-i128-v2",
+        Store::History => "metrics-history-i128-v2",
+        Store::Aggregates => "metrics-aggregates-i128-v2",
     };
     options.set_merge_operator(
         name,
