@@ -1,3 +1,5 @@
+pub(super) mod uploads;
+
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::{Extension, Json, extract::State, http::StatusCode};
@@ -74,6 +76,13 @@ async fn bucket_names(
         .await?)
 }
 
+fn bucket_prefixes(names: &[String]) -> Vec<String> {
+    names
+        .iter()
+        .map(|name| format!("/by-buckets/{}/", utf8_percent_encode(name, SEGMENT)))
+        .collect()
+}
+
 async fn read_dashboard(
     registry: &impl metrics_registry::traits::MetricsRegistry,
     names: Vec<String>,
@@ -91,10 +100,7 @@ async fn read_dashboard(
         resolution: Duration::from_secs(RESOLUTION),
         range: UNIX_EPOCH + Duration::from_secs(from)..now,
     };
-    let prefixes: Vec<_> = names
-        .iter()
-        .map(|name| format!("/by-buckets/{}/", utf8_percent_encode(name, SEGMENT)))
-        .collect();
+    let prefixes = bucket_prefixes(&names);
     let mut queries = vec![Query {
         // An empty list selects no keys, including for an organization with no buckets.
         prefixes: prefixes.clone(),

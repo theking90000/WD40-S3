@@ -35,6 +35,10 @@ pub(super) fn router(db: DatabaseConnection) -> Router<DatabaseConnection> {
             get(dashboard::handle),
         )
         .route(
+            "/api/organizations/{organization_id}/dashboard/uploads",
+            get(dashboard::uploads::handle),
+        )
+        .route(
             "/api/organizations/{organization_id}",
             get(get::handle)
                 .patch(update::handle)

@@ -47,8 +47,9 @@ database. The registries can independently use Local or Remote mode.
 Opening or connecting to any registry can fail startup; there is no fallback.
 Metrics use the existing `--metrics-registry-policy` and `--metrics-registry-ca`
 options. Dashboard queries require the 30-minute resolution with at least 24 hours
-of retention; the default 48-hour retention supports this. Custom policy lists
-replace the defaults.
+of retention; the default 48-hour retention supports this. The uploads chart
+requires the 1-day resolution with at least 30 days of retention; the default
+365-day retention supports this. Custom policy lists replace the defaults.
 
 `grpc-tls` includes `grpc-client` and enables HTTPS with native certificate roots.
 The existing `--s3-credentials-registry-ca` and `--policy-registry-ca` options,
@@ -556,6 +557,68 @@ Registry failures, unsupported resolutions, expired history and invalid metric
 totals return HTTP 503 with `{"error":"metrics_unavailable"}`. Database failures
 return HTTP 500 with `{"error":"database_error"}`. This endpoint does not supply
 the 7/30-day chart.
+
+### GET /api/organizations/{organization_id}/dashboard/uploads
+
+Returns the daily uploaded volume for the chart. The optional `period` query
+parameter accepts `7d` (the default) or `30d`. Invalid periods, including empty or
+duplicate values, return HTTP 400 with `{"error":"invalid_period"}`.
+
+The route uses the same authentication, organization membership checks and
+`Cache-Control: no-store` policy as the dashboard. Members and owners can read
+it. Bucket names come exclusively from the organization's current database
+records, using the same encoded metric prefixes as the dashboard. Deleted
+buckets are therefore excluded from the series as well.
+
+```http
+GET /api/organizations/{organization_id}/dashboard/uploads?period=7d
+```
+
+```json
+{
+  "generated_at": 1792844400,
+  "period": {
+    "from": 1792281600,
+    "to": 1792844400,
+    "resolution_seconds": 86400
+  },
+  "total_uploaded_bytes": 6500,
+  "points": [
+    { "start": 1792281600, "uploaded_bytes": 1000, "complete": true },
+    { "start": 1792368000, "uploaded_bytes": 0, "complete": true },
+    { "start": 1792454400, "uploaded_bytes": 2000, "complete": true },
+    { "start": 1792540800, "uploaded_bytes": 0, "complete": true },
+    { "start": 1792627200, "uploaded_bytes": 0, "complete": true },
+    { "start": 1792713600, "uploaded_bytes": 3000, "complete": true },
+    { "start": 1792800000, "uploaded_bytes": 500, "complete": false }
+  ]
+}
+```
+
+All timestamps are Unix seconds in UTC. The series contains exactly 7 or 30
+points ordered by day, with each day starting at midnight UTC. It includes
+today and the previous 6 or 29 calendar days, rather than a rolling interval of
+exactly 7 or 30 times 24 hours. `period.to` is the generation time. The registry's
+`complete` flag identifies closed days and the day in progress. At exactly
+midnight, today's point is present with a zero value and `complete: false`.
+
+One registry query selects `UploadedBytes` as a counter over the union of the
+organization's bucket prefixes, with a daily historical resolution. The portal
+returns the resulting series and sums its values into `total_uploaded_bytes`.
+Days without recorded uploads have a zero value. An organization without buckets
+returns the same number of points, all zero. Missing or invalid result points,
+negative byte counts and overflowing totals are rejected.
+
+`UploadedBytes` measures object body bytes tracked by the S3 adapter, including
+partial failed transfers, repeated uploads and overwrites. It does not measure
+net growth in stored data. No new metric collection is needed for this route.
+
+The daily resolution must be configured with at least 30 days of retention for
+both periods. Default registry policies already satisfy this requirement. Registry
+failures, unsupported resolutions, expired history and invalid results return
+HTTP 503 with `{"error":"metrics_unavailable"}`. Database failures return HTTP
+500 with `{"error":"database_error"}`. This route supplies data only; it does
+not connect the console chart.
 
 ### Organization members
 
