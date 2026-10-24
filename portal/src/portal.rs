@@ -2,6 +2,7 @@ use std::{io, sync::Arc};
 
 use axum::Router;
 use hyper_util::service::TowerToHyperService;
+use metrics_registry::MetricsRegistry;
 use policy_registry::PolicyRegistry;
 use portal_db::DatabaseConnection;
 use s3_credentials_registry::S3CredentialRegistry;
@@ -26,10 +27,11 @@ impl Portal {
         db: DatabaseConnection,
         credentials: S3CredentialRegistry,
         policies: PolicyRegistry,
+        metrics: MetricsRegistry,
     ) -> io::Result<Self> {
         let oidc = Arc::new(Oidc::new(config).await?);
         let sync = SyncContext::new(db, credentials, policies);
-        let router = api::router(oidc, sync.clone());
+        let router = api::router(oidc, sync.clone(), metrics);
         #[cfg(feature = "embed-console")]
         let router = router.merge(assets::router());
         Ok(Self { router, sync })

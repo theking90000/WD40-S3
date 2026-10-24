@@ -1,6 +1,7 @@
 use std::io;
 
 use clap::Parser;
+use metrics_registry::cli::MetricsRegistryConfig;
 use policy_registry::cli::PolicyRegistryConfig;
 use portal::{OidcConfig, Portal, cli::PortalArgs};
 use portal_db::{Database, DatabaseConnection, Migrator, MigratorTrait};
@@ -22,6 +23,8 @@ struct Args {
     credentials: S3CredentialsRegistryConfig,
     #[command(flatten)]
     policies: PolicyRegistryConfig,
+    #[command(flatten)]
+    metrics: MetricsRegistryConfig,
     #[cfg(feature = "embedded-s3")]
     #[command(flatten)]
     embedded_s3: embedded_s3::EmbeddedS3Args,
@@ -70,11 +73,16 @@ async fn serve(args: Args, db: &DatabaseConnection) -> io::Result<()> {
         eprintln!("Credential policy migration completed");
         return Ok(());
     }
+    let metrics = args
+        .metrics
+        .open()
+        .await
+        .map_err(|error| io::Error::other(format!("Cannot open metrics registry: {error}")))?;
     #[cfg(feature = "embedded-s3")]
     let s3 = if args.embedded_s3.embedded_s3 {
         Some(
             args.embedded_s3
-                .build(credentials.clone(), policies.clone())
+                .build(credentials.clone(), policies.clone(), metrics.clone())
                 .await?,
         )
     } else {
@@ -90,6 +98,7 @@ async fn serve(args: Args, db: &DatabaseConnection) -> io::Result<()> {
         db.clone(),
         credentials,
         policies,
+        metrics,
     )
     .await?
     .into_router();

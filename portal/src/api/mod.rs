@@ -7,8 +7,13 @@ use std::sync::Arc;
 
 use crate::sync::SyncContext;
 
-pub(super) fn router(oidc: Arc<auth::oidc::Oidc>, sync: SyncContext) -> Router {
+pub(super) fn router(
+    oidc: Arc<auth::oidc::Oidc>,
+    sync: SyncContext,
+    metrics: metrics_registry::MetricsRegistry,
+) -> Router {
     let organizations = organizations::router(sync.db.clone())
+        .layer(Extension(metrics))
         .layer(Extension(sync.credentials.clone()))
         .layer(Extension(sync.policies.clone()))
         .layer(Extension(sync.clone()));

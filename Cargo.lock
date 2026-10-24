@@ -3149,6 +3149,7 @@ dependencies = [
  "metrics-registry",
  "object-registry",
  "openidconnect",
+ "percent-encoding",
  "policy-registry",
  "portal-db",
  "rust-embed",

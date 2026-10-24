@@ -2,6 +2,7 @@ mod buckets;
 mod create;
 mod credentials;
 mod current;
+mod dashboard;
 mod delete;
 mod get;
 mod list;
@@ -29,6 +30,10 @@ use super::auth::CurrentUser;
 
 pub(super) fn router(db: DatabaseConnection) -> Router<DatabaseConnection> {
     let organization = Router::new()
+        .route(
+            "/api/organizations/{organization_id}/dashboard",
+            get(dashboard::handle),
+        )
         .route(
             "/api/organizations/{organization_id}",
             get(get::handle)

@@ -12,8 +12,9 @@ transports expose the same API through a remote client or a relay.
 converted before returning the operation's future. All `u16` IDs are supported,
 including zero. Applications must keep their assignments stable and distinct.
 The built-in `Metric` enum supplies stored bytes, downloaded bytes, uploaded
-bytes, request count, successful requests and failed requests with stable IDs
-1 through 6.
+bytes, request count, successful requests, failed requests and stored objects
+with stable IDs 1 through 7. `StoredObjects` is a gauge identifier; applications
+are responsible for recording its deltas.
 
 ```rust
 use metrics_registry::{

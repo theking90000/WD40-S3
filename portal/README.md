@@ -28,20 +28,27 @@ working directory. Connection or migration failures stop startup. The server
 closes the database after HTTP requests have drained on graceful shutdown, and
 also on startup or serving errors after connection setup.
 
-The standalone server also opens the S3 credentials and policy registries using
+The standalone server also opens the S3 credentials, policy and metrics registries using
 their existing CLI configurations:
 
 | Argument | Environment variable | Default |
 | --- | --- | --- |
 | `--s3-credentials-registry-path` | `WD40_S3_CREDENTIALS_REGISTRY_PATH` | `./data/s3-credentials-registry` |
 | `--policy-registry-path` | `WD40_POLICY_REGISTRY_PATH` | `./data/policy-registry` |
+| `--metrics-registry-path` | `WD40_METRICS_REGISTRY_PATH` | `./data/metrics-registry` |
 
 Build with `--features standalone,grpc-client` to select a remote registry using
-`--s3-credentials-registry-endpoint` or `--policy-registry-endpoint`, also available
-as `WD40_S3_CREDENTIALS_REGISTRY_ENDPOINT` and `WD40_POLICY_REGISTRY_ENDPOINT`.
+`--s3-credentials-registry-endpoint`, `--policy-registry-endpoint` or
+`--metrics-registry-endpoint`, also available as
+`WD40_S3_CREDENTIALS_REGISTRY_ENDPOINT`, `WD40_POLICY_REGISTRY_ENDPOINT` and
+`WD40_METRICS_REGISTRY_ENDPOINT`.
 Each endpoint takes precedence over its local path without opening that local
 database. The registries can independently use Local or Remote mode.
-Opening or connecting to either registry can fail startup; there is no fallback.
+Opening or connecting to any registry can fail startup; there is no fallback.
+Metrics use the existing `--metrics-registry-policy` and `--metrics-registry-ca`
+options. Dashboard queries require the 30-minute resolution with at least 24 hours
+of retention; the default 48-hour retention supports this. Custom policy lists
+replace the defaults.
 
 `grpc-tls` includes `grpc-client` and enables HTTPS with native certificate roots.
 The existing `--s3-credentials-registry-ca` and `--policy-registry-ca` options,
@@ -50,7 +57,10 @@ CA certificates and require HTTPS endpoints. gRPC builds require `protoc`.
 
 When the portal and S3 adapter run in one process, pass clones of the same
 registry handles to both. Separate processes connect to shared registry services
-over gRPC instead of opening the same Sled directories simultaneously.
+over gRPC instead of opening the same registry directories simultaneously.
+The standalone portal opens metrics once and shares its handle with embedded S3,
+including when both HTTP services use separate listeners. Without embedded S3,
+point the portal at the same metrics service as the external S3 adapter.
 Opening registries and injecting their handles does not synchronize policies,
 credentials or bindings, and starts no background task.
 
@@ -150,10 +160,11 @@ before application pages load. Missing files, API paths and unknown routes retur
 
 ## Library
 
-`Portal::new(config, db, credentials, policies).await` accepts a migrated
+`Portal::new(config, db, credentials, policies, metrics).await` accepts a migrated
 `portal_db::DatabaseConnection`, an opened
 `s3_credentials_registry::S3CredentialRegistry` and an opened
-`policy_registry::PolicyRegistry`. It discovers the configured OIDC provider and
+`policy_registry::PolicyRegistry` and an opened
+`metrics_registry::MetricsRegistry`. It discovers the configured OIDC provider and
 its public keys. Construction performs no registry operations and opens no
 listener. Discovery and configuration failures return `std::io::Error`.
 The caller owns the runtime, database connection setup, migrations, registry
@@ -166,7 +177,7 @@ use portal_db::{Database, Migrator, MigratorTrait};
 
 let db = Database::connect(database_url).await?;
 Migrator::up(&db, None).await?;
-// credentials and policies are already opened registry enum handles.
+// credentials, policies and metrics are already opened registry enum handles.
 let portal = portal::Portal::new(
     portal::OidcConfig {
         issuer_url,
@@ -176,6 +187,7 @@ let portal = portal::Portal::new(
     db.clone(),
     credentials,
     policies,
+    metrics,
 ).await?;
 let service = portal.into_service();
 // Serve requests, then call db.close().await after they have drained.
@@ -186,11 +198,12 @@ for database-backed handlers. Organization routes also receive
 `Extension<s3_credentials_registry::S3CredentialRegistry>` and
 `Extension<policy_registry::PolicyRegistry>`, available to handlers independently
 of registry mode. They also receive the shared `Extension<portal::sync::SyncContext>`.
+Dashboard handlers receive `Extension<metrics_registry::MetricsRegistry>`.
 Authentication routes retain their own OIDC state.
 
 Features default to `sqlite`; `postgres` enables the PostgreSQL driver.
-`cli` exposes composable `PortalArgs` and enables both registries' CLI configs.
-`grpc-client` forwards client support to both registries; `grpc-tls` adds TLS.
+`cli` exposes composable `PortalArgs` and enables the registries' CLI configs.
+`grpc-client` forwards client support to the registries; `grpc-tls` adds TLS.
 `embed-console`
 builds and embeds the console for library consumers too. `standalone` enables
 both features and the executable. Builds without `embed-console` do not run npm.
@@ -491,6 +504,58 @@ before sending this custom header to another origin. Keep this policy when
 embedding the router or configuring a reverse proxy; the console and API share
 an origin. The POST also accepts JSON media types only, rejecting form and
 plain-text content.
+
+### GET /api/organizations/{organization_id}/dashboard
+
+Members and owners can read the dashboard. The existing authentication and
+organization membership middleware protects this route. Bucket names come from
+the portal database, filtered by the selected organization. Clients cannot supply
+metric prefixes. The response has `Cache-Control: no-store`.
+
+```json
+{
+  "generated_at": 1792844400,
+  "period": {
+    "from": 1792756800,
+    "to": 1792844400,
+    "resolution_seconds": 1800
+  },
+  "stored_bytes": 1500,
+  "stored_objects": 3,
+  "requests": 80,
+  "uploaded_bytes": 2000,
+  "downloaded_bytes": 4000,
+  "transferred_bytes": 6000,
+  "buckets": [
+    { "name": "photos", "stored_bytes": 1500, "stored_objects": 3 }
+  ]
+}
+```
+
+All timestamps are Unix seconds in UTC. The activity period contains the last
+48 completed 30-minute windows plus the window in progress. It ends at the
+generation time, so accepted increments in the current window are included.
+The period covers 24 hours plus up to 30 minutes of the current window.
+Storage gauges reflect current values from the same metrics snapshot.
+
+One registry batch contains a query for `RequestCount`, `UploadedBytes` and
+`DownloadedBytes` over the union of the organization's `/by-buckets/{name}/`
+prefixes, followed by a query for each bucket's current `StoredBytes` and
+`StoredObjects` gauges. The portal sums the returned bucket gauges for the
+organization totals and adds uploads and downloads for `transferred_bytes`.
+Bucket entries are ordered by name. An organization without buckets selects no
+metric keys and returns zero totals and an empty bucket list.
+
+Unwritten gauges return zero, following the registry contract. Adding the
+`StoredObjects` identifier does not implement its collection. Request counts cover
+operations attributed to these buckets, including public access, and exclude
+service-level operations such as `ListBuckets`. Transfer counters measure the
+object body bytes tracked by the S3 adapter, including partial failed transfers.
+
+Registry failures, unsupported resolutions, expired history and invalid metric
+totals return HTTP 503 with `{"error":"metrics_unavailable"}`. Database failures
+return HTTP 500 with `{"error":"database_error"}`. This endpoint does not supply
+the 7/30-day chart, and the console is not connected to it yet.
 
 ### Organization members
 

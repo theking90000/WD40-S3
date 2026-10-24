@@ -19,6 +19,8 @@ pub enum Metric {
     SuccessRequestCount = 5,
     /// Number of failed or abandoned requests.
     FailedRequestCount = 6,
+    /// Number of objects currently stored.
+    StoredObjects = 7,
 }
 
 impl From<Metric> for u16 {
