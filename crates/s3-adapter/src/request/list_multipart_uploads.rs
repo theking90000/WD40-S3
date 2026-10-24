@@ -158,12 +158,12 @@ fn validate_input(input: &ListMultipartUploadsInput) -> S3Result<(i32, bool)> {
             "invalid listing bucket or key parameters"
         ));
     }
-    if input.expected_bucket_owner.is_some() || input.request_payer.is_some() {
-        return Err(s3s::s3_error!(
-            NotImplemented,
-            "unsupported ListMultipartUploads option"
-        ));
-    }
+    reject_unsupported!(
+        "ListMultipartUploads",
+        input,
+        expected_bucket_owner,
+        request_payer,
+    );
     let max_uploads = input.max_uploads.unwrap_or(MAX_UPLOADS);
     if !(1..=MAX_UPLOADS).contains(&max_uploads) {
         return Err(s3s::s3_error!(

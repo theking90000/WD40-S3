@@ -59,16 +59,11 @@ pub(crate) async fn delete_objects(
         };
         let result = if policy.authorize(Action::Delete, &to_key!(input)) != Decision::Allow {
             Err(s3s::s3_error!(AccessDenied))
-        } else if object.e_tag.is_some()
-            || object.last_modified_time.is_some()
-            || object.size.is_some()
-        {
-            Err(s3s::s3_error!(
-                NotImplemented,
-                "conditional deletion is unavailable"
-            ))
         } else {
-            super::delete_object::delete(adapter, &input).await
+            match validate_object_options(&object) {
+                Ok(()) => super::delete_object::delete(adapter, &input).await,
+                Err(error) => Err(error),
+            }
         };
         record_result(&mut output, object, result, quiet);
     }
@@ -86,17 +81,20 @@ fn validate_input(input: &DeleteObjectsInput) -> S3Result<()> {
             "expected between 1 and 1000 objects"
         ));
     }
-    if input.bypass_governance_retention.is_some()
-        || input.checksum_algorithm.is_some()
-        || input.expected_bucket_owner.is_some()
-        || input.mfa.is_some()
-        || input.request_payer.is_some()
-    {
-        return Err(s3s::s3_error!(
-            NotImplemented,
-            "unsupported DeleteObjects option"
-        ));
-    }
+    reject_unsupported!(
+        "DeleteObjects",
+        input,
+        bypass_governance_retention,
+        checksum_algorithm,
+        expected_bucket_owner,
+        mfa,
+        request_payer,
+    );
+    Ok(())
+}
+
+fn validate_object_options(object: &ObjectIdentifier) -> S3Result<()> {
+    reject_unsupported!("DeleteObjects", object, e_tag, last_modified_time, size,);
     Ok(())
 }
 

@@ -75,17 +75,15 @@ fn validate_input(input: &ListPartsInput) -> S3Result<(i32, i32)> {
     {
         return Err(s3s::s3_error!(InvalidArgument, "invalid bucket or key"));
     }
-    if input.expected_bucket_owner.is_some()
-        || input.request_payer.is_some()
-        || input.sse_customer_algorithm.is_some()
-        || input.sse_customer_key.is_some()
-        || input.sse_customer_key_md5.is_some()
-    {
-        return Err(s3s::s3_error!(
-            NotImplemented,
-            "unsupported ListParts option"
-        ));
-    }
+    reject_unsupported!(
+        "ListParts",
+        input,
+        expected_bucket_owner,
+        request_payer,
+        sse_customer_algorithm,
+        sse_customer_key,
+        sse_customer_key_md5,
+    );
     let max_parts = input.max_parts.unwrap_or(MAX_PARTS);
     let marker = input.part_number_marker.unwrap_or(0);
     if max_parts < 0 || marker < 0 {

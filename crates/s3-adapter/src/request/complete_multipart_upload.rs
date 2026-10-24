@@ -128,30 +128,28 @@ fn validate_input(input: &CompleteMultipartUploadInput) -> S3Result<Option<u64>>
     {
         return Err(s3s::s3_error!(InvalidArgument, "invalid bucket or key"));
     }
-    if input.checksum_crc32.is_some()
-        || input.checksum_crc32c.is_some()
-        || input.checksum_crc64nvme.is_some()
-        || input.checksum_md5.is_some()
-        || input.checksum_sha1.is_some()
-        || input.checksum_sha256.is_some()
-        || input.checksum_sha512.is_some()
-        || input.checksum_type.is_some()
-        || input.checksum_xxhash64.is_some()
-        || input.checksum_xxhash3.is_some()
-        || input.checksum_xxhash128.is_some()
-        || input.expected_bucket_owner.is_some()
-        || input.if_match.is_some()
-        || input.if_none_match.is_some()
-        || input.request_payer.is_some()
-        || input.sse_customer_algorithm.is_some()
-        || input.sse_customer_key.is_some()
-        || input.sse_customer_key_md5.is_some()
-    {
-        return Err(s3s::s3_error!(
-            NotImplemented,
-            "unsupported CompleteMultipartUpload option"
-        ));
-    }
+    reject_unsupported!(
+        "CompleteMultipartUpload",
+        input,
+        checksum_crc32,
+        checksum_crc32c,
+        checksum_crc64nvme,
+        checksum_md5,
+        checksum_sha1,
+        checksum_sha256,
+        checksum_sha512,
+        checksum_type,
+        checksum_xxhash64,
+        checksum_xxhash3,
+        checksum_xxhash128,
+        expected_bucket_owner,
+        if_match,
+        if_none_match,
+        request_payer,
+        sse_customer_algorithm,
+        sse_customer_key,
+        sse_customer_key_md5,
+    );
     input
         .mpu_object_size
         .map(u64::try_from)
@@ -179,22 +177,20 @@ fn validate_parts(parts: Vec<CompletedPart>) -> S3Result<Vec<(PartId, ETag)>> {
             return Err(s3s::s3_error!(InvalidPartOrder));
         }
         previous = number;
-        if part.checksum_crc32.is_some()
-            || part.checksum_crc32c.is_some()
-            || part.checksum_crc64nvme.is_some()
-            || part.checksum_md5.is_some()
-            || part.checksum_sha1.is_some()
-            || part.checksum_sha256.is_some()
-            || part.checksum_sha512.is_some()
-            || part.checksum_xxhash64.is_some()
-            || part.checksum_xxhash3.is_some()
-            || part.checksum_xxhash128.is_some()
-        {
-            return Err(s3s::s3_error!(
-                NotImplemented,
-                "unsupported completed part checksum"
-            ));
-        }
+        reject_unsupported!(
+            "CompleteMultipartUpload",
+            part,
+            checksum_crc32,
+            checksum_crc32c,
+            checksum_crc64nvme,
+            checksum_md5,
+            checksum_sha1,
+            checksum_sha256,
+            checksum_sha512,
+            checksum_xxhash64,
+            checksum_xxhash3,
+            checksum_xxhash128,
+        );
         let e_tag = part
             .e_tag
             .filter(|value| matches!(value, ETag::Strong(_)))

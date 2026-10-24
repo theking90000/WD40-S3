@@ -87,42 +87,43 @@ fn validate_input(input: &CreateMultipartUploadInput) -> S3Result<()> {
         ));
     }
 
-    if input.acl.is_some()
-        || input.bucket_key_enabled.is_some()
-        || input.cache_control.is_some()
-        || input.checksum_algorithm.is_some()
-        || input.checksum_type.is_some()
-        || input.content_disposition.is_some()
-        || input.content_encoding.is_some()
-        || input.content_language.is_some()
-        || input.expected_bucket_owner.is_some()
-        || input.expires.is_some()
-        || input.grant_full_control.is_some()
-        || input.grant_read.is_some()
-        || input.grant_read_acp.is_some()
-        || input.grant_write_acp.is_some()
-        || input.object_lock_legal_hold_status.is_some()
-        || input.object_lock_mode.is_some()
-        || input.object_lock_retain_until_date.is_some()
-        || input.request_payer.is_some()
-        || input.server_side_encryption.is_some()
-        || input.sse_customer_algorithm.is_some()
-        || input.sse_customer_key.is_some()
-        || input.sse_customer_key_md5.is_some()
-        || input.ssekms_encryption_context.is_some()
-        || input.ssekms_key_id.is_some()
-        || input.tagging.is_some()
-        || input.website_redirect_location.is_some()
-        || input
+    reject_unsupported!(
+        "CreateMultipartUpload",
+        input,
+        acl,
+        bucket_key_enabled,
+        cache_control,
+        checksum_algorithm,
+        checksum_type,
+        content_disposition,
+        content_encoding,
+        content_language,
+        expected_bucket_owner,
+        expires,
+        grant_full_control,
+        grant_read,
+        grant_read_acp,
+        grant_write_acp,
+        object_lock_legal_hold_status,
+        object_lock_mode,
+        object_lock_retain_until_date,
+        request_payer,
+        server_side_encryption,
+        sse_customer_algorithm,
+        sse_customer_key,
+        sse_customer_key_md5,
+        ssekms_encryption_context,
+        ssekms_key_id,
+        tagging,
+        website_redirect_location,
+    );
+    reject_unsupported!(
+        "CreateMultipartUpload";
+        storage_class => input
             .storage_class
             .as_ref()
-            .is_some_and(|value| value.as_str() != StorageClass::STANDARD)
-    {
-        return Err(s3s::s3_error!(
-            NotImplemented,
-            "unsupported CreateMultipartUpload option"
-        ));
-    }
+            .is_some_and(|value| value.as_str() != StorageClass::STANDARD),
+    );
 
     Ok(())
 }

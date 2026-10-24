@@ -1,3 +1,24 @@
+/// Rejects the first unsupported option without including its value in the error.
+macro_rules! reject_unsupported {
+    ($operation:expr, $input:expr, $($field:ident),+ $(,)?) => {{
+        let input = &$input;
+        reject_unsupported!($operation; $($field => input.$field.is_some()),+);
+    }};
+    ($operation:expr; $($field:ident => $unsupported:expr),+ $(,)?) => {{
+        let operation = $operation;
+        $(
+            if $unsupported {
+                return Err(s3s::s3_error!(
+                    NotImplemented,
+                    "unsupported {} option: {}",
+                    operation,
+                    stringify!($field)
+                ));
+            }
+        )+
+    }};
+}
+
 pub(crate) mod abort_multipart_upload;
 pub(crate) mod complete_multipart_upload;
 pub(crate) mod copy_object;

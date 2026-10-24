@@ -138,17 +138,15 @@ fn validate_input(input: &UploadPartInput) -> S3Result<(PartId, Option<u64>)> {
             "invalid bucket, key or part number"
         ));
     }
-    if input.expected_bucket_owner.is_some()
-        || input.request_payer.is_some()
-        || input.sse_customer_algorithm.is_some()
-        || input.sse_customer_key.is_some()
-        || input.sse_customer_key_md5.is_some()
-    {
-        return Err(s3s::s3_error!(
-            NotImplemented,
-            "unsupported UploadPart option"
-        ));
-    }
+    reject_unsupported!(
+        "UploadPart",
+        input,
+        expected_bucket_owner,
+        request_payer,
+        sse_customer_algorithm,
+        sse_customer_key,
+        sse_customer_key_md5,
+    );
     let part_id = PartId::try_from(input.part_number).map_err(S3Error::internal_error)?;
     let length = input
         .content_length

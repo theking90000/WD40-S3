@@ -60,15 +60,13 @@ fn validate_input(input: &AbortMultipartUploadInput) -> S3Result<()> {
         return Err(s3s::s3_error!(InvalidArgument, "invalid bucket or key"));
     }
 
-    if input.expected_bucket_owner.is_some()
-        || input.request_payer.is_some()
-        || input.if_match_initiated_time.is_some()
-    {
-        return Err(s3s::s3_error!(
-            NotImplemented,
-            "unsupported AbortMultipartUpload option"
-        ));
-    }
+    reject_unsupported!(
+        "AbortMultipartUpload",
+        input,
+        expected_bucket_owner,
+        request_payer,
+        if_match_initiated_time,
+    );
 
     Ok(())
 }

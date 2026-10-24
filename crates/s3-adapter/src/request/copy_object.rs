@@ -150,53 +150,54 @@ fn validate_input(input: &CopyObjectInput) -> S3Result<()> {
 }
 
 fn validate_options(input: &CopyObjectInput) -> S3Result<()> {
-    if input.acl.is_some()
-        || input.annotation_directive.is_some()
-        || input.bucket_key_enabled.is_some()
-        || input.cache_control.is_some()
-        || input.checksum_algorithm.is_some()
-        || input.content_disposition.is_some()
-        || input.content_encoding.is_some()
-        || input.content_language.is_some()
-        || input.copy_source_if_match.is_some()
-        || input.copy_source_if_modified_since.is_some()
-        || input.copy_source_if_none_match.is_some()
-        || input.copy_source_if_unmodified_since.is_some()
-        || input.copy_source_sse_customer_algorithm.is_some()
-        || input.copy_source_sse_customer_key.is_some()
-        || input.copy_source_sse_customer_key_md5.is_some()
-        || input.expected_bucket_owner.is_some()
-        || input.expected_source_bucket_owner.is_some()
-        || input.expires.is_some()
-        || input.grant_full_control.is_some()
-        || input.grant_read.is_some()
-        || input.grant_read_acp.is_some()
-        || input.grant_write_acp.is_some()
-        || input.if_match.is_some()
-        || input.if_none_match.is_some()
-        || input.object_lock_legal_hold_status.is_some()
-        || input.object_lock_mode.is_some()
-        || input.object_lock_retain_until_date.is_some()
-        || input.request_payer.is_some()
-        || input.server_side_encryption.is_some()
-        || input.sse_customer_algorithm.is_some()
-        || input.sse_customer_key.is_some()
-        || input.sse_customer_key_md5.is_some()
-        || input.ssekms_encryption_context.is_some()
-        || input.ssekms_key_id.is_some()
-        || input.tagging.is_some()
-        || input.tagging_directive.is_some()
-        || input.website_redirect_location.is_some()
-        || input
+    reject_unsupported!(
+        "CopyObject",
+        input,
+        acl,
+        annotation_directive,
+        bucket_key_enabled,
+        cache_control,
+        checksum_algorithm,
+        content_disposition,
+        content_encoding,
+        content_language,
+        copy_source_if_match,
+        copy_source_if_modified_since,
+        copy_source_if_none_match,
+        copy_source_if_unmodified_since,
+        copy_source_sse_customer_algorithm,
+        copy_source_sse_customer_key,
+        copy_source_sse_customer_key_md5,
+        expected_bucket_owner,
+        expected_source_bucket_owner,
+        expires,
+        grant_full_control,
+        grant_read,
+        grant_read_acp,
+        grant_write_acp,
+        if_match,
+        if_none_match,
+        object_lock_legal_hold_status,
+        object_lock_mode,
+        object_lock_retain_until_date,
+        request_payer,
+        server_side_encryption,
+        sse_customer_algorithm,
+        sse_customer_key,
+        sse_customer_key_md5,
+        ssekms_encryption_context,
+        ssekms_key_id,
+        tagging,
+        tagging_directive,
+        website_redirect_location,
+    );
+    reject_unsupported!(
+        "CopyObject";
+        storage_class => input
             .storage_class
             .as_ref()
-            .is_some_and(|value| value.as_str() != StorageClass::STANDARD)
-    {
-        return Err(s3s::s3_error!(
-            NotImplemented,
-            "unsupported CopyObject option"
-        ));
-    }
+            .is_some_and(|value| value.as_str() != StorageClass::STANDARD),
+    );
     Ok(())
 }
 

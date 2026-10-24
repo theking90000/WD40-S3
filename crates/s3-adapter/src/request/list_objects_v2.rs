@@ -93,20 +93,17 @@ pub(crate) async fn list_policy(
     ))
 }
 
-fn validate_input(input: &ListObjectsV2Input) -> S3Result<(i32, bool)> {
-    if input.fetch_owner == Some(true)
-        || input.expected_bucket_owner.is_some()
-        || input.request_payer.is_some()
-        || input
+fn validate_input(input: &ListObjectsV2Input, operation: &str) -> S3Result<(i32, bool)> {
+    reject_unsupported!(
+        operation;
+        fetch_owner => input.fetch_owner == Some(true),
+        expected_bucket_owner => input.expected_bucket_owner.is_some(),
+        request_payer => input.request_payer.is_some(),
+        optional_object_attributes => input
             .optional_object_attributes
             .as_ref()
-            .is_some_and(|attributes| !attributes.is_empty())
-    {
-        return Err(s3s::s3_error!(
-            NotImplemented,
-            "owner, requester pays and optional object attributes are unavailable"
-        ));
-    }
+            .is_some_and(|attributes| !attributes.is_empty()),
+    );
     let max_keys = input.max_keys.unwrap_or(MAX_KEYS);
     if max_keys < 0
         || input
@@ -235,7 +232,12 @@ pub(crate) async fn list_page(
     continuation_tokens: bool,
 ) -> S3Result<(S3Response<ListObjectsV2Output>, Option<String>)> {
     let prefix = registry_prefix(&req.input.bucket, req.input.prefix.as_deref())?;
-    let (max_keys, encode) = validate_input(&req.input)?;
+    let operation = if continuation_tokens {
+        "ListObjectsV2"
+    } else {
+        "ListObjects"
+    };
+    let (max_keys, encode) = validate_input(&req.input, operation)?;
     let mut state = continuation(&req.input)?;
     let policy = match req.extensions.remove::<ListPolicy>() {
         Some(policy) => policy.0,

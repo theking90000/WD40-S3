@@ -66,19 +66,17 @@ fn validate_input(input: &DeleteObjectInput) -> S3Result<Option<VersionId>> {
         return Err(s3s::s3_error!(InvalidArgument, "invalid bucket or key"));
     }
 
-    if input.bypass_governance_retention.is_some()
-        || input.expected_bucket_owner.is_some()
-        || input.if_match.is_some()
-        || input.if_match_last_modified_time.is_some()
-        || input.if_match_size.is_some()
-        || input.mfa.is_some()
-        || input.request_payer.is_some()
-    {
-        return Err(s3s::s3_error!(
-            NotImplemented,
-            "unsupported DeleteObject option"
-        ));
-    }
+    reject_unsupported!(
+        "DeleteObject",
+        input,
+        bypass_governance_retention,
+        expected_bucket_owner,
+        if_match,
+        if_match_last_modified_time,
+        if_match_size,
+        mfa,
+        request_payer,
+    );
 
     input
         .version_id
