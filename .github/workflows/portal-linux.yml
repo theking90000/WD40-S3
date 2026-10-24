@@ -12,6 +12,9 @@ jobs:
   build:
     name: portal-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
+    env:
+      RUSTFLAGS: ${{ matrix.rustflags }}
+      CXXFLAGS: ${{ matrix.cxxflags }}
     strategy:
       fail-fast: false
       matrix:
@@ -38,10 +41,12 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.arch }}
+
       - name: Build portal
-        env:
-          RUSTFLAGS: ${{ matrix.rustflags }}
-          CXXFLAGS: ${{ matrix.cxxflags }}
         run: cargo b -p portal -F standalone,embedded-s3 --release
 
       - name: Package executable
