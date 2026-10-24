@@ -78,13 +78,24 @@ fn enum_returns_owned_complete_records_and_opaque_metadata() -> TestResult {
         let store = registry.store("documents/é.txt", BlobId::MAX, metadata.clone());
         require_send(&store);
         let first = store.await?;
+        check(
+            first.previous.is_none(),
+            "first store replaced a visible object",
+        )?;
+        let first = first.version_id;
         let second = registry
             .store("documents/é.txt", 7, Metadata::new())
             .await?;
+        let replaced = second.previous;
+        let second = second.version_id;
         check(second > first, "versions are not monotonic")?;
         let head = registry.head("documents/é.txt", Some(first));
         require_send(&head);
         let original = head.await?;
+        check(
+            replaced.as_ref() == Some(&original),
+            "store returned the wrong previous object",
+        )?;
         check(
             original
                 == RecordMetadata {
@@ -134,9 +145,18 @@ fn markers_and_deleted_versions_restore_the_correct_predecessor() -> TestResult 
     block_on(async {
         let database = temporary_database()?;
         let registry = LocalRegistry::new(database.clone())?;
-        let first = registry.store("key", 11, Metadata::new()).await?;
-        let second = registry.store("key", 22, Metadata::new()).await?;
-        let marker = registry.delete("key", None).await?.version_id;
+        let first = registry.store("key", 11, Metadata::new()).await?.version_id;
+        let second = registry.store("key", 22, Metadata::new()).await?.version_id;
+        let deleted = registry.delete("key", None).await?;
+        check(
+            deleted
+                .previous
+                .as_ref()
+                .is_some_and(|record| record.version_id == second)
+                && deleted.current.is_none(),
+            "delete marker returned the wrong visible transition",
+        )?;
+        let marker = deleted.version_id;
         check(
             matches!(
                 registry.head("key", None).await,
@@ -191,13 +211,21 @@ fn markers_and_deleted_versions_restore_the_correct_predecessor() -> TestResult 
             "history included a flagged version",
         )?;
 
-        registry.delete("key", Some(marker)).await?;
+        let restored = registry.delete("key", Some(marker)).await?;
+        check(
+            restored.previous.is_none()
+                && restored
+                    .current
+                    .as_ref()
+                    .is_some_and(|record| record.version_id == first),
+            "marker deletion did not return the restored current object",
+        )?;
         check(
             registry.head("key", None).await?.version_id == first,
             "deleting the marker did not skip a deleted predecessor",
         )?;
         let remaining_marker = registry.delete("key", None).await?.version_id;
-        let object = registry.store("key", 33, Metadata::new()).await?;
+        let object = registry.store("key", 33, Metadata::new()).await?.version_id;
         registry.delete("key", Some(object)).await?;
         check(
             matches!(
@@ -245,7 +273,7 @@ fn markers_and_deleted_versions_restore_the_correct_predecessor() -> TestResult 
             versions.get(head_key("key"))?.is_none(),
             "empty history retained a current pointer",
         )?;
-        let fresh = registry.store("key", 44, Metadata::new()).await?;
+        let fresh = registry.store("key", 44, Metadata::new()).await?.version_id;
         check(
             fresh > newest_marker,
             "fully deleted key reused a version ID",
@@ -267,7 +295,7 @@ fn explicit_deletion_is_idempotent_and_leaves_blob_trees_unchanged() -> TestResu
             77_u128.to_be_bytes().as_slice(),
             b"opaque blob record".as_slice(),
         )?;
-        let id = registry.store("key", 77, Metadata::new()).await?;
+        let id = registry.store("key", 77, Metadata::new()).await?.version_id;
         registry.delete("key", Some(id)).await?;
         let versions = database.open_tree("object-versions")?;
         let bytes = versions
@@ -323,7 +351,10 @@ fn pages_preserve_key_order_version_order_and_complete_metadata() -> TestResult 
             registry.store(key, 10, metadata.clone()).await?;
             registry.store(key, 20, metadata).await?;
         }
-        let older = registry.store("pré/a", 30, Metadata::new()).await?;
+        let older = registry
+            .store("pré/a", 30, Metadata::new())
+            .await?
+            .version_id;
         registry.delete("pré/a", Some(older)).await?;
         let marker = registry.delete("pré/b", None).await?.version_id;
         registry.delete("pré/c", None).await?;
@@ -539,7 +570,12 @@ fn independent_handles_serialize_same_key_stores_and_preserve_predecessors() -> 
         }
         let mut ids = Vec::new();
         for worker in workers {
-            ids.push(worker.join().map_err(|_| "store worker panicked")??);
+            ids.push(
+                worker
+                    .join()
+                    .map_err(|_| "store worker panicked")??
+                    .version_id,
+            );
         }
         Ok(ids)
     });
@@ -586,8 +622,8 @@ fn independent_handles_serialize_same_key_stores_and_preserve_predecessors() -> 
 fn racing_deletions_and_store_delete_preserve_the_current_object() -> TestResult {
     let database = temporary_database()?;
     let registry = LocalRegistry::new(database.clone())?;
-    let older = block_on(registry.store("key", 1, Metadata::new()))?;
-    let current = block_on(registry.store("key", 2, Metadata::new()))?;
+    let older = block_on(registry.store("key", 1, Metadata::new()))?.version_id;
+    let current = block_on(registry.store("key", 2, Metadata::new()))?.version_id;
     let left = LocalRegistry::new(database.clone())?;
     let right = LocalRegistry::new(database.clone())?;
     let barrier = Arc::new(Barrier::new(2));
@@ -613,7 +649,7 @@ fn racing_deletions_and_store_delete_preserve_the_current_object() -> TestResult
         "racing deletions resurrected a deleted predecessor",
     )?;
 
-    let old = block_on(registry.store("key", 3, Metadata::new()))?;
+    let old = block_on(registry.store("key", 3, Metadata::new()))?.version_id;
     let left = LocalRegistry::new(database.clone())?;
     let right = LocalRegistry::new(database)?;
     let barrier = Arc::new(Barrier::new(2));
@@ -629,7 +665,7 @@ fn racing_deletions_and_store_delete_preserve_the_current_object() -> TestResult
         });
         (stored.join(), deleted.join())
     });
-    let fresh = stored.map_err(|_| "store worker panicked")??;
+    let fresh = stored.map_err(|_| "store worker panicked")??.version_id;
     deleted.map_err(|_| "delete worker panicked")??;
     check(
         block_on(registry.head("key", None))?.version_id == fresh,
@@ -677,14 +713,15 @@ fn versions_flags_markers_and_unique_ids_survive_reopening() -> TestResult {
     let result: TestResult = block_on(async {
         let (first, second, marker) = {
             let registry = LocalRegistry::new(sled::open(&path)?)?;
-            let first = registry.store("key", 1, Metadata::new()).await?;
+            let first = registry.store("key", 1, Metadata::new()).await?.version_id;
             let second = registry
                 .store(
                     "key",
                     2,
                     Metadata::from([("custom".into(), "retained".into())]),
                 )
-                .await?;
+                .await?
+                .version_id;
             registry.delete("key", Some(first)).await?;
             let marker = registry.delete("key", None).await?.version_id;
             (first, second, marker)
@@ -711,7 +748,10 @@ fn versions_flags_markers_and_unique_ids_survive_reopening() -> TestResult {
                 && restored.metadata.get("custom").map(String::as_str) == Some("retained"),
             "predecessor or metadata did not survive reopening",
         )?;
-        let next = registry.store("other", 3, Metadata::new()).await?;
+        let next = registry
+            .store("other", 3, Metadata::new())
+            .await?
+            .version_id;
         check(next > marker, "reopening reused a generated ID")
     });
     let cleanup = std::fs::remove_dir_all(&path);
@@ -725,8 +765,8 @@ fn corrupt_metadata_links_and_pointers_abort_mutations_without_partial_changes()
     block_on(async {
         let database = temporary_database()?;
         let registry = LocalRegistry::new(database.clone())?;
-        let previous = registry.store("key", 1, Metadata::new()).await?;
-        let current = registry.store("key", 2, Metadata::new()).await?;
+        let previous = registry.store("key", 1, Metadata::new()).await?.version_id;
+        let current = registry.store("key", 2, Metadata::new()).await?.version_id;
         let active = database.open_tree("object-active")?;
         let versions = database.open_tree("object-versions")?;
         let active_before = active.get("key")?.ok_or("active record missing")?;

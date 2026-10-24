@@ -3,9 +3,9 @@ use crate::Error;
 use prost::Message;
 use tonic::{Code, Status};
 
-/// Generated protocol v1 messages and feature-gated service stubs.
+/// Generated protocol v2 messages and feature-gated service stubs.
 pub mod proto {
-    tonic::include_proto!("wd40.object_registry.v1");
+    tonic::include_proto!("wd40.object_registry.v2");
 }
 /// Shared per-message encoding and decoding limit.
 pub const MAX_MESSAGE_SIZE: usize = 4 * 1024 * 1024;
@@ -152,15 +152,18 @@ impl proto::object_registry_server::ObjectRegistry for GrpcService {
     async fn store(
         &self,
         request: tonic::Request<proto::StoreRequest>,
-    ) -> Result<tonic::Response<proto::VersionResponse>, Status> {
+    ) -> Result<tonic::Response<proto::StoreResponse>, Status> {
         use crate::traits::ObjectRegistry as _;
         let r = request.into_inner();
-        let version_id = self
+        let result = self
             .registry
             .store(&r.key, decode_id(&r.blob_id)?, r.metadata)
             .await
             .map_err(into_status)?;
-        Ok(tonic::Response::new(proto::VersionResponse { version_id }))
+        Ok(tonic::Response::new(proto::StoreResponse {
+            version_id: result.version_id,
+            previous: result.previous.map(encode_record),
+        }))
     }
     async fn head(
         &self,
@@ -211,7 +214,7 @@ impl proto::object_registry_server::ObjectRegistry for GrpcService {
     async fn delete(
         &self,
         request: tonic::Request<proto::HeadRequest>,
-    ) -> Result<tonic::Response<proto::VersionResponse>, Status> {
+    ) -> Result<tonic::Response<proto::DeleteResponse>, Status> {
         use crate::traits::ObjectRegistry as _;
         let r = request.into_inner();
         let result = self
@@ -219,8 +222,10 @@ impl proto::object_registry_server::ObjectRegistry for GrpcService {
             .delete(&r.key, r.version_id)
             .await
             .map_err(into_status)?;
-        Ok(tonic::Response::new(proto::VersionResponse {
+        Ok(tonic::Response::new(proto::DeleteResponse {
             version_id: result.version_id,
+            previous: result.previous.map(encode_record),
+            current: result.current.map(encode_record),
         }))
     }
 }

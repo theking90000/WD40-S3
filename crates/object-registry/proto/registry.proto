@@ -1,13 +1,16 @@
 syntax = "proto3";
-package wd40.object_registry.v1;
+package wd40.object_registry.v2;
 service ObjectRegistry {
-  rpc Store(StoreRequest) returns (VersionResponse);
+  rpc Store(StoreRequest) returns (StoreResponse);
   rpc Head(HeadRequest) returns (RecordMetadata);
   rpc List(ListRequest) returns (PageResult);
-  rpc Delete(HeadRequest) returns (VersionResponse);
+  rpc Delete(HeadRequest) returns (DeleteResponse);
 }
 message StoreRequest { string key = 1; bytes blob_id = 2; map<string, string> metadata = 3; }
-message VersionResponse { uint64 version_id = 1; }
+// Snapshots are captured inside the mutation transaction. Delete markers and
+// missing current objects are represented by absent record fields.
+message StoreResponse { uint64 version_id = 1; optional RecordMetadata previous = 2; }
+message DeleteResponse { uint64 version_id = 1; optional RecordMetadata previous = 2; optional RecordMetadata current = 3; }
 message HeadRequest { string key = 1; optional uint64 version_id = 2; }
 // Cursor bytes use the v1 Postcard layout of the opaque Rust Cursor.
 message ListRequest { string prefix = 1; optional bytes cursor = 2; optional uint64 limit = 3; bool include_versions = 4; }

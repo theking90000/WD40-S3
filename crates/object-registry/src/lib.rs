@@ -20,7 +20,9 @@ pub use grpc::GrpcService;
 pub use local::LocalRegistry;
 #[cfg(feature = "grpc-client")]
 pub use remote::RemoteRegistry;
-pub use traits::{Cursor, DeleteResult, Metadata, PageResult, RecordMetadata, VersionId};
+pub use traits::{
+    Cursor, DeleteResult, Metadata, PageResult, RecordMetadata, StoreResult, VersionId,
+};
 
 /// Selects the object registry implementation at runtime.
 #[derive(Clone)]
@@ -36,7 +38,7 @@ impl traits::ObjectRegistry for ObjectRegistry {
         key: &str,
         blob_id: BlobId,
         metadata: Metadata,
-    ) -> Result<VersionId, Error> {
+    ) -> Result<StoreResult, Error> {
         match self {
             Self::Local(registry) => {
                 traits::ObjectRegistry::store(registry, key, blob_id, metadata).await

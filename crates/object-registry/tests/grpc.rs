@@ -76,6 +76,11 @@ fn local(db: &sled::Db) -> TestResult<ObjectRegistry> {
 async fn exercise(registry: &ObjectRegistry, key: &str) -> TestResult {
     let metadata = Metadata::from([("任意\0field".to_owned(), "value\0unchanged".to_owned())]);
     let first = registry.store(key, BlobId::MAX, metadata.clone()).await?;
+    check(
+        first.previous.is_none(),
+        "first remote store replaced an object",
+    )?;
+    let first = first.version_id;
     let record = registry.head(key, Some(first)).await?;
     check(
         record.blob_id == Some(BlobId::MAX)
@@ -84,6 +89,11 @@ async fn exercise(registry: &ObjectRegistry, key: &str) -> TestResult {
         "head changed owned metadata or IDs",
     )?;
     let second = registry.store(key, 7, Metadata::new()).await?;
+    check(
+        second.previous.as_ref() == Some(&record),
+        "remote store lost its previous object",
+    )?;
+    let second = second.version_id;
     let page = registry.list(key, None, Some(1), true).await?;
     check(
         page.records.len() == 1 && page.records.first().is_some_and(|r| r.version_id == second),
@@ -97,12 +107,27 @@ async fn exercise(registry: &ObjectRegistry, key: &str) -> TestResult {
         page.records == vec![record] && page.next_cursor.is_none(),
         "cursor did not reconstruct the remaining page",
     )?;
+    let deleted = registry.delete(key, Some(first)).await?;
     check(
-        registry.delete(key, Some(first)).await?.version_id == first,
-        "explicit deletion ID changed",
+        deleted.previous == deleted.current
+            && deleted
+                .current
+                .as_ref()
+                .is_some_and(|record| record.version_id == second),
+        "remote historical deletion changed the current snapshots",
     )?;
+    check(deleted.version_id == first, "explicit deletion ID changed")?;
     registry.delete(key, Some(first)).await?;
-    let marker = registry.delete(key, None).await?.version_id;
+    let deleted = registry.delete(key, None).await?;
+    check(
+        deleted
+            .previous
+            .as_ref()
+            .is_some_and(|record| record.version_id == second)
+            && deleted.current.is_none(),
+        "remote marker lost its visible transition",
+    )?;
+    let marker = deleted.version_id;
     let record = registry.head(key, Some(marker)).await?;
     check(
         record.is_delete_marker && record.blob_id.is_none(),

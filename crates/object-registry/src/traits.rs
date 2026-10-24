@@ -36,21 +36,35 @@ pub struct PageResult {
     pub next_cursor: Option<Cursor>,
 }
 
-/// The created delete marker or the version requested for deletion.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+/// A new version and the visible object it replaced, captured by its transaction.
+/// A missing current pointer or a current delete marker yields `previous = None`.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct StoreResult {
+    pub version_id: VersionId,
+    pub previous: Option<RecordMetadata>,
+}
+
+/// The deletion's version ID and visible current objects before and after it.
+/// Missing objects and current delete markers are represented by `None`.
+/// Deleting a non-current, missing or already-deleted version leaves both
+/// snapshots equal. All snapshots belong to the mutation's transaction.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DeleteResult {
     pub version_id: VersionId,
+    pub previous: Option<RecordMetadata>,
+    pub current: Option<RecordMetadata>,
 }
 
 pub trait ObjectRegistry {
     /// Creates a version without checking the blob or interpreting metadata.
+    /// Returns the replaced visible object from the same transaction.
     /// Successful mutations await a durable flush. Errors need not mean rollback.
     fn store(
         &self,
         key: &str,
         blob_id: BlobId,
         metadata: Metadata,
-    ) -> impl Future<Output = Result<VersionId, Error>> + Send;
+    ) -> impl Future<Output = Result<StoreResult, Error>> + Send;
 
     /// Reads the current object, or an explicit non-deleted version/marker.
     /// Each call performs one tree lookup, without a read transaction.
@@ -75,6 +89,7 @@ pub trait ObjectRegistry {
     /// Missing/already-deleted explicit versions succeed idempotently. Deleting
     /// the current version restores its newest non-deleted predecessor, including
     /// markers: a surviving marker keeps the current object absent.
+    /// Returns the visible current objects before and after the same transaction.
     fn delete(
         &self,
         key: &str,

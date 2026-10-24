@@ -72,7 +72,8 @@ pub(crate) async fn copy_object(
         .objects
         .store(&key, blob_id, object_metadata)
         .await
-        .map_err(error::object_registry_error)?;
+        .map_err(error::object_registry_error)?
+        .version_id;
 
     success!(metrics);
 

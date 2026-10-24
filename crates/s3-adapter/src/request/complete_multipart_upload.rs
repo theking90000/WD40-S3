@@ -102,7 +102,8 @@ pub(crate) async fn complete_multipart_upload(
         .objects
         .store(&to_key!(input), upload.blob_id, upload.metadata)
         .await
-        .map_err(error::object_registry_error)?;
+        .map_err(error::object_registry_error)?
+        .version_id;
 
     // These registries do not share a transaction. Flush failures can occur
     // after a commit, and a retry can publish another object version.

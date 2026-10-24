@@ -10,8 +10,8 @@ use sled::{
 };
 
 use crate::{
-    BlobId, Cursor, DeleteResult, Error, Metadata, PageResult, RecordMetadata, VersionId,
-    traits::ObjectRegistry,
+    BlobId, Cursor, DeleteResult, Error, Metadata, PageResult, RecordMetadata, StoreResult,
+    VersionId, traits::ObjectRegistry,
 };
 
 const DEFAULT_LIMIT: usize = 1_000;
@@ -37,6 +37,13 @@ struct ActiveEntry<M = Metadata> {
 }
 
 impl VersionContent {
+    fn into_current(self, key: &str, version_id: VersionId) -> Option<RecordMetadata> {
+        match self {
+            Self::DeleteMarker => None,
+            content => Some(content.into_record(key.to_owned(), version_id)),
+        }
+    }
+
     fn into_record(self, key: String, version_id: VersionId) -> RecordMetadata {
         let (blob_id, metadata, is_delete_marker) = match self {
             Self::Object { blob_id, metadata } => (Some(blob_id), metadata, false),
@@ -101,15 +108,10 @@ impl LocalRegistry {
         Ok(())
     }
 
-    fn append(&self, key: &str, content: &VersionContent) -> Result<VersionId, Error> {
+    fn append(&self, key: &str, content: &VersionContent) -> Result<StoreResult, Error> {
         Ok(
             (&self.active, &self.versions).transaction(|(active, versions)| {
-                let previous_version_id = current_id(versions, key)?;
-                if let Some(previous) = previous_version_id
-                    && read_version(versions, key, previous)?.deleted
-                {
-                    return Err(Abort(Error::CorruptState("current version is deleted")));
-                }
+                let (previous_version_id, previous) = current_record(versions, key)?;
                 // IDs are generated again on retries, after reading the current pointer.
                 let id = versions.generate_id()?;
                 check_link(id, previous_version_id)?;
@@ -127,7 +129,10 @@ impl LocalRegistry {
                 };
                 versions.insert(version_key, encode(&entry)?)?;
                 set_current(active, versions, key, Some((id, content)))?;
-                Ok(id)
+                Ok(StoreResult {
+                    version_id: id,
+                    previous,
+                })
             })?,
         )
     }
@@ -233,6 +238,20 @@ fn read_version(
     Ok(entry)
 }
 
+fn current_record(
+    versions: &TransactionalTree,
+    key: &str,
+) -> ConflictableTransactionResult<(Option<VersionId>, Option<RecordMetadata>), Error> {
+    let Some(id) = current_id(versions, key)? else {
+        return Ok((None, None));
+    };
+    let entry = read_version(versions, key, id)?;
+    if entry.deleted {
+        return Err(Abort(Error::CorruptState("current version is deleted")));
+    }
+    Ok((Some(id), entry.content.into_current(key, id)))
+}
+
 fn set_current(
     active: &TransactionalTree,
     versions: &TransactionalTree,
@@ -287,11 +306,11 @@ impl ObjectRegistry for LocalRegistry {
         key: &str,
         blob_id: BlobId,
         metadata: Metadata,
-    ) -> Result<VersionId, Error> {
+    ) -> Result<StoreResult, Error> {
         validate_key(key)?;
-        let id = self.append(key, &VersionContent::Object { blob_id, metadata })?;
+        let result = self.append(key, &VersionContent::Object { blob_id, metadata })?;
         self.flush().await?;
-        Ok(id)
+        Ok(result)
     }
 
     async fn head(
@@ -400,47 +419,67 @@ impl ObjectRegistry for LocalRegistry {
         version_id: Option<VersionId>,
     ) -> Result<DeleteResult, Error> {
         validate_key(key)?;
-        let version_id = match version_id {
-            None => self.append(key, &VersionContent::DeleteMarker)?,
-            Some(id) => {
-                (&self.active, &self.versions).transaction(|(active, versions)| {
-                    let stored_key = version_key(key, id);
-                    let Some(bytes) = versions.get(&stored_key)? else {
-                        return Ok(());
-                    };
-                    let mut entry: VersionEntry = decode(&bytes)?;
-                    check_link(id, entry.previous_version_id)?;
-                    if entry.deleted {
-                        return Ok(());
-                    }
-                    if current_id(versions, key)? == Some(id) {
-                        let mut previous = entry.previous_version_id;
-                        let mut replacement = None;
-                        while let Some(previous_id) = previous {
-                            let candidate = read_version(versions, key, previous_id)?;
-                            if !candidate.deleted {
-                                replacement = Some((previous_id, candidate));
-                                break;
-                            }
-                            previous = candidate.previous_version_id;
-                        }
-                        set_current(
-                            active,
-                            versions,
-                            key,
-                            replacement
-                                .as_ref()
-                                .map(|(id, entry)| (*id, &entry.content)),
-                        )?;
-                    }
-                    entry.deleted = true;
-                    versions.insert(stored_key, encode(&entry)?)?;
-                    Ok(())
-                })?;
-                id
+        let result = match version_id {
+            None => {
+                let result = self.append(key, &VersionContent::DeleteMarker)?;
+                DeleteResult {
+                    version_id: result.version_id,
+                    previous: result.previous,
+                    current: None,
+                }
             }
+            Some(id) => (&self.active, &self.versions).transaction(|(active, versions)| {
+                let (current_version, previous) = current_record(versions, key)?;
+                let stored_key = version_key(key, id);
+                let Some(bytes) = versions.get(&stored_key)? else {
+                    return Ok(DeleteResult {
+                        version_id: id,
+                        current: previous.clone(),
+                        previous,
+                    });
+                };
+                let mut entry: VersionEntry = decode(&bytes)?;
+                check_link(id, entry.previous_version_id)?;
+                if entry.deleted {
+                    return Ok(DeleteResult {
+                        version_id: id,
+                        current: previous.clone(),
+                        previous,
+                    });
+                }
+                let current = if current_version == Some(id) {
+                    let mut predecessor = entry.previous_version_id;
+                    let mut replacement = None;
+                    while let Some(previous_id) = predecessor {
+                        let candidate = read_version(versions, key, previous_id)?;
+                        if !candidate.deleted {
+                            replacement = Some((previous_id, candidate));
+                            break;
+                        }
+                        predecessor = candidate.previous_version_id;
+                    }
+                    set_current(
+                        active,
+                        versions,
+                        key,
+                        replacement
+                            .as_ref()
+                            .map(|(id, entry)| (*id, &entry.content)),
+                    )?;
+                    replacement.and_then(|(id, entry)| entry.content.into_current(key, id))
+                } else {
+                    previous.clone()
+                };
+                entry.deleted = true;
+                versions.insert(stored_key, encode(&entry)?)?;
+                Ok(DeleteResult {
+                    version_id: id,
+                    previous,
+                    current,
+                })
+            })?,
         };
         self.flush().await?;
-        Ok(DeleteResult { version_id })
+        Ok(result)
     }
 }

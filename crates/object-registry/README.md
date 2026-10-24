@@ -15,15 +15,29 @@ only `object-active` and `object-versions` and uses postcard for records.
 use object_registry::{LocalRegistry, Metadata, traits::ObjectRegistry as _};
 
 let registry = LocalRegistry::new(database)?;
-let version = registry.store("photos/cat", blob_id, Metadata::new()).await?;
+let stored = registry.store("photos/cat", blob_id, Metadata::new()).await?;
 let record = registry.head("photos/cat", None).await?;
-let historical = registry.head("photos/cat", Some(version)).await?;
+let historical = registry.head("photos/cat", Some(stored.version_id)).await?;
 let page = registry.list("photos/", None, Some(100), false).await?;
 let marker = registry.delete("photos/cat", None).await?;
 registry.delete("photos/cat", Some(marker.version_id)).await?;
 ```
 
 ## Records and versions
+
+`store` returns `StoreResult { version_id, previous }`. `previous` is the visible
+object replaced by the new version, or `None` if the key was absent or hidden by
+a delete marker. The new object's contents are already known by the caller.
+
+`delete` returns `DeleteResult { version_id, previous, current }`. The snapshots
+describe the visible current object before and after the deletion, rather than
+the explicitly targeted historical version. Both are equal for a deletion that
+does not change visibility. Restoring an older object returns its complete record
+in `current`. Delete markers and absent current objects are represented by `None`.
+
+These snapshots are captured inside the same Sled transaction as the mutation,
+including on transaction retries. They do not require separate `head` calls or
+an application lock. Metadata remains opaque and the storage format is unchanged.
 
 `head` and `list` return the same `RecordMetadata`: key, `VersionId`, optional
 `BlobId`, complete metadata map and `is_delete_marker`. Keys are nonempty UTF-8
@@ -150,13 +164,18 @@ verified certificates and hostnames; `--object-registry-ca` or
 without the feature. There is no mTLS or additional authentication.
 
 All IDs are 16 big-endian bytes, except native u64 version IDs. The protocol is
-`wd40.object_registry.v1`. Both encoding and decoding are limited to 4 MiB per
+`wd40.object_registry.v2`. Both encoding and decoding are limited to 4 MiB per
 message. Structured status details preserve domain error variants and fields;
 storage/backend and unrecognized errors remain `Error::Rpc`. Relays preserve
 unknown statuses. Failed calls are not replayed and never fall back to Local.
 Endpoints must address the same logical namespace and relay chains must not cycle.
 Successful writes retain the durable-flush guarantee; an error or cancellation
 does not imply rollback.
+
+Protocol v2 returns the transactional snapshots in Store and Delete responses.
+Clients, servers and relays must be upgraded together; v1 is not served, avoiding
+silently treating snapshots missing from an old response as absent objects.
+The persisted records and the v1 Postcard cursor layout remain unchanged.
 
 Store, Head, List and Delete are unary RPCs. Metadata maps and records use
 Protobuf; cursors use the opaque v1 Postcard layout, including prefix and listing

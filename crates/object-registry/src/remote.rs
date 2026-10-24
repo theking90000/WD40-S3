@@ -1,6 +1,7 @@
 //! Connected gRPC client. Failed operations are not replayed.
 use crate::{
-    BlobId, Cursor, DeleteResult, Error, Metadata, PageResult, RecordMetadata, VersionId,
+    BlobId, Cursor, DeleteResult, Error, Metadata, PageResult, RecordMetadata, StoreResult,
+    VersionId,
     grpc::{self, proto},
     traits::ObjectRegistry,
 };
@@ -45,8 +46,8 @@ impl ObjectRegistry for RemoteRegistry {
         key: &str,
         blob_id: BlobId,
         metadata: Metadata,
-    ) -> Result<VersionId, Error> {
-        Ok(self
+    ) -> Result<StoreResult, Error> {
+        let result = self
             .client
             .clone()
             .store(proto::StoreRequest {
@@ -56,8 +57,16 @@ impl ObjectRegistry for RemoteRegistry {
             })
             .await
             .map_err(grpc::from_status)?
-            .into_inner()
-            .version_id)
+            .into_inner();
+        let previous = result
+            .previous
+            .map(grpc::decode_record)
+            .transpose()
+            .map_err(|error| Error::Rpc(Status::data_loss(error.message())))?;
+        Ok(StoreResult {
+            version_id: result.version_id,
+            previous,
+        })
     }
     async fn head(
         &self,
@@ -135,6 +144,16 @@ impl ObjectRegistry for RemoteRegistry {
             .into_inner();
         Ok(DeleteResult {
             version_id: result.version_id,
+            previous: result
+                .previous
+                .map(grpc::decode_record)
+                .transpose()
+                .map_err(|error| Error::Rpc(Status::data_loss(error.message())))?,
+            current: result
+                .current
+                .map(grpc::decode_record)
+                .transpose()
+                .map_err(|error| Error::Rpc(Status::data_loss(error.message())))?,
         })
     }
 }
