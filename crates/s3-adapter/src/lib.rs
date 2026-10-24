@@ -8,6 +8,8 @@ pub mod cli;
 mod body;
 mod error;
 mod metadata;
+#[cfg(feature = "metrics")]
+pub mod metrics;
 mod request;
 mod s3;
 
@@ -81,6 +83,22 @@ impl S3Adapter {
     pub fn with_metrics(mut self, metrics: MetricsRegistry) -> Self {
         self.metrics = Some(metrics);
         self
+    }
+
+    /// Starts one metrics task when a registry is attached.
+    ///
+    /// The context is built only when metrics are enabled. The current Tokio
+    /// runtime must have its time driver enabled. Keep the returned tracker
+    /// until the operation, including any response body, has finished.
+    #[cfg(feature = "metrics")]
+    pub fn request_metrics(
+        &self,
+        context: impl FnOnce() -> metrics::MetricsContext,
+    ) -> std::io::Result<Option<metrics::RequestMetrics>> {
+        self.metrics
+            .as_ref()
+            .map(|registry| metrics::RequestMetrics::start(registry, context()))
+            .transpose()
     }
 
     /// Builds a service for an application-owned Hyper or Tower server.

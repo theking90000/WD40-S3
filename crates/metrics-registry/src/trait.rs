@@ -14,6 +14,7 @@ use crate::Error;
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum MetricKind {
     /// Replace the current value using an internally timestamped assignment.
+    // TODO(api): support signed gauge deltas applied atomically to the current value.
     Gauge,
     /// Add a nonnegative amount to the counter's historical windows.
     Counter,

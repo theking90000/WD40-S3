@@ -15,6 +15,10 @@ pub enum Metric {
     UploadedBytes = 3,
     /// Number of requests.
     RequestCount = 4,
+    /// Number of explicitly successful requests.
+    SuccessRequestCount = 5,
+    /// Number of failed or abandoned requests.
+    FailedRequestCount = 6,
 }
 
 impl From<Metric> for u16 {
