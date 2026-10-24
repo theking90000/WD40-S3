@@ -27,8 +27,9 @@ pub(crate) fn take_last_modified(metadata: &mut Metadata) -> S3Result<Timestamp>
         Some(value) => {
             Timestamp::parse(TimestampFormat::DateTime, &value).map_err(S3Error::internal_error)
         }
-        // Objects written before timestamps were stored use the Unix epoch.
-        None => Ok(SystemTime::UNIX_EPOCH.into()),
+        // Legacy objects use September 10, 2025 at 12:23 UTC-6, or 18:23 UTC.
+        None => Timestamp::parse(TimestampFormat::DateTime, "2025-09-10T18:23:00.000Z")
+            .map_err(S3Error::internal_error),
     }
 }
 
