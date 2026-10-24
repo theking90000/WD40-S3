@@ -104,6 +104,17 @@ impl AccessController {
         })
     }
 
+    /// Loads only policies directly attached to a principal, excluding global selectors.
+    pub async fn load_principal_policies(
+        &self,
+        principal_id: u128,
+    ) -> Result<PolicySnapshot, Error> {
+        Ok(self
+            .registry
+            .load_policies(&[PrincipalSelector::Specific(principal_id)])
+            .await?)
+    }
+
     /// Compiles an already loaded snapshot using this controller's limits.
     pub fn compile_snapshot(&self, snapshot: PolicySnapshot) -> Result<Arc<CompiledPolicy>, Error> {
         Ok(Arc::new(CompiledPolicy::from_snapshot(

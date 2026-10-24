@@ -1,4 +1,5 @@
-//! Lists explicitly named buckets with effective LIST access on `bucket/`.
+//! Lists explicitly named buckets with LIST access on `bucket/` from policies
+//! directly attached to the authenticated principal. Global selectors are excluded.
 //! Policy resources provide names even for empty buckets. Broad prefixes without
 //! a slash cannot enumerate bucket names without a separate bucket catalogue.
 
@@ -53,7 +54,7 @@ async fn load_buckets(
     };
     let snapshot = access
         .access
-        .load_policies(principal)
+        .load_principal_policies(principal_id)
         .await
         .map_err(S3Error::internal_error)?;
     let mut names = BTreeSet::new();
