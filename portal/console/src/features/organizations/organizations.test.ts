@@ -201,7 +201,7 @@ test("organization cache and routing share requests and follow membership and se
     currentUser = { ...alice, email, email_verified };
     await queryClient.invalidateQueries({ queryKey: currentUserKey, exact: true, refetchType: "none" });
     await queryClient.invalidateQueries({ queryKey: organizationsQuery(currentUser).queryKey, exact: true, refetchType: "none" });
-    const beforeListing = listings;
+    const beforeListing: number = listings;
     await router.navigate("/");
     assert.equal(listings, beforeListing + 1);
     if (backendError) {

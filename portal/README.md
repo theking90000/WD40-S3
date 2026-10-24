@@ -1071,6 +1071,29 @@ The left navigation switches organizations above the workspace links and offers
 the same creation dialog, including in the mobile navigation drawer.
 Creation updates the shared cache from the POST response and opens the new
 organization without an immediate GET. Results from a previous session are ignored.
+### Dashboard client
+
+`features/organizations/dashboard/api.ts` defines `OrganizationDashboard`,
+`DashboardPeriod`, `BucketUsage` and `organizationDashboardQuery(user, organizationId)`.
+It reads the dashboard endpoint through the shared HTTP client and validates
+nonnegative safe integer metrics, Unix-second timestamps, ordered period bounds,
+a positive resolution and unique bucket names. Server totals are preserved.
+Malformed responses throw `invalid_dashboard_response` with status 502.
+
+The query key extends `organizationsQuery(user).queryKey` with the organization ID
+and `dashboard`. Data stays fresh for 30 seconds. When observed in the browser,
+the query refreshes every 60 seconds, with background polling disabled. These
+options do not start any requests until a consumer fetches or observes the query.
+The console does not display dashboard metrics yet.
+
+Session-generation checks reject late responses and errors, including changes
+during response parsing or membership refresh. An `organization_not_found` error
+refreshes the shared organizations list before propagating. The existing global
+401 handler expires the current session; metrics failures retain cached data.
+Organization deletion and session changes already clear this query through their
+existing cache prefixes. Abort signals cancel discarded reads. Non-abort network
+and server failures retry once; HTTP errors below 500 are not retried.
+
 ### Organization members in the console
 
 `/{organization_id}/members` uses the existing table, dialog and confirmation
@@ -1094,7 +1117,7 @@ to login and a lost organization membership returns to the chooser. The Rust
 fallback serves direct `/members` loads under the configured deployment prefix.
 
 The focused integration check is available from `portal/console/` with
-`node --test src/features/auth/auth.test.ts src/features/organizations/organizations.test.ts`.
+`node --test src/features/auth/auth.test.ts src/features/organizations/organizations.test.ts src/features/organizations/dashboard/dashboard.test.ts`.
 Node.js strips the TypeScript types directly.
 It uses mocked HTTP and a memory router, without
 an IdP or browser service.
