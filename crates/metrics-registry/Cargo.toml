@@ -3,6 +3,26 @@ name = "metrics-registry"
 version.workspace = true
 edition.workspace = true
 
+[features]
+default = []
+cli = ["dep:clap"]
+grpc-client = ["dep:tonic", "dep:tonic-prost", "dep:prost", "dep:tonic-prost-build", "tonic/codegen", "tonic/channel"]
+grpc-server = ["dep:tonic", "dep:tonic-prost", "dep:prost", "dep:tonic-prost-build", "dep:tokio", "tonic/codegen", "tonic/server", "tonic/router"]
+grpc-tls = ["tonic?/tls-ring", "tonic?/tls-native-roots"]
+
+[[bin]]
+name = "metrics-registry"
+path = "src/main.rs"
+required-features = ["cli", "grpc-server"]
+
 [dependencies]
 blocking = "1"
+clap = { version = "4", features = ["derive", "env"], optional = true }
 rocksdb = { version = "0.25", default-features = false, features = ["bindgen-runtime"] }
+tonic = { version = "0.14", default-features = false, optional = true }
+tonic-prost = { version = "0.14", optional = true }
+prost = { version = "0.14", optional = true }
+tokio = { version = "1", features = ["macros", "rt", "signal"], optional = true }
+
+[build-dependencies]
+tonic-prost-build = { version = "0.14", optional = true }

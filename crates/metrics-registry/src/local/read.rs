@@ -25,13 +25,15 @@ pub(super) fn query(
         for metric in &query.metrics {
             match &metric.selection {
                 Selection::Current if metric.kind == MetricKind::Counter => {
-                    return Err(Error::InvalidQuery("counters have no current selection"));
+                    return Err(Error::InvalidQuery(
+                        "counters have no current selection".into(),
+                    ));
                 }
                 Selection::Current => {}
                 Selection::History { resolution, range } => {
                     if resolution.is_zero() || resolution.subsec_nanos() != 0 {
                         return Err(Error::InvalidQuery(
-                            "resolution must be nonzero whole seconds",
+                            "resolution must be nonzero whole seconds".into(),
                         ));
                     }
                     let policy = registry
@@ -41,7 +43,7 @@ pub(super) fn query(
                         .find(|policy| policy.resolution == *resolution)
                         .ok_or(Error::ResolutionUnavailable(*resolution))?;
                     if range.start > range.end {
-                        return Err(Error::InvalidQuery("history range is reversed"));
+                        return Err(Error::InvalidQuery("history range is reversed".into()));
                     }
                     let start = epoch(range.start)?;
                     epoch(range.end)?;
@@ -178,5 +180,5 @@ pub(super) fn floor(seconds: u64, resolution: u64) -> Result<u64, Error> {
 
 fn epoch(time: SystemTime) -> Result<Duration, Error> {
     time.duration_since(UNIX_EPOCH)
-        .map_err(|_| Error::InvalidQuery("history times must not precede the Unix epoch"))
+        .map_err(|_| Error::InvalidQuery("history times must not precede the Unix epoch".into()))
 }

@@ -2577,7 +2577,13 @@ name = "metrics-registry"
 version = "0.1.0"
 dependencies = [
  "blocking",
+ "clap",
+ "prost",
  "rocksdb",
+ "tokio",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
 ]
 
 [[package]]

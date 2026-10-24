@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use rocksdb::{ColumnFamilyDescriptor, DB, Options};
 
-use crate::{Config, Error, MetricQuery, Query, QueryResult, Record, traits::MetricsRegistry};
+use crate::{Config, Error, Query, QueryResult, Record, traits::MetricsRegistry};
 
 mod aggregate;
 mod codec;
@@ -140,21 +140,7 @@ impl MetricsRegistry for LocalRegistry {
         &self,
         queries: Vec<Query<Metric>>,
     ) -> impl std::future::Future<Output = Result<Vec<QueryResult>, Error>> + Send {
-        let queries: Vec<Query<u16>> = queries
-            .into_iter()
-            .map(|query| Query {
-                prefixes: query.prefixes,
-                metrics: query
-                    .metrics
-                    .into_iter()
-                    .map(|metric| MetricQuery {
-                        metric: metric.metric.into(),
-                        kind: metric.kind,
-                        selection: metric.selection,
-                    })
-                    .collect(),
-            })
-            .collect();
+        let queries: Vec<Query<u16>> = queries.into_iter().map(Query::into_ids).collect();
         let registry = self.clone();
         async move {
             if queries.is_empty() {

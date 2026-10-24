@@ -1,6 +1,6 @@
 //! Failures returned by metrics registry operations.
 
-use std::{error::Error as StdError, fmt, time::Duration};
+use std::{borrow::Cow, error::Error as StdError, fmt, time::Duration};
 
 /// An invalid request or a failed metrics registry operation.
 ///
@@ -8,6 +8,12 @@ use std::{error::Error as StdError, fmt, time::Duration};
 /// [`Error::Backend`] does not guarantee that a mutation was rolled back.
 #[derive(Debug)]
 pub enum Error {
+    /// A connection to the remote registry failed.
+    #[cfg(feature = "grpc-client")]
+    Transport(tonic::transport::Error),
+    /// A gRPC call or protocol conversion failed.
+    #[cfg(any(feature = "grpc-client", feature = "grpc-server"))]
+    Rpc(tonic::Status),
     /// Initialization policies are invalid, with a description of the reason.
     InvalidConfig(&'static str),
     /// A required column family was not opened by the caller.
@@ -15,9 +21,9 @@ pub enum Error {
     /// A storage key or value has an invalid or unsupported binary representation.
     CorruptData(&'static str),
     /// A record violates the input contract, with a description of the reason.
-    InvalidRecord(&'static str),
+    InvalidRecord(Cow<'static, str>),
     /// A query violates the input contract, with a description of the reason.
-    InvalidQuery(&'static str),
+    InvalidQuery(Cow<'static, str>),
     /// The requested history resolution is not available in this registry.
     ResolutionUnavailable(Duration),
     /// Requested history is no longer retained at the selected resolution.
@@ -33,6 +39,10 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            #[cfg(feature = "grpc-client")]
+            Self::Transport(error) => write!(formatter, "registry transport failed: {error}"),
+            #[cfg(any(feature = "grpc-client", feature = "grpc-server"))]
+            Self::Rpc(error) => write!(formatter, "registry RPC failed: {error}"),
             Self::InvalidConfig(reason) => {
                 write!(formatter, "invalid metrics configuration: {reason}")
             }
@@ -60,6 +70,10 @@ impl fmt::Display for Error {
 impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
+            #[cfg(feature = "grpc-client")]
+            Self::Transport(error) => Some(error),
+            #[cfg(any(feature = "grpc-client", feature = "grpc-server"))]
+            Self::Rpc(error) => Some(error),
             Self::Backend(error) => Some(error.as_ref()),
             _ => None,
         }

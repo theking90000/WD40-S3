@@ -51,6 +51,24 @@ pub struct Record<Metric = crate::Metric> {
     pub metrics: Vec<MetricRecord<Metric>>,
 }
 
+impl<Metric: Into<u16>> Record<Metric> {
+    pub(crate) fn into_ids(self) -> Record<u16> {
+        Record {
+            key: self.key,
+            aggregates: self.aggregates,
+            metrics: self
+                .metrics
+                .into_iter()
+                .map(|metric| MetricRecord {
+                    metric: metric.metric.into(),
+                    kind: metric.kind,
+                    value: metric.value,
+                })
+                .collect(),
+        }
+    }
+}
+
 /// Which current or historical values a query requests.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Selection {
@@ -92,6 +110,23 @@ pub struct Query<Metric = crate::Metric> {
     pub prefixes: Vec<String>,
     /// Metric selections, in the order expected in [`QueryResult::metrics`].
     pub metrics: Vec<MetricQuery<Metric>>,
+}
+
+impl<Metric: Into<u16>> Query<Metric> {
+    pub(crate) fn into_ids(self) -> Query<u16> {
+        Query {
+            prefixes: self.prefixes,
+            metrics: self
+                .metrics
+                .into_iter()
+                .map(|metric| MetricQuery {
+                    metric: metric.metric.into(),
+                    kind: metric.kind,
+                    selection: metric.selection,
+                })
+                .collect(),
+        }
+    }
 }
 
 /// A metric's value for one historical window.

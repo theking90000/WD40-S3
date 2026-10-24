@@ -1,0 +1,94 @@
+syntax = "proto3";
+package wd40.metrics_registry.v1;
+
+// One RPC per batch. Record timestamps are assigned by the receiving backend.
+service MetricsRegistry {
+  rpc Record(RecordRequest) returns (Empty);
+  rpc Query(QueryRequest) returns (QueryResponse);
+}
+
+message Empty {}
+
+enum MetricKind {
+  UNSPECIFIED = 0;
+  GAUGE = 1;
+  COUNTER = 2;
+}
+
+// Metric IDs are opaque u16 values. Applications own their stable assignment.
+message MetricRecord {
+  optional uint32 metric = 1;
+  MetricKind kind = 2;
+  optional sint64 value = 3;
+}
+
+message Record {
+  string key = 1;
+  repeated string aggregates = 2;
+  repeated MetricRecord metrics = 3;
+}
+message RecordRequest { repeated Record records = 1; }
+
+// Seconds and nanoseconds preserve the full std::time::Duration range.
+// Nanoseconds must be strictly less than 1,000,000,000.
+message Duration {
+  uint64 seconds = 1;
+  uint32 nanos = 2;
+}
+
+// Signed magnitude relative to the Unix epoch, without losing nanoseconds.
+// before_epoch selects subtraction of the duration from the Unix epoch.
+message Timestamp {
+  bool before_epoch = 1;
+  uint64 seconds = 2;
+  uint32 nanos = 3;
+}
+
+message HistorySelection {
+  Duration resolution = 1;
+  Timestamp start = 2;
+  Timestamp end = 3;
+}
+message MetricQuery {
+  optional uint32 metric = 1;
+  MetricKind kind = 2;
+  oneof selection {
+    Empty current = 3;
+    HistorySelection history = 4;
+  }
+}
+message Query {
+  repeated string prefixes = 1;
+  repeated MetricQuery metrics = 2;
+}
+message QueryRequest { repeated Query queries = 1; }
+
+message Point {
+  Timestamp start = 1;
+  optional sint64 value = 2;
+  optional bool complete = 3;
+}
+message HistoryResult { repeated Point points = 1; }
+message MetricResult {
+  oneof value {
+    sint64 current = 1;
+    HistoryResult history = 2;
+  }
+}
+message QueryResult { repeated MetricResult metrics = 1; }
+message QueryResponse { repeated QueryResult results = 1; }
+
+// Encoded into grpc-status-details-bin for domain errors only.
+message RegistryError {
+  enum Kind {
+    UNKNOWN = 0;
+    INVALID_RECORD = 1;
+    INVALID_QUERY = 2;
+    RESOLUTION_UNAVAILABLE = 3;
+    HISTORY_EXPIRED = 4;
+    OVERFLOW = 5;
+  }
+  Kind kind = 1;
+  string reason = 2;
+  Duration resolution = 3;
+}

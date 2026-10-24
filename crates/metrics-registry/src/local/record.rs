@@ -65,17 +65,19 @@ impl Prepared {
 pub(super) fn prepare<Metric: Into<u16>>(records: Vec<Record<Metric>>) -> Result<Prepared, Error> {
     for record in &records {
         if record.key.is_empty() {
-            return Err(Error::InvalidRecord("keys must not be empty"));
+            return Err(Error::InvalidRecord("keys must not be empty".into()));
         }
         for prefix in &record.aggregates {
             if !record.key.starts_with(prefix) {
-                return Err(Error::InvalidRecord("aggregates must be key prefixes"));
+                return Err(Error::InvalidRecord(
+                    "aggregates must be key prefixes".into(),
+                ));
             }
         }
         for metric in &record.metrics {
             if metric.kind == MetricKind::Counter && metric.value < 0 {
                 return Err(Error::InvalidRecord(
-                    "counter increments must not be negative",
+                    "counter increments must not be negative".into(),
                 ));
             }
         }

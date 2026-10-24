@@ -75,17 +75,27 @@
 //! }
 //! ```
 
+#[cfg(feature = "cli")]
+pub mod cli;
 pub mod config;
 pub mod error;
+#[cfg(any(feature = "grpc-client", feature = "grpc-server"))]
+pub mod grpc;
 pub mod local;
 pub mod metrics;
+#[cfg(feature = "grpc-client")]
+pub mod remote;
 #[path = "trait.rs"]
 pub mod traits;
 
 pub use config::{Config, RetentionPolicy};
 pub use error::Error;
+#[cfg(feature = "grpc-server")]
+pub use grpc::GrpcService;
 pub use local::LocalRegistry;
 pub use metrics::Metric;
+#[cfg(feature = "grpc-client")]
+pub use remote::RemoteRegistry;
 pub use traits::{
     MetricKind, MetricQuery, MetricRecord, MetricResult, Point, Query, QueryResult, Record,
     Selection,
@@ -98,6 +108,9 @@ pub use traits::{
 pub enum MetricsRegistry {
     /// Uses the local backend.
     Local(LocalRegistry),
+    /// Uses a connected gRPC registry.
+    #[cfg(feature = "grpc-client")]
+    Remote(RemoteRegistry),
 }
 
 impl traits::MetricsRegistry for MetricsRegistry {
@@ -105,8 +118,13 @@ impl traits::MetricsRegistry for MetricsRegistry {
         &self,
         records: Vec<Record<Metric>>,
     ) -> impl std::future::Future<Output = Result<(), Error>> + Send {
-        match self {
-            Self::Local(registry) => traits::MetricsRegistry::record(registry, records),
+        let records: Vec<Record<u16>> = records.into_iter().map(Record::into_ids).collect();
+        async move {
+            match self {
+                Self::Local(registry) => traits::MetricsRegistry::record(registry, records).await,
+                #[cfg(feature = "grpc-client")]
+                Self::Remote(registry) => traits::MetricsRegistry::record(registry, records).await,
+            }
         }
     }
 
@@ -114,8 +132,13 @@ impl traits::MetricsRegistry for MetricsRegistry {
         &self,
         queries: Vec<Query<Metric>>,
     ) -> impl std::future::Future<Output = Result<Vec<QueryResult>, Error>> + Send {
-        match self {
-            Self::Local(registry) => traits::MetricsRegistry::query(registry, queries),
+        let queries: Vec<Query<u16>> = queries.into_iter().map(Query::into_ids).collect();
+        async move {
+            match self {
+                Self::Local(registry) => traits::MetricsRegistry::query(registry, queries).await,
+                #[cfg(feature = "grpc-client")]
+                Self::Remote(registry) => traits::MetricsRegistry::query(registry, queries).await,
+            }
         }
     }
 }
