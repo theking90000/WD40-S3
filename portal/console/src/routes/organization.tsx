@@ -41,7 +41,11 @@ function Unavailable({ icon: Icon, children }: { icon: LucideIcon; children: Rea
 
 function Overview({ user, organization }: { user: CurrentUser; organization: Organization }) {
   const details = useQuery(organizationQuery(user, organization.id));
-  const buckets = useQuery(organizationBucketsQuery(user, organization.id));
+  const buckets = useQuery({
+    ...organizationBucketsQuery(user, organization.id),
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+  });
   const dashboard = useQuery(organizationDashboardQuery(user, organization.id));
   const [notice, setNotice] = useState("");
   const [selectedName, setSelectedName] = useState<string | null>(null);
@@ -107,7 +111,8 @@ function Overview({ user, organization }: { user: CurrentUser; organization: Org
 
       <div className="grid gap-3.5 min-[1161px]:grid-cols-[minmax(0,1.7fr)_minmax(275px,0.82fr)]">
         <UploadsChart user={user} organizationId={organization.id} />
-        <BucketDistribution data={dashboard.data} loading={dashboard.isPending} />
+        <BucketDistribution data={buckets.data} loading={buckets.isPending} error={buckets.error}
+          refreshing={buckets.isFetching} onRefresh={() => void buckets.refetch()} />
       </div>
 
       <div className="grid gap-3.5 min-[1161px]:grid-cols-[minmax(0,1.42fr)_minmax(300px,1fr)]">

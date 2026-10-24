@@ -13,6 +13,11 @@ export interface Bucket {
   created_at: string;
 }
 
+export interface BucketWithUsage extends Bucket {
+  stored_bytes: number;
+  stored_objects: number;
+}
+
 export interface CreateBucketInput {
   name: string;
   access: BucketAccess;
@@ -38,6 +43,14 @@ function isBucket(value: unknown, organizationId: string): value is Bucket {
     && "access" in value && (value.access === "PRIVATE" || value.access === "PUBLIC" || value.access === "PUBLIC_LIST")
     && "created_at" in value && typeof value.created_at === "string"
     && Number.isFinite(Date.parse(value.created_at));
+}
+
+function isBucketWithUsage(value: unknown, organizationId: string): value is BucketWithUsage {
+  return isBucket(value, organizationId)
+    && "stored_bytes" in value && typeof value.stored_bytes === "number"
+    && Number.isSafeInteger(value.stored_bytes) && value.stored_bytes >= 0
+    && "stored_objects" in value && typeof value.stored_objects === "number"
+    && Number.isSafeInteger(value.stored_objects) && value.stored_objects >= 0;
 }
 
 function requireSession(session: number) {
@@ -81,11 +94,13 @@ async function bucketsRequest(
 export function organizationBucketsQuery(user: CurrentUser, organizationId: string) {
   return queryOptions({
     queryKey: [...organizationsQuery(user).queryKey, organizationId, "buckets"],
-    queryFn: async ({ signal }): Promise<Bucket[]> => {
+    queryFn: async ({ signal }): Promise<BucketWithUsage[]> => {
+      const session = querySession();
       const body = await bucketsRequest(user, organizationId, "", { signal });
-      if (!Array.isArray(body) || !body.every((item): item is Bucket => isBucket(item, organizationId))
+      requireSession(session);
+      if (!Array.isArray(body) || !body.every((item): item is BucketWithUsage => isBucketWithUsage(item, organizationId))
         || new Set(body.map((item) => item.name)).size !== body.length) {
-        throw new AuthError("invalid_buckets_response", 502);
+        throw new AuthError("invalid_buckets_response", 502, session);
       }
       return body;
     },
@@ -95,18 +110,22 @@ export function organizationBucketsQuery(user: CurrentUser, organizationId: stri
   });
 }
 
-async function updateBuckets(
+async function refreshBuckets(
   user: CurrentUser,
   organizationId: string,
   session: number,
-  update: (buckets: Bucket[]) => Bucket[],
+  update?: (buckets: BucketWithUsage[]) => BucketWithUsage[],
 ) {
   requireSession(session);
   const { queryKey } = organizationBucketsQuery(user, organizationId);
   await queryClient.cancelQueries({ queryKey, exact: true });
   requireSession(session);
-  // An absent list must still be fetched in full, rather than seeded with one row.
-  queryClient.setQueryData<Bucket[]>(queryKey, (previous) => previous === undefined ? undefined : update(previous));
+  if (update) {
+    // Metadata-only writes must preserve the last measured usage in enriched rows.
+    queryClient.setQueryData<BucketWithUsage[]>(queryKey, (previous) => previous === undefined ? undefined : update(previous));
+  }
+  await queryClient.invalidateQueries({ queryKey, exact: true });
+  requireSession(session);
 }
 
 export async function createOrganizationBucket(user: CurrentUser, organizationId: string, input: CreateBucketInput) {
@@ -119,9 +138,8 @@ export async function createOrganizationBucket(user: CurrentUser, organizationId
   if (!isBucket(body, organizationId) || body.name !== input.name || body.access !== input.access) {
     throw new AuthError("invalid_buckets_response", 502);
   }
-  await updateBuckets(user, organizationId, session, (buckets) => [
-    ...buckets.filter((item) => item.name !== body.name), body,
-  ].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  // The POST response has no usage; fetch the full list instead of inventing it.
+  await refreshBuckets(user, organizationId, session);
   requireSession(session);
   return body;
 }
@@ -140,8 +158,8 @@ export async function updateOrganizationBucketAccess(
   if (!isBucket(body, organizationId) || body.name !== name || body.access !== access) {
     throw new AuthError("invalid_buckets_response", 502);
   }
-  await updateBuckets(user, organizationId, session,
-    (buckets) => buckets.map((item) => item.name === name ? body : item));
+  await refreshBuckets(user, organizationId, session,
+    (buckets) => buckets.map((item) => item.name === name ? { ...item, access: body.access } : item));
   requireSession(session);
   return body;
 }
@@ -161,6 +179,7 @@ export function bucketErrorMessage(error: unknown) {
       case "csrf_rejected": return "La requête a été refusée. Rechargez la page avant de réessayer.";
       case "payload_too_large": return "Les données du bucket dépassent la taille autorisée.";
       case "database_error": return "Impossible d'enregistrer ou de charger les buckets pour le moment.";
+      case "metrics_unavailable": return "Les statistiques des buckets sont momentanément indisponibles.";
     }
     if (error.status === 401) return "Votre session a expiré. Reconnectez-vous pour continuer.";
   }

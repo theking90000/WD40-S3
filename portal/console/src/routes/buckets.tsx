@@ -8,6 +8,7 @@ import type { BucketAccess } from "~/features/organizations/buckets/api.ts";
 import { bucketErrorMessage, organizationBucketsQuery } from "~/features/organizations/buckets/api.ts";
 import { BucketAccessBadge } from "~/features/organizations/buckets/components/access";
 import { BucketDetails } from "~/features/organizations/buckets/components/bucket-details";
+import { formatBytes, formatCount } from "~/features/organizations/dashboard/format.ts";
 import { useOrganization, useOrganizations } from "~/features/organizations/router.ts";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -27,7 +28,11 @@ export default function Buckets() {
 }
 
 function BucketsPage({ user, organization }: { user: CurrentUser; organization: Organization }) {
-  const { data: buckets, error, isFetching, refetch } = useQuery(organizationBucketsQuery(user, organization.id));
+  const { data: buckets, error, isFetching, refetch } = useQuery({
+    ...organizationBucketsQuery(user, organization.id),
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+  });
   const [search, setSearch] = useState("");
   const [access, setAccess] = useState<BucketAccess | "ALL">("ALL");
   const [selectedName, setSelectedName] = useState<string | null>(null);
@@ -145,6 +150,8 @@ function BucketsPage({ user, organization }: { user: CurrentUser; organization: 
               <TableHeader>
                 <TableRow>
                   <TableHead scope="col">Bucket</TableHead>
+                  <TableHead scope="col" className="hidden w-36 text-right min-[1161px]:table-cell">Stockage utilisé</TableHead>
+                  <TableHead scope="col" className="hidden w-28 text-right min-[1161px]:table-cell">Objets</TableHead>
                   <TableHead scope="col" className="hidden w-40 min-[621px]:table-cell">Accès</TableHead>
                   <TableHead scope="col" className="hidden w-36 min-[761px]:table-cell">Créé le</TableHead>
                   <TableHead scope="col" className="w-16"><span className="sr-only">Actions</span></TableHead>
@@ -170,7 +177,13 @@ function BucketsPage({ user, organization }: { user: CurrentUser; organization: 
                         <span className="min-[621px]:hidden"><BucketAccessBadge access={bucket.access} /></span>
                         <time className="min-[761px]:hidden" dateTime={bucket.created_at}>Créé le {dateFormat.format(new Date(bucket.created_at))}</time>
                       </div>
+                      <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground min-[1161px]:hidden">
+                        <div className="flex gap-1"><dt>Stockage :</dt><dd className="font-medium text-foreground tabular-nums">{formatBytes(bucket.stored_bytes)}</dd></div>
+                        <div className="flex gap-1"><dt>Objets :</dt><dd className="font-medium text-foreground tabular-nums">{formatCount(bucket.stored_objects)}</dd></div>
+                      </dl>
                     </TableCell>
+                    <TableCell className="hidden text-right tabular-nums min-[1161px]:table-cell">{formatBytes(bucket.stored_bytes)}</TableCell>
+                    <TableCell className="hidden text-right tabular-nums min-[1161px]:table-cell">{formatCount(bucket.stored_objects)}</TableCell>
                     <TableCell className="hidden min-[621px]:table-cell"><BucketAccessBadge access={bucket.access} /></TableCell>
                     <TableCell className="hidden text-muted-foreground min-[761px]:table-cell"><time dateTime={bucket.created_at}>{dateFormat.format(new Date(bucket.created_at))}</time></TableCell>
                     <TableCell className="text-right">

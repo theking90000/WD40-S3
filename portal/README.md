@@ -1170,21 +1170,41 @@ The left navigation switches organizations above the workspace links and offers
 the same creation dialog, including in the mobile navigation drawer.
 Creation updates the shared cache from the POST response and opens the new
 organization without an immediate GET. Results from a previous session are ignored.
+### Buckets in the console
+
+`features/organizations/buckets/api.ts` keeps `Bucket` metadata separate from
+`BucketWithUsage`, the enriched row returned by `organizationBucketsQuery`.
+The list validates the organization, metadata, unique names and nonnegative safe
+integer `stored_bytes` and `stored_objects`. Invalid data produces
+`invalid_buckets_response`; `metrics_unavailable` has a dedicated error message.
+Missing metrics are not interpreted as zero.
+
+The bucket table shows storage used and object counts in right-aligned columns
+on large screens, or below the bucket name on smaller screens. It uses the same
+French count formatting and decimal byte units as the dashboard, including zero
+values. Filtering, copying names and opening bucket details retain their existing
+behavior. Refresh failures retain the last successful list and suspend edits.
+
+The bucket page and overview each observe the same organization-scoped bucket
+query with a 60-second refresh interval and no background polling. Other list
+consumers keep the default 60-second freshness without polling. Session guards
+and abort signals continue to prevent old-session reads from filling the cache.
+
+POST and PATCH return metadata only. Creation invalidates the enriched list
+without inserting a metadata-only row or inventing usage. PATCH cancels older
+reads, merges the returned access into matching cached rows while preserving
+usage, then invalidates the list. Active consumers reload it; an inactive list
+reloads on its next mount. No partial list is seeded into an absent cache. A
+failed list refresh does not turn a successful metadata write into a failed write.
+
 ### Dashboard client
 
-The backend now returns per-bucket usage only from `GET
-/api/organizations/{organization_id}/buckets`. The console migration is pending:
-its current dashboard validator still requires `dashboard.buckets`, so it must
-be updated before using the new backend contract. The planned migration moves
-the distribution to the existing bucket query, adds storage and object columns
-to the bucket table, and preserves enriched cache entries across metadata writes.
-The following describes the existing console implementation.
-
 `features/organizations/dashboard/api.ts` defines `OrganizationDashboard`,
-`DashboardPeriod`, `BucketUsage` and `organizationDashboardQuery(user, organizationId)`.
+`DashboardPeriod` and `organizationDashboardQuery(user, organizationId)`.
 It reads the dashboard endpoint through the shared HTTP client and validates
 nonnegative safe integer metrics, Unix-second timestamps, ordered period bounds,
-a positive resolution and unique bucket names. Server totals are preserved.
+a positive resolution. It no longer requires a `buckets` field. Server totals
+are preserved.
 Malformed responses throw `invalid_dashboard_response` with status 502.
 
 The query key extends `organizationsQuery(user).queryKey` with the organization ID
@@ -1192,17 +1212,21 @@ and `dashboard`. Data stays fresh for 30 seconds. When observed in the browser,
 the query refreshes every 60 seconds, with background polling disabled. These
 options do not start any requests until a consumer fetches or observes the query.
 
-The overview observes this query once for its four metric cards and bucket
-distribution. Dashboard components live in `features/organizations/dashboard/components/`.
+The overview observes this query once for its four metric cards.
+Dashboard components live in `features/organizations/dashboard/components/`.
 Initial loading uses skeletons; initial failures show unavailable values and a
 retry button. Refresh failures retain the last successful values and show an
 error message. Refreshes run automatically while the overview is visible.
-The existing organization detail and bucket queries continue to provide resource
-counts and recent bucket metadata independently of metrics failures.
+The existing organization detail query continues to provide resource counts.
+The bucket query provides recent bucket metadata and the storage distribution,
+with its own loading and error states independently of summary query failures.
 
 `dashboard/format.ts` formats counts, decimal byte units and percentages with
-the `fr-BE` locale. The distribution sorts buckets by descending
-storage usage, with named percentage bars. Organizations without buckets and
+the `fr-BE` locale. The distribution uses the existing bucket list query and
+sorts buckets by descending storage usage. Bar proportions use the sum of that
+same list, avoiding a denominator from a different summary snapshot. Visible
+values show bytes; percentages remain available only to screen readers.
+Organizations without buckets and
 buckets with no measured storage have separate empty states. Zero totals do not
 produce invalid percentages. Recent activity remains unavailable until its API
 is implemented.

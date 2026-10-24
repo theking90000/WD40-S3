@@ -10,12 +10,6 @@ export interface DashboardPeriod {
   resolution_seconds: number;
 }
 
-export interface BucketUsage {
-  name: string;
-  stored_bytes: number;
-  stored_objects: number;
-}
-
 export interface OrganizationDashboard {
   generated_at: number;
   period: DashboardPeriod;
@@ -25,7 +19,6 @@ export interface OrganizationDashboard {
   uploaded_bytes: number;
   downloaded_bytes: number;
   transferred_bytes: number;
-  buckets: BucketUsage[];
 }
 
 export type UploadPeriod = "1d" | "7d" | "30d";
@@ -55,11 +48,6 @@ function isTimestamp(value: unknown): value is number {
   return isCount(value) && Number.isFinite(new Date(value * 1000).getTime());
 }
 
-function isBucketUsage(value: unknown): value is BucketUsage {
-  return isRecord(value) && typeof value.name === "string" && value.name.length > 0
-    && isCount(value.stored_bytes) && isCount(value.stored_objects);
-}
-
 function isDashboard(value: unknown): value is OrganizationDashboard {
   if (!isRecord(value) || !isRecord(value.period)) return false;
   const period = value.period;
@@ -68,9 +56,7 @@ function isDashboard(value: unknown): value is OrganizationDashboard {
     && period.from < period.to && period.to <= value.generated_at
     && isCount(period.resolution_seconds) && period.resolution_seconds > 0
     && ["stored_bytes", "stored_objects", "requests", "uploaded_bytes", "downloaded_bytes", "transferred_bytes"]
-      .every((field) => isCount(value[field]))
-    && Array.isArray(value.buckets) && value.buckets.every(isBucketUsage)
-    && new Set(value.buckets.map((bucket) => bucket.name)).size === value.buckets.length;
+      .every((field) => isCount(value[field]));
 }
 
 function isUploads(value: unknown, selectedPeriod: UploadPeriod): value is OrganizationUploads {

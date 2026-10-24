@@ -20,7 +20,6 @@ const dashboard: OrganizationDashboard = {
   period: { from: 1_792_756_800, to: 1_792_844_400, resolution_seconds: 1800 },
   stored_bytes: 1500, stored_objects: 3, requests: 80,
   uploaded_bytes: 2000, downloaded_bytes: 4000, transferred_bytes: 6000,
-  buckets: [{ name: "photos", stored_bytes: 1500, stored_objects: 3 }],
 };
 
 function deferred() {
@@ -73,7 +72,7 @@ test("dashboard requests share the organization cache and preserve the server to
   assert.equal(queryClient.getQueryData(organizationDashboardQuery(alice, otherId).queryKey), undefined);
 });
 
-test("dashboard response validation rejects invalid metrics, periods, buckets and JSON", async (t) => {
+test("dashboard response validation rejects invalid metrics, periods and JSON", async (t) => {
   let body: unknown;
   let malformedJson = false;
   t.mock.method(globalThis, "fetch", async () => malformedJson ? new Response("{") : Response.json(body));
@@ -86,12 +85,6 @@ test("dashboard response validation rejects invalid metrics, periods, buckets an
     { ...dashboard, period: { ...dashboard.period, to: dashboard.generated_at + 1 } },
     { ...dashboard, period: { ...dashboard.period, resolution_seconds: 0 } },
     { ...dashboard, period: { ...dashboard.period, resolution_seconds: 1.5 } },
-    { ...dashboard, buckets: null },
-    { ...dashboard, buckets: [null] },
-    { ...dashboard, buckets: [{ ...dashboard.buckets[0], name: "" }] },
-    { ...dashboard, buckets: [{ ...dashboard.buckets[0], stored_bytes: -1 }] },
-    { ...dashboard, buckets: [{ ...dashboard.buckets[0], stored_objects: "3" }] },
-    { ...dashboard, buckets: [dashboard.buckets[0], dashboard.buckets[0]] },
   ];
   for (const field of ["stored_bytes", "stored_objects", "requests", "uploaded_bytes", "downloaded_bytes", "transferred_bytes"]) {
     for (const value of [undefined, -1, 0.5, "1", Number.MAX_SAFE_INTEGER + 1]) {
@@ -106,7 +99,7 @@ test("dashboard response validation rejects invalid metrics, periods, buckets an
   await assert.rejects(read(), invalidResponse);
   malformedJson = false;
   body = { ...dashboard, stored_bytes: 0, stored_objects: 0, requests: 0,
-    uploaded_bytes: 0, downloaded_bytes: 0, transferred_bytes: 0, buckets: [] };
+    uploaded_bytes: 0, downloaded_bytes: 0, transferred_bytes: 0 };
   assert.deepEqual(await read(), body);
 });
 
