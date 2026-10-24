@@ -31,6 +31,10 @@ struct Args {
     objects: ObjectRegistryConfig,
     #[command(flatten)]
     multipart: S3MultipartRegistryConfig,
+    /// Open a metrics registry and attach it to the S3 adapter.
+    #[cfg(feature = "metrics")]
+    #[arg(long = "metrics", env = "WD40_S3_METRICS")]
+    metrics_enabled: bool,
     #[cfg(feature = "metrics")]
     #[command(flatten)]
     metrics: MetricsRegistryConfig,
@@ -99,7 +103,11 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         budget,
     );
     #[cfg(feature = "metrics")]
-    let adapter = adapter.with_metrics(args.metrics.open().await?);
+    let adapter = if args.metrics_enabled {
+        adapter.with_metrics(args.metrics.open().await?)
+    } else {
+        adapter
+    };
     let service = adapter.into_service();
     let listener = tokio::net::TcpListener::bind(args.adapter.listen).await?;
     eprintln!("S3 Adapter listening on {}", listener.local_addr()?);

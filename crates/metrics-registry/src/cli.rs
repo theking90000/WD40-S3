@@ -17,6 +17,7 @@ pub struct MetricsRegistryConfig {
     pub metrics_registry_path: PathBuf,
 
     /// Local history policy as resolution:retention, both in whole seconds. Repeat for each resolution.
+    /// At least one policy is required when opening local storage.
     #[arg(
         long,
         global = true,
@@ -25,11 +26,6 @@ pub struct MetricsRegistryConfig {
         value_delimiter = ',',
         value_parser = parse_policy
     )]
-    #[cfg_attr(
-        feature = "grpc-client",
-        arg(required_unless_present = "metrics_registry_endpoint")
-    )]
-    #[cfg_attr(not(feature = "grpc-client"), arg(required = true))]
     pub metrics_registry_policy: Vec<RetentionPolicy>,
 
     /// gRPC endpoint. When set, local storage and retention policies are not used.
