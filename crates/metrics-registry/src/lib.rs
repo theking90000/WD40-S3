@@ -10,6 +10,9 @@
 //! Recording maintains requested caches and invalidates other affected caches.
 //! Queries use one snapshot and reconstruct their results when caches are invalid.
 //! Historical retention cleanup is not implemented yet.
+//! Metric identifiers may use the built-in [`Metric`] enum or any type implementing
+//! `Into<u16>`. Recording and querying consume their batches to convert identifiers
+//! without requiring metric types to implement `Copy`, `Clone`, `Send` or `Sync`.
 //!
 //! # Examples
 //!
@@ -28,7 +31,7 @@
 //! async fn record_and_query(
 //!     registry: &MetricsRegistry,
 //! ) -> Result<Vec<QueryResult>, Error> {
-//!     let records = [Record {
+//!     let records = vec![Record {
 //!         key: "/buckets/photos/object-a".to_owned(),
 //!         aggregates: vec!["/buckets/photos/".to_owned()],
 //!         metrics: vec![
@@ -44,13 +47,13 @@
 //!             },
 //!         ],
 //!     }];
-//!     registry.record(&records).await?;
+//!     registry.record(records).await?;
 //!
 //!     let end = SystemTime::now();
 //!     let start = end
 //!         .checked_sub(Duration::from_secs(3600))
 //!         .ok_or(Error::Overflow)?;
-//!     let queries = [Query {
+//!     let queries = vec![Query {
 //!         prefixes: vec!["/buckets/photos/".to_owned()],
 //!         metrics: vec![
 //!             MetricQuery {
@@ -68,7 +71,7 @@
 //!             },
 //!         ],
 //!     }];
-//!     registry.query(&queries).await
+//!     registry.query(queries).await
 //! }
 //! ```
 
@@ -98,15 +101,21 @@ pub enum MetricsRegistry {
 }
 
 impl traits::MetricsRegistry for MetricsRegistry {
-    async fn record(&self, records: &[Record]) -> Result<(), Error> {
+    fn record<Metric: Into<u16>>(
+        &self,
+        records: Vec<Record<Metric>>,
+    ) -> impl std::future::Future<Output = Result<(), Error>> + Send {
         match self {
-            Self::Local(registry) => traits::MetricsRegistry::record(registry, records).await,
+            Self::Local(registry) => traits::MetricsRegistry::record(registry, records),
         }
     }
 
-    async fn query(&self, queries: &[Query]) -> Result<Vec<QueryResult>, Error> {
+    fn query<Metric: Into<u16>>(
+        &self,
+        queries: Vec<Query<Metric>>,
+    ) -> impl std::future::Future<Output = Result<Vec<QueryResult>, Error>> + Send {
         match self {
-            Self::Local(registry) => traits::MetricsRegistry::query(registry, queries).await,
+            Self::Local(registry) => traits::MetricsRegistry::query(registry, queries),
         }
     }
 }

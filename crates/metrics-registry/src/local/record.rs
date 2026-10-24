@@ -9,7 +9,7 @@ use std::{
 
 use rocksdb::WriteBatch;
 
-use crate::{Config, Error, Metric, MetricKind, Record};
+use crate::{Config, Error, MetricKind, Record};
 
 use super::{
     GAUGE_LOCKS, LocalRegistry,
@@ -22,8 +22,8 @@ use super::{
 
 #[derive(Default)]
 pub(super) struct Prepared {
-    updates: BTreeMap<(Metric, String), Update>,
-    requested: BTreeSet<(Metric, MetricKind, String)>,
+    updates: BTreeMap<(u16, String), Update>,
+    requested: BTreeSet<(u16, MetricKind, String)>,
 }
 
 #[derive(Default)]
@@ -62,8 +62,8 @@ impl Prepared {
 }
 
 /// Validate all input before grouping it or accessing the database.
-pub(super) fn prepare(records: &[Record]) -> Result<Prepared, Error> {
-    for record in records {
+pub(super) fn prepare<Metric: Into<u16>>(records: Vec<Record<Metric>>) -> Result<Prepared, Error> {
+    for record in &records {
         if record.key.is_empty() {
             return Err(Error::InvalidRecord("keys must not be empty"));
         }
@@ -82,13 +82,14 @@ pub(super) fn prepare(records: &[Record]) -> Result<Prepared, Error> {
     }
     let mut prepared = Prepared::default();
     for record in records {
-        for metric in &record.metrics {
+        for metric in record.metrics {
             if metric.kind == MetricKind::Counter && metric.value == 0 {
                 continue;
             }
+            let metric_id = metric.metric.into();
             let update = prepared
                 .updates
-                .entry((metric.metric, record.key.clone()))
+                .entry((metric_id, record.key.clone()))
                 .or_default();
             match metric.kind {
                 MetricKind::Gauge => update.gauge = Some(metric.value),
@@ -102,7 +103,7 @@ pub(super) fn prepare(records: &[Record]) -> Result<Prepared, Error> {
             for prefix in &record.aggregates {
                 prepared
                     .requested
-                    .insert((metric.metric, metric.kind, prefix.clone()));
+                    .insert((metric_id, metric.kind, prefix.clone()));
             }
         }
     }

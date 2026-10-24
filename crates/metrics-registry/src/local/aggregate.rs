@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use rocksdb::WriteBatch;
 
-use crate::{Error, Metric, MetricKind};
+use crate::{Error, MetricKind};
 
 use super::{
     codec::{
@@ -14,12 +14,12 @@ use super::{
     storage::{Storage, View},
 };
 
-pub(super) type Catalog = BTreeMap<String, BTreeSet<(Metric, MetricKind, Option<u64>)>>;
+pub(super) type Catalog = BTreeMap<String, BTreeSet<(u16, MetricKind, Option<u64>)>>;
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub(super) struct CacheId {
     pub prefix: String,
-    pub metric: Metric,
+    pub metric: u16,
     pub kind: MetricKind,
     pub resolution: Option<u64>,
 }

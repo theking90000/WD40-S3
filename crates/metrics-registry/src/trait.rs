@@ -6,7 +6,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use crate::{Error, Metric};
+use crate::Error;
 
 /// How a recorded value changes a metric.
 ///
@@ -20,8 +20,11 @@ pub enum MetricKind {
 }
 
 /// One gauge assignment or counter increment for a metric and kind.
+///
+/// Metric identifiers are converted into `u16` when recording the owned batch.
+/// Custom metric types only need to implement `Into<u16>`.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct MetricRecord {
+pub struct MetricRecord<Metric = crate::Metric> {
     /// Metric to update.
     pub metric: Metric,
     /// Whether `value` replaces a gauge or increments a counter.
@@ -34,7 +37,7 @@ pub struct MetricRecord {
 
 /// Mutations sharing a key and the aggregate prefixes to maintain.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Record {
+pub struct Record<Metric = crate::Metric> {
     /// Opaque, nonempty key, without application-specific semantics.
     pub key: String,
     /// Ancestor string prefixes, applied independently to every metric below.
@@ -45,7 +48,7 @@ pub struct Record {
     /// metric and kind in the batch, including updates from other records.
     pub aggregates: Vec<String>,
     /// Metric updates to apply to this key.
-    pub metrics: Vec<MetricRecord>,
+    pub metrics: Vec<MetricRecord<Metric>>,
 }
 
 /// Which current or historical values a query requests.
@@ -67,8 +70,11 @@ pub enum Selection {
 }
 
 /// One metric and the current or historical values to read for it.
+///
+/// Metric identifiers are converted into `u16` when querying the owned batch.
+/// Custom metric types only need to implement `Into<u16>`.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct MetricQuery {
+pub struct MetricQuery<Metric = crate::Metric> {
     /// Metric to read.
     pub metric: Metric,
     /// Whether the metric is a gauge or a counter.
@@ -79,13 +85,13 @@ pub struct MetricQuery {
 
 /// Metrics to read over the union of the supplied string prefixes.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Query {
+pub struct Query<Metric = crate::Metric> {
     /// Overlapping and duplicate prefixes never double-count a key.
     ///
     /// An empty list selects no keys; an empty string selects every key.
     pub prefixes: Vec<String>,
     /// Metric selections, in the order expected in [`QueryResult::metrics`].
-    pub metrics: Vec<MetricQuery>,
+    pub metrics: Vec<MetricQuery<Metric>>,
 }
 
 /// A metric's value for one historical window.
@@ -122,6 +128,9 @@ pub struct QueryResult {
 /// Implementations manage time, aggregate caches and historical retention.
 /// Callers submit gauge assignments or counter increments and request current or
 /// historical values. See the [crate example](crate) for a complete batch.
+/// Batches are consumed so metric identifiers only require `Into<u16>`, without
+/// `Copy`, `Clone`, `Send` or `Sync`. Conversion happens before returning the future.
+/// Identifiers must be stable and distinct within the namespace.
 pub trait MetricsRegistry {
     /// Records gauge assignments and counter increments as one atomic batch.
     ///
@@ -154,7 +163,10 @@ pub trait MetricsRegistry {
     /// prefix. Returns [`Error::Overflow`] when input grouping or gauge preparation
     /// cannot be represented, or [`Error::Backend`] when an operation fails.
     /// Backend failures do not guarantee that the batch was rolled back.
-    fn record(&self, records: &[Record]) -> impl Future<Output = Result<(), Error>> + Send;
+    fn record<Metric: Into<u16>>(
+        &self,
+        records: Vec<Record<Metric>>,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
 
     /// Reads a batch of metric selections from one consistent view.
     ///
@@ -170,8 +182,8 @@ pub trait MetricsRegistry {
     /// longer retained. Returns [`Error::Overflow`] when a result cannot be
     /// represented or an evaluated native total has overflowed, or
     /// [`Error::Backend`] when an implementation operation fails.
-    fn query(
+    fn query<Metric: Into<u16>>(
         &self,
-        queries: &[Query],
+        queries: Vec<Query<Metric>>,
     ) -> impl Future<Output = Result<Vec<QueryResult>, Error>> + Send;
 }

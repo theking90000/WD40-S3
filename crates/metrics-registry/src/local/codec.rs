@@ -7,7 +7,7 @@
 //! selection. Historical selections also contain resolution seconds and an
 //! entry tag. Resolution values are stored directly, without a dictionary.
 
-use crate::{Error, Metric, MetricKind};
+use crate::{Error, MetricKind};
 
 #[derive(Clone, Copy, Debug)]
 pub(super) enum Store {
@@ -31,7 +31,7 @@ impl Store {
 /// A source key, or an aggregate prefix, paired with its metric and kind.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Series<'a> {
-    pub metric: Metric,
+    pub metric: u16,
     pub kind: MetricKind,
     pub key: &'a str,
 }
@@ -352,7 +352,7 @@ pub(super) fn prefix_end(prefix: &[u8]) -> Option<Vec<u8>> {
 }
 
 fn encode_series(bytes: &mut Vec<u8>, series: Series<'_>) {
-    bytes.extend_from_slice(&(series.metric as u16).to_be_bytes());
+    bytes.extend_from_slice(&series.metric.to_be_bytes());
     bytes.push(match series.kind {
         MetricKind::Gauge => 0,
         MetricKind::Counter => 1,
@@ -425,14 +425,8 @@ impl<'a> Reader<'a> {
         Ok(u64::from_be_bytes(self.take()?))
     }
 
-    fn series(&mut self) -> Result<(Metric, MetricKind), Error> {
-        let metric = match u16::from_be_bytes(self.take()?) {
-            id if id == Metric::StoredBytes as u16 => Metric::StoredBytes,
-            id if id == Metric::DownloadedBytes as u16 => Metric::DownloadedBytes,
-            id if id == Metric::UploadedBytes as u16 => Metric::UploadedBytes,
-            id if id == Metric::RequestCount as u16 => Metric::RequestCount,
-            _ => return Err(Error::CorruptData("unknown metric identifier")),
-        };
+    fn series(&mut self) -> Result<(u16, MetricKind), Error> {
+        let metric = u16::from_be_bytes(self.take()?);
         let kind = match self.byte()? {
             0 => MetricKind::Gauge,
             1 => MetricKind::Counter,

@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use rocksdb::{ColumnFamilyDescriptor, DB, Options};
 
-use crate::{Config, Error, Query, QueryResult, Record, traits::MetricsRegistry};
+use crate::{Config, Error, MetricQuery, Query, QueryResult, Record, traits::MetricsRegistry};
 
 mod aggregate;
 mod codec;
@@ -121,21 +121,46 @@ impl LocalRegistry {
 }
 
 impl MetricsRegistry for LocalRegistry {
-    async fn record(&self, records: &[Record]) -> Result<(), Error> {
-        let updates = record::prepare(records)?;
-        if updates.is_empty() {
-            return Ok(());
-        }
+    fn record<Metric: Into<u16>>(
+        &self,
+        records: Vec<Record<Metric>>,
+    ) -> impl std::future::Future<Output = Result<(), Error>> + Send {
+        let updates = record::prepare(records);
         let registry = self.clone();
-        blocking::unblock(move || record::apply(&registry, updates)).await
+        async move {
+            let updates = updates?;
+            if updates.is_empty() {
+                return Ok(());
+            }
+            blocking::unblock(move || record::apply(&registry, updates)).await
+        }
     }
 
-    async fn query(&self, queries: &[Query]) -> Result<Vec<QueryResult>, Error> {
-        if queries.is_empty() {
-            return Ok(Vec::new());
-        }
+    fn query<Metric: Into<u16>>(
+        &self,
+        queries: Vec<Query<Metric>>,
+    ) -> impl std::future::Future<Output = Result<Vec<QueryResult>, Error>> + Send {
+        let queries: Vec<Query<u16>> = queries
+            .into_iter()
+            .map(|query| Query {
+                prefixes: query.prefixes,
+                metrics: query
+                    .metrics
+                    .into_iter()
+                    .map(|metric| MetricQuery {
+                        metric: metric.metric.into(),
+                        kind: metric.kind,
+                        selection: metric.selection,
+                    })
+                    .collect(),
+            })
+            .collect();
         let registry = self.clone();
-        let queries = queries.to_vec();
-        blocking::unblock(move || read::query(&registry, &queries)).await
+        async move {
+            if queries.is_empty() {
+                return Ok(Vec::new());
+            }
+            blocking::unblock(move || read::query(&registry, &queries)).await
+        }
     }
 }

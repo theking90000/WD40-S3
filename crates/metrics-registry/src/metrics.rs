@@ -1,4 +1,4 @@
-//! Stable identifiers for the metrics accepted by the registry API.
+//! Built-in metric identifiers. Custom identifiers can also implement `Into<u16>`.
 
 /// A metric identifier shared by records and queries.
 ///
@@ -15,4 +15,10 @@ pub enum Metric {
     UploadedBytes = 3,
     /// Number of requests.
     RequestCount = 4,
+}
+
+impl From<Metric> for u16 {
+    fn from(metric: Metric) -> Self {
+        metric as u16
+    }
 }

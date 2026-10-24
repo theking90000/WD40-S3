@@ -14,7 +14,7 @@ use super::{
 
 pub(super) fn query(
     registry: &LocalRegistry,
-    queries: &[Query],
+    queries: &[Query<u16>],
 ) -> Result<Vec<QueryResult>, Error> {
     let view = registry.storage.snapshot();
     let now = SystemTime::now();
