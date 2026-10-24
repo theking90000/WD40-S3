@@ -47,9 +47,10 @@ database. The registries can independently use Local or Remote mode.
 Opening or connecting to any registry can fail startup; there is no fallback.
 Metrics use the existing `--metrics-registry-policy` and `--metrics-registry-ca`
 options. Dashboard queries require the 30-minute resolution with at least 24 hours
-of retention; the default 48-hour retention supports this. The uploads chart
-requires the 1-day resolution with at least 30 days of retention; the default
-365-day retention supports this. Custom policy lists replace the defaults.
+of retention; the default 48-hour retention supports this. The uploads chart's
+1-day view uses the same 30-minute resolution. Its 7-day and 30-day views require
+the 1-day resolution with at least 30 days of retention; the default 365-day
+retention supports this. Custom policy lists replace the defaults.
 
 `grpc-tls` includes `grpc-client` and enables HTTPS with native certificate roots.
 The existing `--s3-credentials-registry-ca` and `--policy-registry-ca` options,
@@ -556,12 +557,12 @@ object body bytes tracked by the S3 adapter, including partial failed transfers.
 Registry failures, unsupported resolutions, expired history and invalid metric
 totals return HTTP 503 with `{"error":"metrics_unavailable"}`. Database failures
 return HTTP 500 with `{"error":"database_error"}`. This endpoint does not supply
-the 7/30-day chart.
+the uploads chart.
 
 ### GET /api/organizations/{organization_id}/dashboard/uploads
 
-Returns the daily uploaded volume for the chart. The optional `period` query
-parameter accepts `7d` (the default) or `30d`. Invalid periods, including empty or
+Returns uploaded volume for the chart. The optional `period` query parameter
+accepts `1d`, `7d` (the default) or `30d`. Invalid periods, including empty or
 duplicate values, return HTTP 400 with `{"error":"invalid_period"}`.
 
 The route uses the same authentication, organization membership checks and
@@ -595,26 +596,36 @@ GET /api/organizations/{organization_id}/dashboard/uploads?period=7d
 }
 ```
 
-All timestamps are Unix seconds in UTC. The series contains exactly 7 or 30
-points ordered by day, with each day starting at midnight UTC. It includes
-today and the previous 6 or 29 calendar days, rather than a rolling interval of
-exactly 7 or 30 times 24 hours. `period.to` is the generation time. The registry's
-`complete` flag identifies closed days and the day in progress. At exactly
-midnight, today's point is present with a zero value and `complete: false`.
+All timestamps are Unix seconds in UTC. Series points are ordered by increasing
+window start, and `period.to` is the generation time.
+
+| Period | Resolution | Points |
+| --- | --- | --- |
+| `1d` | 30 minutes, 1800 seconds | 47 closed windows plus the window in progress, 48 points |
+| `7d` | 1 day, 86400 seconds | Today and the previous 6 calendar days, 7 points |
+| `30d` | 1 day, 86400 seconds | Today and the previous 29 calendar days, 30 points |
+
+Windows align to the Unix epoch, so daily windows start at midnight UTC. The
+series includes the current window rather than representing an exact rolling
+interval. The registry's `complete` flag identifies closed windows and the
+window in progress. At an exact window boundary, the new window's point is
+present with a zero value and `complete: false`.
 
 One registry query selects `UploadedBytes` as a counter over the union of the
-organization's bucket prefixes, with a daily historical resolution. The portal
-returns the resulting series and sums its values into `total_uploaded_bytes`.
-Days without recorded uploads have a zero value. An organization without buckets
-returns the same number of points, all zero. Missing or invalid result points,
+organization's bucket prefixes, with the selected historical resolution. The
+portal returns the resulting series and sums its values into
+`total_uploaded_bytes`. Windows without recorded uploads have a zero value. An
+organization without buckets returns the same number of points, all zero.
+Missing or invalid result points,
 negative byte counts and overflowing totals are rejected.
 
 `UploadedBytes` measures object body bytes tracked by the S3 adapter, including
 partial failed transfers, repeated uploads and overwrites. It does not measure
 net growth in stored data. No new metric collection is needed for this route.
 
-The daily resolution must be configured with at least 30 days of retention for
-both periods. Default registry policies already satisfy this requirement. Registry
+The 30-minute resolution needs at least 24 hours of retention for `1d`. The daily
+resolution needs at least 30 days of retention for `7d` and `30d`. Default
+registry policies already satisfy these requirements. Registry
 failures, unsupported resolutions, expired history and invalid results return
 HTTP 503 with `{"error":"metrics_unavailable"}`. Database failures return HTTP
 500 with `{"error":"database_error"}`. The console reads this route
@@ -1164,26 +1175,28 @@ produce invalid percentages. Recent activity remains unavailable until its API
 is implemented.
 
 `organizationUploadsQuery(user, organizationId, period)` reads
-`dashboard/uploads?period=7d` or `period=30d`. Its key extends the dashboard key
-with `uploads` and the selected period. It uses the same HTTP client, session
+`dashboard/uploads?period=1d`, `period=7d` or `period=30d`. Its key extends the
+dashboard key with `uploads` and the selected period. It uses the same HTTP client, session
 guards, refresh intervals and error handling as the summary query. Response
-validation requires safe nonnegative byte counts, a daily resolution, ordered
-UTC-midnight timestamps, exactly 7 or 30 points including today, and boolean
-completion flags with previous days closed. Server totals are preserved.
+validation requires safe nonnegative byte counts, the period's resolution and
+point count, aligned and ordered timestamps including the current window, and
+boolean completion flags with previous windows closed. Server totals are preserved.
 
 `components/uploads-chart.tsx` replaces the overview's chart placeholder. It
-starts on 7 days and observes only the selected period. Period caches stay
-separate, and uncached periods display a skeleton rather than data from the
+starts on 7 days, offers 1-, 7- and 30-day views, and observes only the selected
+period. Period caches stay separate, and uncached periods display a skeleton rather than data from the
 previous selection. Initial errors show a retry button; refresh errors retain
 the last successful series for that period. A zero-only series has a dedicated
 empty state. The chart runs independently of the summary cards and distribution.
 
-The daily histogram uses an SVG and existing theme colors without another chart
-dependency. Axis byte units adapt to the series, and all dates use UTC.
-Hovering, focusing or tapping a daily bar shows its date, volume and current-day
-status, with exact byte counts available on selection. Every bar is keyboard
-focusable, and a screen-reader table contains the daily counts. Small screens
-show fewer date labels. `formatBytes` accepts an optional reference value to
+The histogram uses an SVG and existing theme colors without another chart
+dependency. It stays at the bottom of its card when adjacent content increases
+the row height. Axis byte units adapt to the series, and all dates use UTC. The
+1-day view shows times for its 48 half-hour windows. Hovering, focusing or tapping
+a bar shows its date, formatted volume and current-window status in the card's
+subtitle. Every bar is keyboard focusable, and a screen-reader table contains
+the exact counts for each window. Small screens show fewer axis labels.
+`formatBytes` accepts an optional reference value to
 keep all vertical axis labels in the same unit. Chart date formatters also live
 in `dashboard/format.ts`.
 

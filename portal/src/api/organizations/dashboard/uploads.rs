@@ -12,10 +12,12 @@ use portal_db::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 
 use super::super::{Error, current::CurrentOrganization};
-use super::{DAY, Period, add, bucket_names, bucket_prefixes, invalid_result};
+use super::{DAY, Period, RESOLUTION, add, bucket_names, bucket_prefixes, invalid_result};
 
 #[derive(Default, Deserialize)]
 enum UploadPeriod {
+    #[serde(rename = "1d")]
+    Day,
     #[default]
     #[serde(rename = "7d")]
     Week,
@@ -24,10 +26,11 @@ enum UploadPeriod {
 }
 
 impl UploadPeriod {
-    fn days(&self) -> u64 {
+    fn windows(&self) -> (u64, u64) {
         match self {
-            Self::Week => 7,
-            Self::Month => 30,
+            Self::Day => (48, RESOLUTION),
+            Self::Week => (7, DAY),
+            Self::Month => (30, DAY),
         }
     }
 }
@@ -81,16 +84,18 @@ async fn read_uploads(
         .duration_since(UNIX_EPOCH)
         .map_err(|_| invalid_result())?
         .as_secs();
-    let today = generated_at
-        .checked_rem(DAY)
+    let (count, resolution) = period.windows();
+    let window_start = generated_at
+        .checked_rem(resolution)
         .and_then(|remainder| generated_at.checked_sub(remainder))
         .ok_or_else(invalid_result)?;
-    let lookback = period
-        .days()
+    let lookback = count
         .checked_sub(1)
-        .and_then(|days| days.checked_mul(DAY))
+        .and_then(|windows| windows.checked_mul(resolution))
         .ok_or_else(invalid_result)?;
-    let from = today.checked_sub(lookback).ok_or_else(invalid_result)?;
+    let from = window_start
+        .checked_sub(lookback)
+        .ok_or_else(invalid_result)?;
     let start = UNIX_EPOCH
         .checked_add(Duration::from_secs(from))
         .ok_or_else(invalid_result)?;
@@ -101,7 +106,7 @@ async fn read_uploads(
                 metric: Metric::UploadedBytes,
                 kind: MetricKind::Counter,
                 selection: Selection::History {
-                    resolution: Duration::from_secs(DAY),
+                    resolution: Duration::from_secs(resolution),
                     range: start..now,
                 },
             }],
@@ -120,7 +125,7 @@ async fn read_uploads(
         let expected_time = UNIX_EPOCH
             .checked_add(Duration::from_secs(expected_start))
             .ok_or_else(invalid_result)?;
-        if expected_start > today || point.start != expected_time {
+        if expected_start > window_start || point.start != expected_time {
             return Err(invalid_result());
         }
         let uploaded_bytes = u64::try_from(point.value).map_err(|_| invalid_result())?;
@@ -130,23 +135,23 @@ async fn read_uploads(
             uploaded_bytes,
             complete: point.complete,
         });
-        expected_start = add(expected_start, DAY)?;
+        expected_start = add(expected_start, resolution)?;
     }
-    // At exactly midnight, the end-exclusive range can omit today's empty window.
-    if expected_start == today
+    // At a window boundary, the end-exclusive range can omit the new empty window.
+    if expected_start == window_start
         && now
             == UNIX_EPOCH
-                .checked_add(Duration::from_secs(today))
+                .checked_add(Duration::from_secs(window_start))
                 .ok_or_else(invalid_result)?
     {
         points.push(UploadPoint {
-            start: today,
+            start: window_start,
             uploaded_bytes: 0,
             complete: false,
         });
-        expected_start = add(expected_start, DAY)?;
+        expected_start = add(expected_start, resolution)?;
     }
-    if expected_start != add(today, DAY)? {
+    if expected_start != add(window_start, resolution)? {
         return Err(invalid_result());
     }
     Ok(UploadsResponse {
@@ -154,7 +159,7 @@ async fn read_uploads(
         period: Period {
             from,
             to: generated_at,
-            resolution_seconds: DAY,
+            resolution_seconds: resolution,
         },
         total_uploaded_bytes,
         points,

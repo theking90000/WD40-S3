@@ -28,7 +28,7 @@ export interface OrganizationDashboard {
   buckets: BucketUsage[];
 }
 
-export type UploadPeriod = "7d" | "30d";
+export type UploadPeriod = "1d" | "7d" | "30d";
 
 export interface UploadPoint {
   start: number;
@@ -76,19 +76,19 @@ function isDashboard(value: unknown): value is OrganizationDashboard {
 function isUploads(value: unknown, selectedPeriod: UploadPeriod): value is OrganizationUploads {
   if (!isRecord(value) || !isRecord(value.period)) return false;
   const { from, to, resolution_seconds } = value.period;
-  const days = selectedPeriod === "7d" ? 7 : 30;
-  const day = 86_400;
+  const count = selectedPeriod === "1d" ? 48 : selectedPeriod === "7d" ? 7 : 30;
+  const resolution = selectedPeriod === "1d" ? 1800 : 86_400;
   return isTimestamp(value.generated_at)
     && isTimestamp(from) && isTimestamp(to)
     && from < to && to === value.generated_at
-    && resolution_seconds === day && from % day === 0
-    && from + (days - 1) * day === Math.floor(value.generated_at / day) * day
+    && resolution_seconds === resolution && from % resolution === 0
+    && from + (count - 1) * resolution === Math.floor(value.generated_at / resolution) * resolution
     && isCount(value.total_uploaded_bytes)
-    && Array.isArray(value.points) && value.points.length === days
+    && Array.isArray(value.points) && value.points.length === count
     && value.points.every((point: unknown, index: number) => isRecord(point)
-      && isTimestamp(point.start) && point.start === from + index * day
+      && isTimestamp(point.start) && point.start === from + index * resolution
       && isCount(point.uploaded_bytes) && typeof point.complete === "boolean"
-      && (index === days - 1 || point.complete));
+      && (index === count - 1 || point.complete));
 }
 
 function requireSession(session: number) {

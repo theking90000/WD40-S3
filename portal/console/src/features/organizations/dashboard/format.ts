@@ -4,6 +4,8 @@ const percentages = new Intl.NumberFormat("fr-BE", { style: "percent", maximumFr
 const units = ["o", "Ko", "Mo", "Go", "To", "Po", "Eo"];
 const chartDates = new Intl.DateTimeFormat("fr-BE", { day: "numeric", month: "short", timeZone: "UTC" });
 const uploadDates = new Intl.DateTimeFormat("fr-BE", { dateStyle: "medium", timeZone: "UTC" });
+const chartTimes = new Intl.DateTimeFormat("fr-BE", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC" });
+const uploadDateTimes = new Intl.DateTimeFormat("fr-BE", { dateStyle: "medium", timeStyle: "short", hourCycle: "h23", timeZone: "UTC" });
 
 export function formatCount(value: number) {
   return numbers.format(value);
@@ -23,11 +25,11 @@ export function formatPercentage(ratio: number) {
   return percentages.format(ratio);
 }
 
-export function formatChartDate(timestamp: number) {
-  return chartDates.format(new Date(timestamp * 1000));
+export function formatChartDate(timestamp: number, resolution = 86_400) {
+  return (resolution < 86_400 ? chartTimes : chartDates).format(new Date(timestamp * 1000));
 }
 
-export function formatUploadDate(timestamp: number) {
-  return uploadDates.format(new Date(timestamp * 1000));
+export function formatUploadDate(timestamp: number, resolution = 86_400) {
+  return (resolution < 86_400 ? uploadDateTimes : uploadDates).format(new Date(timestamp * 1000));
 }
 
