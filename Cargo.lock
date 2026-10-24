@@ -3828,6 +3828,7 @@ dependencies = [
  "futures-util",
  "hyper",
  "hyper-util",
+ "metrics-registry",
  "object-registry",
  "percent-encoding",
  "policy-registry",

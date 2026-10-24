@@ -8,6 +8,8 @@ use clap::Parser;
 use file_registry::cli::FileRegistryConfig;
 use hyper::server::conn::http1;
 use hyper_util::{rt::TokioIo, server::graceful::GracefulShutdown};
+#[cfg(feature = "metrics")]
+use metrics_registry::cli::MetricsRegistryConfig;
 use object_registry::cli::ObjectRegistryConfig;
 use policy_registry::cli::PolicyRegistryConfig;
 use s3_adapter::{S3Adapter, cli::S3AdapterArgs};
@@ -29,6 +31,9 @@ struct Args {
     objects: ObjectRegistryConfig,
     #[command(flatten)]
     multipart: S3MultipartRegistryConfig,
+    #[cfg(feature = "metrics")]
+    #[command(flatten)]
+    metrics: MetricsRegistryConfig,
     #[command(flatten)]
     blobs: BlobRegistryConfig,
     #[command(flatten)]
@@ -84,7 +89,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         args.streams.open().await?,
         backend,
     );
-    let service = S3Adapter::new(
+    let adapter = S3Adapter::new(
         config,
         args.credentials.open().await?,
         AccessController::new(args.policies.open().await?),
@@ -92,8 +97,10 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         args.objects.open().await?,
         args.multipart.open().await?,
         budget,
-    )
-    .into_service();
+    );
+    #[cfg(feature = "metrics")]
+    let adapter = adapter.with_metrics(args.metrics.open().await?);
+    let service = adapter.into_service();
     let listener = tokio::net::TcpListener::bind(args.adapter.listen).await?;
     eprintln!("S3 Adapter listening on {}", listener.local_addr()?);
     let graceful = GracefulShutdown::new();

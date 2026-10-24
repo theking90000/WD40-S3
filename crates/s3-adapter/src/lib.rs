@@ -24,6 +24,8 @@ macro_rules! to_key {
 
 use access_controller::AccessController;
 use blob_system::{BlobSystem, BlobWriterConfig, FrameBudget, SchedulerConfig};
+#[cfg(feature = "metrics")]
+use metrics_registry::MetricsRegistry;
 use object_registry::ObjectRegistry;
 use s3_credentials_registry::S3CredentialRegistry;
 use s3_multipart_registry::S3MultipartRegistry;
@@ -44,6 +46,9 @@ pub struct S3Adapter {
     pub blobs: BlobSystem,
     pub objects: ObjectRegistry,
     pub multipart: S3MultipartRegistry,
+    /// Caller-owned metrics registry, shared when the adapter is cloned.
+    #[cfg(feature = "metrics")]
+    pub metrics: Option<MetricsRegistry>,
     pub budget: FrameBudget,
 }
 
@@ -65,8 +70,17 @@ impl S3Adapter {
             blobs,
             objects,
             multipart,
+            #[cfg(feature = "metrics")]
+            metrics: None,
             budget,
         }
+    }
+
+    /// Attaches an opened metrics registry without performing I/O.
+    #[cfg(feature = "metrics")]
+    pub fn with_metrics(mut self, metrics: MetricsRegistry) -> Self {
+        self.metrics = Some(metrics);
+        self
     }
 
     /// Builds a service for an application-owned Hyper or Tower server.

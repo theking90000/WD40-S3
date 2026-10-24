@@ -5,7 +5,8 @@ edition.workspace = true
 
 [features]
 default = []
-cli = ["dep:clap", "blob-system/cli"]
+metrics = ["dep:metrics-registry"]
+cli = ["dep:clap", "blob-system/cli", "metrics-registry?/cli"]
 standalone = ["cli", "dep:hyper", "dep:hyper-util", "tokio/rt-multi-thread", "tokio/net", "tokio/signal", "dep:tokio-tcp-pool", "dep:webpki-roots", "dep:backends", "backends/cli", "dep:blob-registry", "blob-registry/cli", "dep:file-registry", "file-registry/cli", "dep:stream-registry", "stream-registry/cli", "policy-registry/cli", "object-registry/cli", "s3-credentials-registry/cli", "s3-multipart-registry/cli"]
 
 [[bin]]
@@ -24,6 +25,7 @@ futures-util = { version = "0.3", default-features = false, features = ["std", "
 sync_wrapper = { version = "1", features = ["futures"] }
 access-controller = { path = "../access-controller" }
 blob-system = { path = "../blob-system" }
+metrics-registry = { path = "../metrics-registry", optional = true }
 object-registry = { path = "../object-registry" }
 s3-credentials-registry = { path = "../s3-credentials-registry" }
 s3-multipart-registry = { path = "../s3-multipart-registry" }
