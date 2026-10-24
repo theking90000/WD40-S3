@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
 import { Card } from "~/components/ui/card";
 import { Skeleton } from "~/components/ui/skeleton";
 import type { OrganizationDashboard } from "../api.ts";
@@ -11,14 +12,17 @@ function MetricCard({ title, value, loading, children }: {
   children?: ReactNode;
 }) {
   return (
-    <Card className="min-h-[130px] min-w-0 gap-0 p-4" aria-busy={loading}>
+    <Card className="min-h-[110px] min-w-0 gap-0 p-4" aria-busy={loading}>
       <div className="flex items-center justify-between gap-3">
         <h2 className="font-sans text-[11.5px] font-medium text-muted-foreground">{title}</h2>
       </div>
       {loading ? <Skeleton aria-hidden="true" className="mt-3 h-9 w-28" /> :
-        <p className="mt-3 break-words font-display text-metric tabular-nums" aria-label={value === undefined ? "Valeur indisponible" : undefined}>{value ?? "—"}</p>}
-      {(loading || value === undefined || children) && <div className="mt-auto space-y-1 pt-3 text-[10px] text-muted-foreground">
-        {loading ? "Chargement…" : value === undefined ? "Indisponible" : children}
+        <p className="mt-3 break-words font-display text-metric tabular-nums" aria-label={value === undefined ? "Valeur indisponible" : undefined}>
+          {value ?? "—"}
+          {value !== undefined && children && <span className="ml-2 inline-flex items-center gap-1 align-baseline whitespace-nowrap font-sans text-[9px] font-normal text-muted-foreground">{children}</span>}
+        </p>}
+      {(loading || value === undefined) && <div className="mt-auto pt-3 text-[10px] text-muted-foreground">
+        {loading ? "Chargement…" : "Indisponible"}
       </div>}
     </Card>
   );
@@ -34,7 +38,10 @@ export function DashboardMetrics({ data, loading }: {
       <MetricCard title="Objets stockés" value={data && formatCount(data.stored_objects)} loading={loading} />
       <MetricCard title="Requêtes · 24 h" value={data && formatCount(data.requests)} loading={loading} />
       <MetricCard title="Volume de données transféré · 24 h" value={data && formatBytes(data.transferred_bytes)} loading={loading}>
-        {data && <><p>Téléversés : {formatBytes(data.uploaded_bytes)}</p><p>Téléchargés : {formatBytes(data.downloaded_bytes)}</p></>}
+        {data && <>
+          <span className="inline-flex items-center gap-0.5" aria-label={`Téléversés : ${formatBytes(data.uploaded_bytes)}`}><ArrowUpIcon aria-hidden="true" className="size-3" />{formatBytes(data.uploaded_bytes)}</span>
+          <span className="inline-flex items-center gap-0.5" aria-label={`Téléchargés : ${formatBytes(data.downloaded_bytes)}`}><ArrowDownIcon aria-hidden="true" className="size-3" />{formatBytes(data.downloaded_bytes)}</span>
+        </>}
       </MetricCard>
     </div>
   );
