@@ -265,11 +265,18 @@ fn validate_input(input: &PutObjectInput) -> S3Result<Option<u64>> {
         .map_err(|error| s3s::s3_error!(error, InvalidArgument))
 }
 
+pub(super) fn validate_acl(acl: Option<&s3s::dto::ObjectCannedACL>) -> s3s::S3Result<()> {
+    match acl.map(s3s::dto::ObjectCannedACL::as_str) {
+        None | Some(s3s::dto::ObjectCannedACL::BUCKET_OWNER_FULL_CONTROL) => Ok(()),
+        Some(_) => Err(s3s::s3_error!(AccessControlListNotSupported)),
+    }
+}
+
 fn validate_options(input: &PutObjectInput) -> S3Result<()> {
+    validate_acl(input.acl.as_ref())?;
     reject_unsupported!(
         "PutObject",
         input,
-        acl,
         bucket_key_enabled,
         cache_control,
         content_disposition,

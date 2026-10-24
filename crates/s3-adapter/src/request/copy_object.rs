@@ -160,10 +160,10 @@ fn validate_input(input: &CopyObjectInput) -> S3Result<()> {
 }
 
 fn validate_options(input: &CopyObjectInput) -> S3Result<()> {
+    super::put_object::validate_acl(input.acl.as_ref())?;
     reject_unsupported!(
         "CopyObject",
         input,
-        acl,
         annotation_directive,
         bucket_key_enabled,
         cache_control,

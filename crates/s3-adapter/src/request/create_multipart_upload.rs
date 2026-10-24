@@ -86,10 +86,10 @@ fn validate_input(input: &CreateMultipartUploadInput) -> S3Result<()> {
         ));
     }
 
+    super::put_object::validate_acl(input.acl.as_ref())?;
     reject_unsupported!(
         "CreateMultipartUpload",
         input,
-        acl,
         bucket_key_enabled,
         cache_control,
         checksum_algorithm,
