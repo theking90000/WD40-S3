@@ -2,14 +2,13 @@ use std::collections::BTreeMap;
 
 use access_controller::Action;
 use blob_system::{BlobPart, PartId};
-use object_registry::traits::ObjectRegistry as _;
 use s3_multipart_registry::{MultipartUploadId, traits::S3MultipartRegistry as _};
 use s3s::{
     S3Error, S3Request, S3Response, S3Result,
     dto::{CompleteMultipartUploadInput, CompleteMultipartUploadOutput, CompletedPart, ETag},
 };
 
-use crate::{S3Adapter, access::S3Access, error, metadata, to_key};
+use crate::{S3Adapter, access::S3Access, metadata, to_key};
 
 const MIN_PART_SIZE: u64 = 5_242_880;
 const MAX_PART_SIZE: u64 = 5_368_709_120;
@@ -26,7 +25,7 @@ pub(crate) async fn complete_multipart_upload_access(
 pub(crate) async fn complete_multipart_upload(
     adapter: &S3Adapter,
     req: S3Request<CompleteMultipartUploadInput>,
-    #[cfg(feature = "metrics")] metrics: Option<crate::metrics::RequestMetrics>,
+    #[cfg(feature = "metrics")] mut metrics: Option<crate::metrics::RequestMetrics>,
 ) -> S3Result<S3Response<CompleteMultipartUploadOutput>> {
     let mut input = req.input;
     let expected_size = validate_input(&input)?;
@@ -98,11 +97,21 @@ pub(crate) async fn complete_multipart_upload(
     if !upload.metadata.contains_key("last-modified") {
         metadata::set_last_modified(&mut upload.metadata)?;
     }
+    metadata::set_stored_credential(
+        &mut upload.metadata,
+        req.credentials
+            .as_ref()
+            .map(|credential| credential.access_key.as_str()),
+    );
     let version_id = adapter
-        .objects
-        .store(&to_key!(input), upload.blob_id, upload.metadata)
-        .await
-        .map_err(error::object_registry_error)?
+        .store_object(
+            &to_key!(input),
+            upload.blob_id,
+            upload.metadata,
+            #[cfg(feature = "metrics")]
+            &mut metrics,
+        )
+        .await?
         .version_id;
 
     // These registries do not share a transaction. Flush failures can occur

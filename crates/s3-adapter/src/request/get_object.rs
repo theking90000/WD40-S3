@@ -37,6 +37,7 @@ pub(crate) async fn get_object(
         .ok_or_else(|| s3s::s3_error!(InternalError, "object has no blob reference"))?;
 
     let mut metadata = record.metadata;
+    metadata::strip_stored_credential(&mut metadata);
     let length = metadata::take_size(&mut metadata)?;
     let content_type = metadata::take_content_type(&mut metadata)?;
     let last_modified = metadata::take_last_modified(&mut metadata)?;

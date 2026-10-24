@@ -36,7 +36,7 @@ async fn compile_policy(
 pub(crate) async fn delete_objects(
     adapter: &S3Adapter,
     mut req: S3Request<DeleteObjectsInput>,
-    #[cfg(feature = "metrics")] metrics: Option<crate::metrics::RequestMetrics>,
+    #[cfg(feature = "metrics")] mut metrics: Option<crate::metrics::RequestMetrics>,
 ) -> S3Result<S3Response<DeleteObjectsOutput>> {
     validate_input(&req.input)?;
     let policy = match req.extensions.remove::<Arc<CompiledPolicy>>() {
@@ -62,7 +62,15 @@ pub(crate) async fn delete_objects(
             Err(s3s::s3_error!(AccessDenied))
         } else {
             match validate_object_options(&object) {
-                Ok(()) => super::delete_object::delete(adapter, &input).await,
+                Ok(()) => {
+                    super::delete_object::delete(
+                        adapter,
+                        &input,
+                        #[cfg(feature = "metrics")]
+                        &mut metrics,
+                    )
+                    .await
+                }
                 Err(error) => Err(error),
             }
         };

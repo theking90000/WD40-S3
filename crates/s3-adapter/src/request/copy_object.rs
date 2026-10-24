@@ -26,7 +26,7 @@ pub(crate) async fn copy_object_access(
 pub(crate) async fn copy_object(
     adapter: &S3Adapter,
     req: S3Request<CopyObjectInput>,
-    #[cfg(feature = "metrics")] metrics: Option<crate::metrics::RequestMetrics>,
+    #[cfg(feature = "metrics")] mut metrics: Option<crate::metrics::RequestMetrics>,
 ) -> S3Result<S3Response<CopyObjectOutput>> {
     let mut input = req.input;
     validate_input(&input)?;
@@ -64,15 +64,25 @@ pub(crate) async fn copy_object(
         .blob_id
         .ok_or_else(|| s3s::s3_error!(InternalError, "object has no blob reference"))?;
     let mut object_metadata = copy_metadata(&mut input, record.metadata)?;
+    metadata::set_stored_credential(
+        &mut object_metadata,
+        req.credentials
+            .as_ref()
+            .map(|credential| credential.access_key.as_str()),
+    );
     let last_modified = metadata::set_last_modified(&mut object_metadata)?;
 
     // Finalized blobs are immutable. A new object version can share their bytes.
     // A store flush error does not imply that the new version was rolled back.
     let version_id = adapter
-        .objects
-        .store(&key, blob_id, object_metadata)
-        .await
-        .map_err(error::object_registry_error)?
+        .store_object(
+            &key,
+            blob_id,
+            object_metadata,
+            #[cfg(feature = "metrics")]
+            &mut metrics,
+        )
+        .await?
         .version_id;
 
     success!(metrics);
@@ -124,13 +134,9 @@ fn validate_input(input: &CopyObjectInput) -> S3Result<()> {
         return Err(s3s::s3_error!(InvalidArgument, "invalid bucket or key"));
     }
     if input.metadata.as_ref().is_some_and(|metadata| {
-        metadata.keys().any(|key| {
-            key.is_empty()
-                || key.contains('\0')
-                || key.eq_ignore_ascii_case("size")
-                || key.eq_ignore_ascii_case("content-type")
-                || key.eq_ignore_ascii_case("last-modified")
-        })
+        metadata
+            .keys()
+            .any(|key| key.is_empty() || key.contains('\0') || metadata::is_reserved_key(key))
     }) {
         return Err(s3s::s3_error!(
             InvalidArgument,

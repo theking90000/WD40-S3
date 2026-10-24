@@ -76,13 +76,9 @@ fn validate_input(input: &CreateMultipartUploadInput) -> S3Result<()> {
     }
 
     if input.metadata.as_ref().is_some_and(|metadata| {
-        metadata.keys().any(|key| {
-            key.is_empty()
-                || key.contains('\0')
-                || key.eq_ignore_ascii_case("size")
-                || key.eq_ignore_ascii_case("content-type")
-                || key.eq_ignore_ascii_case("last-modified")
-        })
+        metadata
+            .keys()
+            .any(|key| key.is_empty() || key.contains('\0') || metadata::is_reserved_key(key))
     }) {
         return Err(s3s::s3_error!(
             InvalidArgument,

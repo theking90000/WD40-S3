@@ -8,7 +8,14 @@
 //!
 //! S3 routing starts each tracker and gives ownership to its handler. The handler
 //! decides when to finish or transfers ownership into a streaming response.
-//! StoredBytes updates remain separate from transfer counters and outcomes.
+//! StoredBytes mutations run in this same task independently of request outcomes.
+//! Queueing transfers ownership, so abandoning a handler cannot cancel a queued
+//! store or delete between its commit and metric publication.
+//!
+//! StoredBytes records changes, not an automatic inventory. Before enabling it
+//! over existing data, establish a one-time baseline without concurrent writers.
+//! Re-enabling collection after unrecorded mutations also requires reconciliation.
+//! Legacy versions without attribution contribute only to the bucket namespace.
 
 use std::{
     io,
@@ -19,9 +26,12 @@ use std::{
 };
 
 use metrics_registry::MetricsRegistry;
-use tokio::sync::oneshot;
+use object_registry::{BlobId, DeleteResult, Metadata, ObjectRegistry, StoreResult, VersionId};
+use s3s::{S3Error, S3Result};
+use tokio::sync::{mpsc, oneshot};
 
 mod context;
+mod stored;
 mod task;
 
 pub use context::MetricsContext;
@@ -71,6 +81,7 @@ pub struct RequestMetrics {
     totals: Totals,
     shared: Arc<SharedTotals>,
     completion: Option<oneshot::Sender<Completion>>,
+    mutations: mpsc::Sender<stored::Mutation>,
 }
 
 impl RequestMetrics {
@@ -82,12 +93,14 @@ impl RequestMetrics {
         let context = Arc::new(context);
         let shared = Arc::new(SharedTotals::default());
         let (sender, receiver) = oneshot::channel();
+        let (mutations, queued) = mpsc::channel(1);
 
         runtime.spawn(task::run(
             registry.clone(),
             Arc::clone(&context),
             Arc::clone(&shared),
             receiver,
+            queued,
         ));
 
         Ok(Self {
@@ -95,12 +108,53 @@ impl RequestMetrics {
             totals: Totals::default(),
             shared,
             completion: Some(sender),
+            mutations,
         })
     }
 
     /// Returns the immutable attribution carried by this request.
     pub fn context(&self) -> &MetricsContext {
         &self.context
+    }
+
+    pub(crate) async fn store_object(
+        &mut self,
+        objects: &ObjectRegistry,
+        key: &str,
+        blob_id: BlobId,
+        metadata: Metadata,
+    ) -> S3Result<StoreResult> {
+        let (reply, result) = oneshot::channel();
+        self.mutations
+            .send(stored::Mutation::Store {
+                objects: objects.clone(),
+                key: key.to_owned(),
+                blob_id,
+                metadata,
+                reply,
+            })
+            .await
+            .map_err(|_| s3s::s3_error!(InternalError, "metrics mutation task stopped"))?;
+        result.await.map_err(S3Error::internal_error)?
+    }
+
+    pub(crate) async fn delete_object_version(
+        &mut self,
+        objects: &ObjectRegistry,
+        key: &str,
+        version_id: Option<VersionId>,
+    ) -> S3Result<DeleteResult> {
+        let (reply, result) = oneshot::channel();
+        self.mutations
+            .send(stored::Mutation::Delete {
+                objects: objects.clone(),
+                key: key.to_owned(),
+                version_id,
+                reply,
+            })
+            .await
+            .map_err(|_| s3s::s3_error!(InternalError, "metrics mutation task stopped"))?;
+        result.await.map_err(S3Error::internal_error)?
     }
 
     /// Counts bytes consumed from the incoming body, before backend writes.

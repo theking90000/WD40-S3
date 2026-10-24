@@ -23,9 +23,17 @@ pub(crate) async fn delete_object_access(
 pub(crate) async fn delete_object(
     adapter: &S3Adapter,
     req: S3Request<DeleteObjectInput>,
-    #[cfg(feature = "metrics")] metrics: Option<crate::metrics::RequestMetrics>,
+    #[cfg(feature = "metrics")] mut metrics: Option<crate::metrics::RequestMetrics>,
 ) -> S3Result<S3Response<DeleteObjectOutput>> {
-    let response = S3Response::new(delete(adapter, &req.input).await?);
+    let response = S3Response::new(
+        delete(
+            adapter,
+            &req.input,
+            #[cfg(feature = "metrics")]
+            &mut metrics,
+        )
+        .await?,
+    );
     success!(metrics);
     Ok(response)
 }
@@ -33,6 +41,7 @@ pub(crate) async fn delete_object(
 pub(super) async fn delete(
     adapter: &S3Adapter,
     input: &DeleteObjectInput,
+    #[cfg(feature = "metrics")] metrics: &mut Option<crate::metrics::RequestMetrics>,
 ) -> S3Result<DeleteObjectOutput> {
     let version_id = validate_input(input)?;
     let key = to_key!(input);
@@ -48,10 +57,13 @@ pub(super) async fn delete(
     };
 
     let result = adapter
-        .objects
-        .delete(&key, version_id)
-        .await
-        .map_err(error::object_registry_error)?;
+        .delete_object_version(
+            &key,
+            version_id,
+            #[cfg(feature = "metrics")]
+            metrics,
+        )
+        .await?;
 
     Ok(DeleteObjectOutput {
         delete_marker,

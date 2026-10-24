@@ -3,7 +3,6 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use blob_system::{BlobId, BytesFrameAllocator};
 use bytes::Bytes;
 use futures_util::{StreamExt, io::AsyncWriteExt};
-use object_registry::traits::ObjectRegistry as _;
 use s3s::{
     S3Error, S3ErrorCode, S3Request, S3Response, S3Result, StdError,
     checksum::ChecksumHasher,
@@ -11,7 +10,7 @@ use s3s::{
     stream::{aws_chunked_stream::AwsChunkedStreamError, upload_stream::UploadStreamError},
 };
 
-use crate::{S3Adapter, access::S3Access, error, metadata, to_key};
+use crate::{S3Adapter, access::S3Access, metadata, to_key};
 
 pub(crate) async fn put_object_access(
     access: &S3Access,
@@ -53,12 +52,22 @@ pub(crate) async fn put_object(
             .unwrap_or_else(|| "application/octet-stream".to_owned()),
     );
 
+    metadata::set_stored_credential(
+        &mut object_metadata,
+        req.credentials
+            .as_ref()
+            .map(|credential| credential.access_key.as_str()),
+    );
     metadata::set_last_modified(&mut object_metadata)?;
     let version_id = adapter
-        .objects
-        .store(&key, blob_id, object_metadata)
-        .await
-        .map_err(error::object_registry_error)?
+        .store_object(
+            &key,
+            blob_id,
+            object_metadata,
+            #[cfg(feature = "metrics")]
+            &mut metrics,
+        )
+        .await?
         .version_id;
 
     success!(metrics);
@@ -238,13 +247,9 @@ fn validate_input(input: &PutObjectInput) -> S3Result<Option<u64>> {
     }
 
     if input.metadata.as_ref().is_some_and(|metadata| {
-        metadata.keys().any(|key| {
-            key.is_empty()
-                || key.contains('\0')
-                || key.eq_ignore_ascii_case("size")
-                || key.eq_ignore_ascii_case("content-type")
-                || key.eq_ignore_ascii_case("last-modified")
-        })
+        metadata
+            .keys()
+            .any(|key| key.is_empty() || key.contains('\0') || metadata::is_reserved_key(key))
     }) {
         return Err(s3s::s3_error!(
             InvalidArgument,

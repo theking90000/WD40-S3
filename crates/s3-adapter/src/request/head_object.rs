@@ -33,6 +33,7 @@ pub(crate) async fn head_object(
     }
 
     let mut metadata = record.metadata;
+    metadata::strip_stored_credential(&mut metadata);
 
     let length = metadata::take_size(&mut metadata)?;
     let content_length = metadata::content_length(length)?;

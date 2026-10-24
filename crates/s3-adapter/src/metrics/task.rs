@@ -5,31 +5,61 @@ use std::{io, sync::Arc, time::Duration};
 use metrics_registry::{
     Metric, MetricKind, MetricRecord, MetricsRegistry, traits::MetricsRegistry as _,
 };
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 
+use super::stored::Mutation;
 use super::{Completion, MetricsContext, RequestOutcome, SharedTotals, Totals};
 
 const FLUSH_INTERVAL: Duration = Duration::from_secs(5);
+
+enum Event {
+    Complete(Completion),
+    Mutation(Option<Mutation>),
+    Flush,
+}
 
 pub(super) async fn run(
     registry: MetricsRegistry,
     context: Arc<MetricsContext>,
     shared: Arc<SharedTotals>,
     mut completion: oneshot::Receiver<Completion>,
+    mut mutations: mpsc::Receiver<Mutation>,
 ) {
     publish(&registry, &context, vec![counter(Metric::RequestCount, 1)]).await;
 
     let mut previous = Totals::default();
+    let mut mutations_open = true;
     loop {
         // Select only the next observation. Once a registry write starts, it is
         // awaited to completion even if the request ends during that write.
-        let finished = tokio::select! {
+        let event = tokio::select! {
             biased;
-            result = &mut completion => Some(result.unwrap_or_else(|_| Completion {
+            result = &mut completion => Event::Complete(result.unwrap_or_else(|_| Completion {
                 totals: shared.snapshot(),
                 outcome: RequestOutcome::Failed,
             })),
-            _ = tokio::time::sleep(FLUSH_INTERVAL) => None,
+            mutation = mutations.recv(), if mutations_open => Event::Mutation(mutation),
+            _ = tokio::time::sleep(FLUSH_INTERVAL) => Event::Flush,
+        };
+        let finished = match event {
+            Event::Mutation(Some(mutation)) => {
+                mutation.apply(&registry).await;
+                continue;
+            }
+            Event::Mutation(None) => {
+                mutations_open = false;
+                continue;
+            }
+            Event::Complete(end) => {
+                // Cancellation must not discard a mutation already accepted by
+                // the bounded queue. Finish those before publishing the outcome.
+                mutations.close();
+                while let Some(mutation) = mutations.recv().await {
+                    mutation.apply(&registry).await;
+                }
+                Some(end)
+            }
+            Event::Flush => None,
         };
         let totals = finished
             .as_ref()
