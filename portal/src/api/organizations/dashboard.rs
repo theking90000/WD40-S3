@@ -6,19 +6,16 @@ use axum::{Extension, Json, extract::State, http::StatusCode};
 use metrics_registry::{
     Metric, MetricKind, MetricQuery, MetricResult, MetricsRegistry, Query, Selection,
 };
-use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use portal_db::{
     DatabaseConnection, bucket,
     sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect},
 };
 use serde::Serialize;
 
-use super::{Error, current::CurrentOrganization};
+use super::{Error, buckets::metric_prefix, current::CurrentOrganization};
 
 const RESOLUTION: u64 = 30 * 60;
 const DAY: u64 = 24 * 60 * 60;
-// Match s3-adapter's bucket segment encoding and preserve the trailing delimiter.
-const SEGMENT: &AsciiSet = &CONTROLS.add(b'/').add(b'%');
 
 #[derive(Debug, Serialize)]
 pub(super) struct DashboardResponse {
@@ -30,7 +27,6 @@ pub(super) struct DashboardResponse {
     uploaded_bytes: u64,
     downloaded_bytes: u64,
     transferred_bytes: u64,
-    buckets: Vec<BucketUsage>,
 }
 
 #[derive(Debug, Serialize)]
@@ -38,13 +34,6 @@ struct Period {
     from: u64,
     to: u64,
     resolution_seconds: u64,
-}
-
-#[derive(Debug, Serialize)]
-struct BucketUsage {
-    name: String,
-    stored_bytes: u64,
-    stored_objects: u64,
 }
 
 pub(super) async fn handle(
@@ -77,10 +66,7 @@ async fn bucket_names(
 }
 
 fn bucket_prefixes(names: &[String]) -> Vec<String> {
-    names
-        .iter()
-        .map(|name| format!("/by-buckets/{}/", utf8_percent_encode(name, SEGMENT)))
-        .collect()
+    names.iter().map(|name| metric_prefix(name)).collect()
 }
 
 async fn read_dashboard(
@@ -101,63 +87,43 @@ async fn read_dashboard(
         range: UNIX_EPOCH + Duration::from_secs(from)..now,
     };
     let prefixes = bucket_prefixes(&names);
-    let mut queries = vec![Query {
-        // An empty list selects no keys, including for an organization with no buckets.
-        prefixes: prefixes.clone(),
-        metrics: [
-            Metric::RequestCount,
-            Metric::UploadedBytes,
-            Metric::DownloadedBytes,
-        ]
-        .map(|metric| MetricQuery {
+    let mut metrics: Vec<_> = [
+        Metric::RequestCount,
+        Metric::UploadedBytes,
+        Metric::DownloadedBytes,
+    ]
+    .map(|metric| MetricQuery {
+        metric,
+        kind: MetricKind::Counter,
+        selection: history.clone(),
+    })
+    .to_vec();
+    metrics.extend(
+        [Metric::StoredBytes, Metric::StoredObjects].map(|metric| MetricQuery {
             metric,
-            kind: MetricKind::Counter,
-            selection: history.clone(),
-        })
-        .to_vec(),
-    }];
-    queries.extend(prefixes.into_iter().map(|prefix| {
-        Query {
-            prefixes: vec![prefix],
-            metrics: [Metric::StoredBytes, Metric::StoredObjects]
-                .map(|metric| MetricQuery {
-                    metric,
-                    kind: MetricKind::Gauge,
-                    selection: Selection::Current,
-                })
-                .to_vec(),
-        }
-    }));
-    let results = registry.query(queries).await?;
-    if results.len() != names.len() + 1 {
+            kind: MetricKind::Gauge,
+            selection: Selection::Current,
+        }),
+    );
+    let results = registry
+        .query(vec![Query {
+            // An empty list selects no keys, including for an organization with no buckets.
+            prefixes,
+            metrics,
+        }])
+        .await?;
+    let [result] = results.as_slice() else {
         return Err(invalid_result());
-    }
-    let mut results = results.into_iter();
-    let counters = results.next().ok_or_else(invalid_result)?;
-    let [requests, uploaded, downloaded] = counters.metrics.as_slice() else {
+    };
+    let [requests, uploaded, downloaded, bytes, objects] = result.metrics.as_slice() else {
         return Err(invalid_result());
     };
     let requests = history_total(requests)?;
     let uploaded_bytes = history_total(uploaded)?;
     let downloaded_bytes = history_total(downloaded)?;
     let transferred_bytes = add(uploaded_bytes, downloaded_bytes)?;
-    let mut stored_bytes = 0;
-    let mut stored_objects = 0;
-    let mut buckets = Vec::with_capacity(names.len());
-    for (name, result) in names.into_iter().zip(results) {
-        let [bytes, objects] = result.metrics.as_slice() else {
-            return Err(invalid_result());
-        };
-        let bytes = current(bytes)?;
-        let objects = current(objects)?;
-        stored_bytes = add(stored_bytes, bytes)?;
-        stored_objects = add(stored_objects, objects)?;
-        buckets.push(BucketUsage {
-            name,
-            stored_bytes: bytes,
-            stored_objects: objects,
-        });
-    }
+    let stored_bytes = current(bytes)?;
+    let stored_objects = current(objects)?;
     Ok(DashboardResponse {
         generated_at,
         period: Period {
@@ -171,7 +137,6 @@ async fn read_dashboard(
         uploaded_bytes,
         downloaded_bytes,
         transferred_bytes,
-        buckets,
     })
 }
 
@@ -254,9 +219,9 @@ mod tests {
         UNIX_EPOCH + Duration::from_secs(2_000_000_123) + Duration::from_millis(500)
     }
 
-    fn counters(value: i64) -> QueryResult {
+    fn totals(value: i64, stored_bytes: i64, stored_objects: i64) -> QueryResult {
         let to = now().duration_since(UNIX_EPOCH).unwrap().as_secs() / RESOLUTION * RESOLUTION;
-        QueryResult {
+        let mut result = QueryResult {
             metrics: [value, value * 2, value * 3]
                 .map(|value| {
                     MetricResult::History(
@@ -271,7 +236,12 @@ mod tests {
                     )
                 })
                 .to_vec(),
-        }
+        };
+        result.metrics.extend([
+            MetricResult::Current(stored_bytes),
+            MetricResult::Current(stored_objects),
+        ]);
+        result
     }
 
     fn registry(results: Vec<QueryResult>) -> Registry {
@@ -283,15 +253,7 @@ mod tests {
 
     #[tokio::test]
     async fn one_batch_scopes_buckets_and_includes_current_window() {
-        let registry = registry(vec![
-            counters(1),
-            QueryResult {
-                metrics: vec![MetricResult::Current(100), MetricResult::Current(2)],
-            },
-            QueryResult {
-                metrics: vec![MetricResult::Current(300), MetricResult::Current(5)],
-            },
-        ]);
+        let registry = registry(vec![totals(1, 400, 7)]);
         let dashboard = read_dashboard(
             &registry,
             vec!["photos".into(), "photos-archive/%".into()],
@@ -309,9 +271,6 @@ mod tests {
             (49, 98, 147)
         );
         assert_eq!(dashboard.transferred_bytes, 245);
-        assert_eq!(dashboard.buckets.len(), 2);
-        assert_eq!(dashboard.buckets[1].stored_bytes, 300);
-        assert_eq!(dashboard.buckets[1].stored_objects, 5);
         assert_eq!(dashboard.period.from % RESOLUTION, 0);
         assert_eq!(dashboard.period.to, dashboard.generated_at);
         assert!((DAY..DAY + RESOLUTION).contains(&(dashboard.period.to - dashboard.period.from)));
@@ -319,12 +278,13 @@ mod tests {
         let calls = registry.calls.lock().unwrap();
         assert_eq!(calls.len(), 1);
         let queries = &calls[0];
-        assert_eq!(queries.len(), 3);
+        assert_eq!(queries.len(), 1);
+        assert_eq!(queries[0].metrics.len(), 5);
         assert_eq!(
             queries[0].prefixes,
             ["/by-buckets/photos/", "/by-buckets/photos-archive%2F%25/"]
         );
-        for (metric, expected) in queries[0].metrics.iter().zip([
+        for (metric, expected) in queries[0].metrics.iter().take(3).zip([
             Metric::RequestCount,
             Metric::UploadedBytes,
             Metric::DownloadedBytes,
@@ -339,32 +299,21 @@ mod tests {
                 }
             );
         }
-        for (index, query) in queries[1..].iter().enumerate() {
-            assert_eq!(query.prefixes, vec![queries[0].prefixes[index].clone()]);
-            assert_eq!(
-                query
-                    .metrics
-                    .iter()
-                    .map(|metric| metric.metric)
-                    .collect::<Vec<_>>(),
-                vec![
-                    u16::from(Metric::StoredBytes),
-                    u16::from(Metric::StoredObjects)
-                ]
-            );
-            assert!(
-                query
-                    .metrics
-                    .iter()
-                    .all(|metric| metric.kind == MetricKind::Gauge
-                        && metric.selection == Selection::Current)
-            );
+        for (metric, expected) in queries[0]
+            .metrics
+            .iter()
+            .skip(3)
+            .zip([Metric::StoredBytes, Metric::StoredObjects])
+        {
+            assert_eq!(metric.metric, u16::from(expected));
+            assert_eq!(metric.kind, MetricKind::Gauge);
+            assert_eq!(metric.selection, Selection::Current);
         }
     }
 
     #[tokio::test]
     async fn no_buckets_selects_nothing_and_unwritten_gauges_remain_zero() {
-        let empty = registry(vec![counters(0)]);
+        let empty = registry(vec![totals(0, 0, 0)]);
         let dashboard = read_dashboard(&empty, Vec::new(), now()).await.unwrap();
         assert_eq!(
             (
@@ -375,20 +324,13 @@ mod tests {
             ),
             (0, 0, 0, 0)
         );
-        assert!(dashboard.buckets.is_empty());
         assert!(empty.calls.lock().unwrap()[0][0].prefixes.is_empty());
 
-        let unwritten = registry(vec![
-            counters(0),
-            QueryResult {
-                metrics: vec![MetricResult::Current(0), MetricResult::Current(0)],
-            },
-        ]);
+        let unwritten = registry(vec![totals(0, 0, 0)]);
         let dashboard = read_dashboard(&unwritten, vec!["photos".into()], now())
             .await
             .unwrap();
         assert_eq!((dashboard.stored_bytes, dashboard.stored_objects), (0, 0));
-        assert_eq!(dashboard.buckets[0].stored_objects, 0);
     }
 
     #[tokio::test]
@@ -403,18 +345,13 @@ mod tests {
             read_dashboard(&unavailable, Vec::new(), now()).await,
             Err(metrics_registry::Error::ResolutionUnavailable(_))
         ));
-        let negative = registry(vec![
-            counters(0),
-            QueryResult {
-                metrics: vec![MetricResult::Current(-1), MetricResult::Current(0)],
-            },
-        ]);
+        let negative = registry(vec![totals(0, -1, 0)]);
         assert!(
             read_dashboard(&negative, vec!["photos".into()], now())
                 .await
                 .is_err()
         );
-        let overflow = registry(vec![counters(i64::MAX / 3)]);
+        let overflow = registry(vec![totals(i64::MAX / 3, 0, 0)]);
         assert!(matches!(
             read_dashboard(&overflow, Vec::new(), now()).await,
             Err(metrics_registry::Error::Overflow)

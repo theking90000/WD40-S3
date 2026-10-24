@@ -527,10 +527,7 @@ metric prefixes. The response has `Cache-Control: no-store`.
   "requests": 80,
   "uploaded_bytes": 2000,
   "downloaded_bytes": 4000,
-  "transferred_bytes": 6000,
-  "buckets": [
-    { "name": "photos", "stored_bytes": 1500, "stored_objects": 3 }
-  ]
+  "transferred_bytes": 6000
 }
 ```
 
@@ -540,13 +537,13 @@ generation time, so accepted increments in the current window are included.
 The period covers 24 hours plus up to 30 minutes of the current window.
 Storage gauges reflect current values from the same metrics snapshot.
 
-One registry batch contains a query for `RequestCount`, `UploadedBytes` and
-`DownloadedBytes` over the union of the organization's `/by-buckets/{name}/`
-prefixes, followed by a query for each bucket's current `StoredBytes` and
-`StoredObjects` gauges. The portal sums the returned bucket gauges for the
-organization totals and adds uploads and downloads for `transferred_bytes`.
-Bucket entries are ordered by name. An organization without buckets selects no
-metric keys and returns zero totals and an empty bucket list.
+One registry query reads historical `RequestCount`, `UploadedBytes` and
+`DownloadedBytes` counters alongside the current `StoredBytes` and `StoredObjects`
+gauges over the union of the organization's `/by-buckets/{name}/` prefixes. The
+registry aggregates the organization totals from one snapshot. The portal adds
+uploads and downloads for `transferred_bytes`. An organization without buckets
+selects no metric keys and returns zero totals. The response does not include a
+`buckets` field; per-bucket storage metrics belong to the bucket list endpoint.
 
 Unwritten gauges return zero, following the registry contract. Adding the
 `StoredObjects` identifier does not implement its collection. Request counts cover
@@ -794,7 +791,35 @@ applied. A name reserved by a retained sync record cannot be reused.
 ### GET /api/organizations/{organization_id}/buckets
 
 Both `MEMBER` and `OWNER` can list the selected organization's buckets. Returns
-`200` with an array of the objects above, sorted by name, or an empty array.
+`200` with an array of bucket metadata and current storage metrics, sorted by
+name, or an empty array:
+
+```json
+[
+  {
+    "organization_id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "my-bucket",
+    "created_at": "2026-10-18T12:00:00+00:00",
+    "access": "PRIVATE",
+    "stored_bytes": 1500,
+    "stored_objects": 3
+  }
+]
+```
+
+One registry batch reads `StoredBytes` and `StoredObjects` as current gauges
+for every bucket returned by the organization-scoped database query. Each
+query uses the encoded `/by-buckets/{name}/` prefix with a trailing delimiter.
+All returned metric values come from one registry snapshot. No historical
+resolution is required. Unwritten gauges return zero. An organization without
+buckets returns `[]` without querying the registry.
+
+Registry failures, negative values and invalid results return HTTP 503 with
+`{"error":"metrics_unavailable"}`. Database failures return HTTP 500 with
+`{"error":"database_error"}`. Neither failure is represented as zero usage.
+POST and PATCH keep their metadata-only responses and do not read metrics after
+applying writes. Clients must preserve existing cached storage values when
+merging those responses or reload the enriched list.
 
 ### PATCH /api/organizations/{organization_id}/buckets/{bucket_name}
 
@@ -1146,6 +1171,14 @@ the same creation dialog, including in the mobile navigation drawer.
 Creation updates the shared cache from the POST response and opens the new
 organization without an immediate GET. Results from a previous session are ignored.
 ### Dashboard client
+
+The backend now returns per-bucket usage only from `GET
+/api/organizations/{organization_id}/buckets`. The console migration is pending:
+its current dashboard validator still requires `dashboard.buckets`, so it must
+be updated before using the new backend contract. The planned migration moves
+the distribution to the existing bucket query, adds storage and object columns
+to the bucket table, and preserves enriched cache entries across metadata writes.
+The following describes the existing console implementation.
 
 `features/organizations/dashboard/api.ts` defines `OrganizationDashboard`,
 `DashboardPeriod`, `BucketUsage` and `organizationDashboardQuery(user, organizationId)`.

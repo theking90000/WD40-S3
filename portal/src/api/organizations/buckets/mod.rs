@@ -6,10 +6,18 @@ use axum::{
     Router,
     routing::{get, patch},
 };
+use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use portal_db::{Bucket, BucketAccess, DatabaseConnection};
 use serde::{Deserialize, Serialize};
 
 use super::{Error, current::CurrentOrganization};
+
+// Match s3-adapter's bucket segment encoding and preserve the trailing delimiter.
+const SEGMENT: &AsciiSet = &CONTROLS.add(b'/').add(b'%');
+
+pub(super) fn metric_prefix(name: &str) -> String {
+    format!("/by-buckets/{}/", utf8_percent_encode(name, SEGMENT))
+}
 
 pub(super) fn router() -> Router<DatabaseConnection> {
     Router::new()
