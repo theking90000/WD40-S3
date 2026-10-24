@@ -19,9 +19,12 @@ jobs:
           - arch: linux-arm64
             runner: ubuntu-24.04-arm
             rustflags: ""
+            cxxflags: ""
           - arch: linux-x86_64-v3
             runner: ubuntu-24.04
             rustflags: "-C target-cpu=x86-64-v3"
+            # Work around a librocksdb-rs bug when compiling for x86-64.
+            cxxflags: "-DNO_PCLMUL"
 
     steps:
       - uses: actions/checkout@v7
@@ -38,6 +41,7 @@ jobs:
       - name: Build portal
         env:
           RUSTFLAGS: ${{ matrix.rustflags }}
+          CXXFLAGS: ${{ matrix.cxxflags }}
         run: cargo b -p portal -F standalone,embedded-s3 --release
 
       - name: Package executable
