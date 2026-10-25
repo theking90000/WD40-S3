@@ -8,6 +8,7 @@ import {
   ShieldCheckIcon,
 } from "lucide-react";
 import { Button } from "~/components/ui/button";
+import { LanguageSwitcher } from "~/features/i18n/components/language-switcher";
 import "./auth-screen.css";
 
 const features = [
@@ -60,6 +61,7 @@ export function AuthScreen({
           </ul>
         </section>
         <section className="auth-connection" aria-labelledby={titleId}>
+          <div className="mb-4 flex justify-end"><LanguageSwitcher /></div>
           <h1 id={titleId}>{title}</h1>
           <p className="auth-description">{description}</p>
           {children && <div className="auth-actions">{children}</div>}

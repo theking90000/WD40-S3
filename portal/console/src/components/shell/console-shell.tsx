@@ -4,6 +4,7 @@ import { DatabaseIcon } from "lucide-react";
 import { Link, useLocation } from "react-router";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { ThemeSwitcher } from "~/features/theme/components/theme-switcher";
+import { LanguageSwitcher } from "~/features/i18n/components/language-switcher";
 import { ShellNavigation } from "./navigation";
 import type { ShellNavigationGroup } from "./navigation";
 import { MobileNavigation } from "./mobile-navigation";
@@ -98,6 +99,7 @@ export function ConsoleShell({
             </nav>
             <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1.75">
               {actions}
+              <LanguageSwitcher />
               <ThemeSwitcher />
             </div>
           </header>
