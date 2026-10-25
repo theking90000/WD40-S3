@@ -4,6 +4,7 @@ import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration, 
 import { authMiddleware } from "./features/auth/router.ts";
 import { AuthFailure } from "~/features/auth/components/auth-screen";
 import { ThemeProvider, themeScript } from "~/features/theme/theme";
+import { LanguageProvider } from "~/features/i18n/language-provider";
 import "./style.css";
 import { queryClient } from "./lib/query-client.ts";
 
@@ -31,9 +32,11 @@ export function Layout({ children }: { children: ReactNode }) {
         <Links />
       </head>
       <body>
-        <ThemeProvider>
-          <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-        </ThemeProvider>
+        <LanguageProvider>
+          <ThemeProvider>
+            <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+          </ThemeProvider>
+        </LanguageProvider>
         <ScrollRestoration />
         <Scripts />
       </body>
