@@ -1043,16 +1043,33 @@ preferences. Detection runs after hydration and updates `<html lang>`; a brief
 French render is possible on first load. Initialization never needs an HTTP
 translation backend or a JavaScript server in production.
 
-Only the new language menu is translated at this stage. Existing page text,
-errors, dates, numbers and units retain their French behavior pending migration.
+The console UI is extracted into the French source catalog, including route
+headings, accessibility labels, forms, errors, feedback and chart descriptions.
+The English catalog currently translates the language menu; other messages fall
+back to the existing French wording until English translations are added.
 The external OIDC provider's screens have their own language configuration.
 
-Catalogs live in `src/locales/{fr,en}/common.ts`. Add a semantic key to the French
-catalog and its English translation; the English catalog must satisfy the French
-shape. `features/i18n/i18next.d.ts` types the selector API against that shape.
+Catalogs live in `src/locales/{fr,en}/common.ts`. French messages are in
+`fr/messages.ts`, and route headings are in `fr/route-titles.ts`.
+`features/i18n/i18next.d.ts` types the selector API against the French shape.
 Components use `const { t } = useTranslation()` and calls such as
-`t($ => $.language.label)`. Parameterized messages receive their values through
-the second argument. Missing English messages fall back to French.
+`t($ => $.messages.signIn)`. Parameterized messages receive their values through
+the second argument. Plurals use `count` and i18next suffixes. Rich messages use
+`Trans` with named components. Add English resources under the same keys;
+missing English messages fall back to French. Extend the English catalog's
+`satisfies` constraint when adding translated sections.
+
+Route handles use `routeTitle(key)` and are translated by the console layout.
+API error helpers return message keys derived from the existing error codes.
+React state keeps raw errors or a `Message` identifier and its parameters so
+visible feedback follows language changes without repeating a request.
+
+`features/i18n/use-locale.ts` selects `fr-BE` or `en-GB` for dates, numbers,
+search comparisons and sorting. Dashboard formatters are recreated only when
+the locale changes. Byte units remain decimal, with the same rounding and
+reference-based chart scale: `o`/`Ko`/`Mo` in French, `B`/`kB`/`MB` in English.
+Chart dates retain UTC and the 24-hour clock; creation dates retain the browser's
+time zone. Changing language keeps the selected chart period and point.
 
 Run `node --test src/features/i18n/*.test.ts`, `npm run typecheck` and
 `npm run build` from `console/` to check preferences, detection, caching, typing

@@ -11,12 +11,12 @@ export function DashboardStatus({ data, error, loading, refreshing, onRefresh }:
   onRefresh: () => void;
 }) {
   const { t } = useTranslation();
-  if (loading) return <p role="status" className="sr-only">Chargement des statistiques…</p>;
+  if (loading) return <p role="status" className="sr-only">{t($ => $.messages.chargementDesStatistiques)}</p>;
   if (!error) return null;
   return (
     <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-destructive-soft p-3 text-xs text-destructive-strong">
-      <p>{t($ => $.messages[dashboardErrorKey(error)])}{data && " Les dernières valeurs sont conservées."}</p>
-      <Button type="button" variant="outline" size="sm" disabled={refreshing} onClick={onRefresh}>Réessayer</Button>
+      <p>{t($ => $.messages[dashboardErrorKey(error)])}{data && t($ => $.messages.lesDernieresValeursSontConservees)}</p>
+      <Button type="button" variant="outline" size="sm" disabled={refreshing} onClick={onRefresh}>{t($ => $.messages.retry)}</Button>
     </div>
   );
 }

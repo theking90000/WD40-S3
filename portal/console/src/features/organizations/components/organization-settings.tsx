@@ -1,3 +1,4 @@
+import { useLocale } from "~/features/i18n/use-locale";
 import type { Message } from "~/features/i18n/message";
 import { useTranslation } from "react-i18next";
 import { useId, useRef, useState } from "react";
@@ -25,6 +26,7 @@ export function OrganizationSettingsPage({ user, organization, disabled }: {
   disabled?: boolean;
 }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const details = useQuery(organizationQuery(user, organization.id));
   // A refresh updates an untouched field without replacing an edit in progress.
   const [draft, setDraft] = useState<string | null>(null);
@@ -49,7 +51,7 @@ export function OrganizationSettingsPage({ user, organization, disabled }: {
   const canMutate = owner && !!details.data && !details.error && !disabled;
   const counts = details.data?.counts;
   const empty = counts?.buckets === 0 && counts?.credentials === 0;
-  const numberFormat = new Intl.NumberFormat("fr-BE");
+  const numberFormat = new Intl.NumberFormat(locale);
   const mutation = useMutation({
     mutationFn: (value: string) => updateOrganization(user, organization.id, value),
     retry: false,

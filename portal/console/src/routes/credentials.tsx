@@ -1,3 +1,4 @@
+import { useLocale } from "~/features/i18n/use-locale";
 import type { Message } from "~/features/i18n/message";
 import { useTranslation } from "react-i18next";
 import { routeTitle } from "~/features/i18n/route-titles";
@@ -32,17 +33,18 @@ export default function Credentials() {
 
 function CredentialsPage({ user, organization }: { user: CurrentUser; organization: Organization }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const { data: credentials, error, isFetching, refetch } = useQuery(organizationCredentialsQuery(user, organization.id));
   const [search, setSearch] = useState("");
   const [accessType, setAccessType] = useState<CredentialAccessType | "ANY">("ANY");
   const [notice, setNotice] = useState<Message | null>(null);
   const heading = useRef<HTMLHeadingElement | null>(null);
-  const needle = search.trim().toLocaleLowerCase("fr");
+  const needle = search.trim().toLocaleLowerCase(locale);
   const owner = organization.access === "OWNER";
   const filtered = credentials?.filter((credential) => (accessType === "ANY" || credential.access_type === accessType)
-    && (credential.key_id.toLocaleLowerCase("fr").includes(needle) || credential.bucket_names.some((name) => name.toLocaleLowerCase("fr").includes(needle)))) ?? [];
+    && (credential.key_id.toLocaleLowerCase(locale).includes(needle) || credential.bucket_names.some((name) => name.toLocaleLowerCase(locale).includes(needle)))) ?? [];
   const filteredView = !!needle || accessType !== "ANY";
-  const dateFormat = new Intl.DateTimeFormat("fr-BE", { dateStyle: "medium" });
+  const dateFormat = new Intl.DateTimeFormat(locale, { dateStyle: "medium" });
 
   return (
     <section className="space-y-5">

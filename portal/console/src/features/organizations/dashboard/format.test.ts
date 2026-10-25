@@ -1,9 +1,11 @@
 import frenchMessages from "../../../locales/fr/messages.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatBytes, formatCount, formatPercentage } from "./format.ts";
+import { createDashboardFormatters } from "./format.ts";
 import { dashboardErrorKey } from "./api.ts";
 import { AuthError } from "../../../lib/api.ts";
+
+const { formatBytes, formatCount, formatPercentage } = createDashboardFormatters("fr-BE");
 
 test("dashboard volumes use decimal units and preserve zero", () => {
   for (const [bytes, expected] of [[0, "0 o"], [999, "999 o"], [1000, "1 Ko"],

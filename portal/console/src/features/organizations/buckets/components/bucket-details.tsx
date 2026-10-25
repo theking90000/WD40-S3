@@ -1,3 +1,4 @@
+import { useLocale } from "~/features/i18n/use-locale";
 import type { Message } from "~/features/i18n/message";
 import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
@@ -23,6 +24,7 @@ export function BucketDetails({ user, organization, bucket, open, disabled, onOp
   restoreFocus(): void;
 }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const bucketAccessInfo = useBucketAccessInfo();
   const [draftAccess, setDraftAccess] = useState<BucketAccess | null>(null);
   const [notice, setNotice] = useState<Message | null>(null);
@@ -79,7 +81,7 @@ export function BucketDetails({ user, organization, bucket, open, disabled, onOp
           <dl className="grid grid-cols-2 gap-3 text-xs">
             <div className="space-y-2 rounded-lg border bg-background p-3">
               <dt className="text-[10px] text-muted-foreground">{t($ => $.messages.createdAt)}</dt>
-              <dd><time dateTime={bucket.created_at}>{new Intl.DateTimeFormat("fr-BE", { dateStyle: "medium" }).format(new Date(bucket.created_at))}</time></dd>
+              <dd><time dateTime={bucket.created_at}>{new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(bucket.created_at))}</time></dd>
             </div>
             <div className="space-y-2 rounded-lg border bg-background p-3">
               <dt className="text-[10px] text-muted-foreground">{t($ => $.messages.accesEnregistre)}</dt>

@@ -1,3 +1,4 @@
+import { useLocale } from "~/features/i18n/use-locale";
 import type { Message } from "~/features/i18n/message";
 import { useTranslation } from "react-i18next";
 import { routeTitle } from "~/features/i18n/route-titles";
@@ -11,7 +12,7 @@ import type { BucketAccess } from "~/features/organizations/buckets/api.ts";
 import { bucketErrorKey, organizationBucketsQuery } from "~/features/organizations/buckets/api.ts";
 import { BucketAccessBadge } from "~/features/organizations/buckets/components/access";
 import { BucketDetails } from "~/features/organizations/buckets/components/bucket-details";
-import { formatBytes, formatCount } from "~/features/organizations/dashboard/format.ts";
+import { useDashboardFormatters } from "~/features/organizations/dashboard/use-dashboard-formatters";
 import { useOrganization, useOrganizations } from "~/features/organizations/router.ts";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -32,6 +33,8 @@ export default function Buckets() {
 
 function BucketsPage({ user, organization }: { user: CurrentUser; organization: Organization }) {
   const { t } = useTranslation();
+  const locale = useLocale();
+  const { formatBytes, formatCount } = useDashboardFormatters();
   const { data: buckets, error, isFetching, refetch } = useQuery({
     ...organizationBucketsQuery(user, organization.id),
     refetchInterval: 60_000,
@@ -46,12 +49,12 @@ function BucketsPage({ user, organization }: { user: CurrentUser; organization: 
   const [copiedName, setCopiedName] = useState<string | null>(null);
   const detailTrigger = useRef<HTMLElement | null>(null);
   const heading = useRef<HTMLHeadingElement | null>(null);
-  const needle = search.trim().toLocaleLowerCase("fr");
-  const filtered = buckets?.filter((bucket) => bucket.name.toLocaleLowerCase("fr").includes(needle)
+  const needle = search.trim().toLocaleLowerCase(locale);
+  const filtered = buckets?.filter((bucket) => bucket.name.toLocaleLowerCase(locale).includes(needle)
     && (access === "ALL" || bucket.access === access)) ?? [];
   const selectedBucket = buckets?.find((bucket) => bucket.name === selectedName);
   const filteredView = !!needle || access !== "ALL";
-  const dateFormat = new Intl.DateTimeFormat("fr-BE", { dateStyle: "medium" });
+  const dateFormat = new Intl.DateTimeFormat(locale, { dateStyle: "medium" });
 
   useEffect(() => {
     if (copiedName === null) return;

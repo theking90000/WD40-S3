@@ -1,3 +1,4 @@
+import { useLocale } from "~/features/i18n/use-locale";
 import { useTranslation } from "react-i18next";
 import { useEffect, useId, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -62,6 +63,7 @@ export function CredentialAccessForm({ user, organizationId, initialInput, pendi
   submitLabel: string;
 }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const permissionLabels = usePermissionLabels();
   const [input, setInput] = useState<CredentialInput>(initialInput ?? { access_type: "ALL", permissions: [...CREDENTIAL_PERMISSIONS] });
   const [search, setSearch] = useState("");
@@ -85,8 +87,8 @@ export function CredentialAccessForm({ user, organizationId, initialInput, pendi
   const available = new Set(buckets?.map((bucket) => bucket.name));
   const unavailable = buckets ? names.filter((name) => !available.has(name)) : [];
   const valid = input.access_type === "ALL" || (buckets !== undefined && !bucketsError && unavailable.length === 0);
-  const needle = search.trim().toLocaleLowerCase("fr");
-  const filtered = buckets?.filter((bucket) => bucket.name.toLocaleLowerCase("fr").includes(needle)) ?? [];
+  const needle = search.trim().toLocaleLowerCase(locale);
+  const filtered = buckets?.filter((bucket) => bucket.name.toLocaleLowerCase(locale).includes(needle)) ?? [];
 
   useEffect(() => {
     if (error) errorMessage.current?.focus();

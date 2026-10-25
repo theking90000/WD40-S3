@@ -1,3 +1,4 @@
+import { useLocale } from "~/features/i18n/use-locale";
 import type { Message } from "~/features/i18n/message";
 import { useTranslation } from "react-i18next";
 import { routeTitle } from "~/features/i18n/route-titles";
@@ -29,15 +30,16 @@ export default function Members() {
 
 function MembersPage({ user, organization }: { user: CurrentUser; organization: Organization }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const { data: members, error, isFetching, refetch } = useQuery(organizationMembersQuery(user, organization.id));
   const [search, setSearch] = useState("");
   const [notice, setNotice] = useState<Message | null>(null);
   const [mutationError, setMutationError] = useState<Error | null>(null);
   const owner = organization.access === "OWNER";
 
-  const needle = search.trim().toLocaleLowerCase("fr");
-  const filtered = members?.filter(({ email }) => email.toLocaleLowerCase("fr").includes(needle)) ?? [];
-  const dateFormat = new Intl.DateTimeFormat("fr-BE", { dateStyle: "medium" });
+  const needle = search.trim().toLocaleLowerCase(locale);
+  const filtered = members?.filter(({ email }) => email.toLocaleLowerCase(locale).includes(needle)) ?? [];
+  const dateFormat = new Intl.DateTimeFormat(locale, { dateStyle: "medium" });
 
   function showNotice(message: Message) {
     setMutationError(null);
@@ -107,7 +109,7 @@ function MembersPage({ user, organization }: { user: CurrentUser; organization: 
                   <TableCell>
                     <div className="flex min-w-0 items-center gap-2.5">
                       <span aria-hidden="true" className="hidden size-7.5 shrink-0 items-center justify-center rounded-full border bg-foreground-soft text-[10px] font-semibold text-muted-foreground min-[621px]:flex">
-                        {Array.from(member.email).at(0)?.toLocaleUpperCase("fr")}
+                        {Array.from(member.email).at(0)?.toLocaleUpperCase(locale)}
                       </span>
                       <div className="min-w-0 space-y-1">
                         <p className="max-w-[42vw] break-words font-semibold min-[621px]:max-w-none">{member.email}</p>

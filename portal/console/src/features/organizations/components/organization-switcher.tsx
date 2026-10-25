@@ -17,7 +17,7 @@ export function OrganizationSwitcher() {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button type="button" variant="outline" className="w-full min-w-0 justify-start" aria-label={t($ => $.messages.organisationValue, { value: organization?.name ?? "Choisir une organisation" })}>
+          <Button type="button" variant="outline" className="w-full min-w-0 justify-start" aria-label={t($ => $.messages.organisationValue, { value: organization?.name ?? t($ => $.messages.choisirUneOrganisation) })}>
             <Building2Icon aria-hidden="true" className="size-4 text-brand" />
             <span className="min-w-0 flex-1 truncate text-left">{organization?.name ?? t($ => $.messages.choisirUneOrganisation)}</span>
             <ChevronsUpDownIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
