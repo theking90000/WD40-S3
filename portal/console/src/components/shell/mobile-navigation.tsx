@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { MenuIcon } from "lucide-react";
@@ -6,6 +7,7 @@ import { Button } from "~/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "~/components/ui/sheet";
 
 export function MobileNavigation({ children }: { children: (close: () => void) => ReactNode }) {
+  const { t } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
   const { pathname } = useLocation();
 
@@ -30,7 +32,7 @@ export function MobileNavigation({ children }: { children: (close: () => void) =
           variant="ghost"
           size="icon"
           className="shrink-0 min-[961px]:hidden"
-          aria-label="Ouvrir la navigation"
+          aria-label={t($ => $.messages.openNavigation)}
         >
           <MenuIcon aria-hidden="true" strokeWidth={1.6} />
         </Button>
@@ -40,7 +42,7 @@ export function MobileNavigation({ children }: { children: (close: () => void) =
         aria-describedby={undefined}
         className="max-w-[min(280px,calc(100vw-32px))] bg-sidebar px-3.5 pt-4.5 pb-3.5"
       >
-        <SheetTitle className="sr-only">Navigation principale</SheetTitle>
+        <SheetTitle className="sr-only">{t($ => $.messages.mainNavigation)}</SheetTitle>
         {children(() => setMenuOpen(false))}
       </SheetContent>
     </Sheet>

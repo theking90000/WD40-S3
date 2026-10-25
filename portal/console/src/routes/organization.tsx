@@ -1,3 +1,4 @@
+import { routeTitle } from "~/features/i18n/route-titles";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -22,7 +23,7 @@ import { Card, CardContent, CardDescription, CardHeader } from "~/components/ui/
 import { Skeleton } from "~/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/ui/table";
 
-export const handle = { title: "Vue d'ensemble" };
+export const handle = routeTitle("overview");
 
 export default function OrganizationHome() {
   const organization = useOrganization();

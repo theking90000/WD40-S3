@@ -1,3 +1,4 @@
+import { routeTitle } from "~/features/i18n/route-titles";
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
@@ -19,7 +20,7 @@ import { NativeSelect, NativeSelectOption } from "~/components/ui/native-select"
 import { Skeleton } from "~/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/ui/table";
 
-export const handle = { title: "Clés d'accès" };
+export const handle = routeTitle("credentials");
 
 export default function Credentials() {
   const organization = useOrganization();

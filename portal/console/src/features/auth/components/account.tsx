@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { UserRoundIcon } from "lucide-react";
 import { useNavigate } from "react-router";
@@ -6,6 +7,7 @@ import type { CurrentUser } from "~/features/auth/session.ts";
 import { Button } from "~/components/ui/button";
 
 export function Account({ user }: { user: CurrentUser }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
@@ -35,9 +37,9 @@ export function Account({ user }: { user: CurrentUser }) {
         </div>
       </div>
       <Button type="button" variant="outline" size="sm" className="w-full" onClick={disconnect} disabled={busy} aria-busy={busy}>
-        {busy ? "En cours…" : "Se déconnecter"}
+        {busy ? t($ => $.messages.pending) : t($ => $.messages.signOut)}
       </Button>
-      {error && <p role="alert" className="text-[10.5px] text-destructive-strong">Impossible de vous déconnecter. Réessayez dans un instant.</p>}
+      {error && <p role="alert" className="text-[10.5px] text-destructive-strong">{t($ => $.messages.impossibleDeVousDeconnecterReessayezDansUnInstant)}</p>}
     </div>
   );
 }

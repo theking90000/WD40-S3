@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useEffect, useId, useRef } from "react";
 import type { ReactNode } from "react";
 import { DatabaseIcon } from "lucide-react";
@@ -25,6 +26,7 @@ interface ConsoleShellProps extends Omit<SidebarContentProps, "onNavigate"> {
 }
 
 function SidebarContent({ navigation, organization, account, onNavigate }: SidebarContentProps) {
+  const { t } = useTranslation();
   return (
     <>
       <div className="flex items-center gap-2.5 px-1.75 pt-0.75 pb-4.75">
@@ -33,7 +35,7 @@ function SidebarContent({ navigation, organization, account, onNavigate }: Sideb
         </span>
         <div>
           <p className="font-display text-base leading-none font-bold tracking-tight">WD40-S3</p>
-          <p className="mt-1 text-[10px] text-muted-foreground">Cloud console</p>
+          <p className="mt-1 text-[10px] text-muted-foreground">{t($ => $.messages.cloudConsole)}</p>
         </div>
       </div>
       {organization}
@@ -59,6 +61,7 @@ export function ConsoleShell({
   actions,
   children,
 }: ConsoleShellProps) {
+  const { t } = useTranslation();
   const contentId = useId();
   const contentRef = useRef<HTMLElement>(null);
   const { pathname } = useLocation();
@@ -73,8 +76,7 @@ export function ConsoleShell({
         href={`#${contentId}`}
         className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[60] focus:rounded-lg focus:bg-surface focus:px-4 focus:py-2"
       >
-        Aller au contenu
-      </a>
+        {t($ => $.messages.skipToContent)}</a>
       <div className="grid h-dvh grid-cols-1 overflow-hidden bg-background min-[961px]:grid-cols-[252px_minmax(0,1fr)]">
         <aside className="hidden min-h-0 flex-col overflow-y-auto border-r bg-sidebar px-3.5 pt-4.5 pb-3.5 min-[961px]:flex">
           <SidebarContent navigation={navigation} organization={organization} account={account} />
@@ -86,8 +88,8 @@ export function ConsoleShell({
                 <SidebarContent navigation={navigation} organization={organization} account={account} onNavigate={close} />
               )}
             </MobileNavigation>
-            <nav aria-label="Fil d'Ariane" className="hidden min-w-0 items-center gap-1.75 text-[11.5px] text-muted-foreground min-[761px]:flex">
-              <Link to="/" className="hover:text-foreground hover:underline underline-offset-4">Console</Link>
+            <nav aria-label={t($ => $.messages.breadcrumbs)} className="hidden min-w-0 items-center gap-1.75 text-[11.5px] text-muted-foreground min-[761px]:flex">
+              <Link to="/" className="hover:text-foreground hover:underline underline-offset-4">{t($ => $.messages.console)}</Link>
               <span aria-hidden="true">/</span>
               {organizationName && organizationId && (
                 <>

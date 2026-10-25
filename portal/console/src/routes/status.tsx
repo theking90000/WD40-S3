@@ -1,7 +1,8 @@
+import { routeTitle } from "~/features/i18n/route-titles";
 import { useState } from "react";
 import { Button } from "~/components/ui/button";
 
-export const handle = { title: "État du service" };
+export const handle = routeTitle("status");
 
 export default function Status() {
   const [status, setStatus] = useState("Non vérifié");

@@ -7,4 +7,4 @@ export default {
     automaticLanguage: "Automatic · {{language}}",
     trigger: "Language: {{language}}",
   },
-} satisfies typeof french;
+} satisfies Pick<typeof french, "language">;

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import {
@@ -10,17 +11,19 @@ import {
 } from "~/components/ui/dropdown-menu";
 import { useTheme } from "../theme";
 
-const options = [
-  { value: "light", label: "Clair", icon: SunIcon },
-  { value: "dark", label: "Sombre", icon: MoonIcon },
-  { value: "system", label: "Système", icon: MonitorIcon },
-] as const;
+
 
 export function ThemeSwitcher() {
+  const { t } = useTranslation();
+  const options = [
+  { value: "light", label: t($ => $.messages.light), icon: SunIcon },
+  { value: "dark", label: t($ => $.messages.dark), icon: MoonIcon },
+  { value: "system", label: t($ => $.messages.system), icon: MonitorIcon },
+] as const;
   const { preference, setPreference } = useTheme();
   const selected = options.find((option) => option.value === preference);
   const Icon = selected?.icon ?? MonitorIcon;
-  const label = `Thème : ${selected?.label ?? "Système"}`;
+  const label = t($ => $.messages.themeLabel, { label: selected?.label ?? t($ => $.messages.system) });
 
   return (
     <DropdownMenu>
@@ -30,8 +33,8 @@ export function ThemeSwitcher() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuLabel>Apparence</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={preference} aria-label="Thème" onValueChange={(value) => {
+        <DropdownMenuLabel>{t($ => $.messages.appearance)}</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={preference} aria-label={t($ => $.messages.theme)} onValueChange={(value) => {
           if (value === "light" || value === "dark" || value === "system") setPreference(value);
         }}>
           {options.map((option) => (

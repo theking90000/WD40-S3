@@ -1,3 +1,4 @@
+import { routeTitle } from "~/features/i18n/route-titles";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRightIcon, Building2Icon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router";
@@ -12,7 +13,7 @@ import { Badge } from "~/components/ui/badge";
 
 export { selectionLoader as clientLoader };
 export { AuthPending as HydrateFallback } from "~/features/auth/components/auth-screen";
-export const handle = { title: "Vos organisations" };
+export const handle = routeTitle("organizations");
 
 export default function SelectOrganization() {
   const { user, data, error, isFetching, refetch } = useOrganizations();

@@ -1,3 +1,4 @@
+import { routeTitle } from "~/features/i18n/route-titles";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCwIcon, SearchIcon, UsersIcon } from "lucide-react";
@@ -14,7 +15,7 @@ import { Input } from "~/components/ui/input";
 import { Skeleton } from "~/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/ui/table";
 
-export const handle = { title: "Membres" };
+export const handle = routeTitle("members");
 
 export default function Members() {
   const organization = useOrganization();

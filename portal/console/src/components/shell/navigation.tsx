@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { LucideIcon } from "lucide-react";
 import { NavLink } from "react-router";
 import { cn } from "~/lib/utils";
@@ -22,8 +23,9 @@ interface ShellNavigationProps {
 }
 
 export function ShellNavigation({ groups, onNavigate }: ShellNavigationProps) {
+  const { t } = useTranslation();
   return (
-    <nav aria-label="Navigation principale" className="flex flex-col gap-4.5">
+    <nav aria-label={t($ => $.messages.mainNavigation)} className="flex flex-col gap-4.5">
       {groups.map((group) => (
         <div key={group.label} className="flex flex-col gap-0.5">
           <p className="px-2.5 pb-1.5 text-[10.5px] font-semibold text-muted-foreground">
@@ -43,7 +45,7 @@ export function ShellNavigation({ groups, onNavigate }: ShellNavigationProps) {
             );
             if (item.disabled || !item.to) {
               return (
-                <span key={item.label} role="link" aria-disabled="true" title="Non disponible"
+                <span key={item.label} role="link" aria-disabled="true" title={t($ => $.messages.notAvailable)}
                   className="flex min-h-9.5 cursor-not-allowed items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12.5px] text-muted-foreground opacity-45">
                   {content}
                 </span>
