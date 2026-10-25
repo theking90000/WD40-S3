@@ -1011,6 +1011,72 @@ Preserve the shared query client and session-generation checks when adding API
 operations so late responses cannot update another session's cache. The session
 layout retains the `layouts/session` route ID used by organization hooks.
 
+## Console language preference
+
+The console uses i18next, react-i18next and i18next-browser-languagedetector.
+The language menu is available next to the theme menu in the console, including
+the organization chooser, and on authentication, loading and error screens.
+It offers Automatic, Français and English without changing the URL or reloading
+the page. Changing language preserves form state and the shared API cache.
+
+Automatic is the default. The detector reads the browser's preferred languages
+in order, resolves French and English variants to the bundled `fr` and `en`
+catalogs, and falls back to English when none match. Its automatic localStorage
+cache remains enabled after hydration. A manual choice overrides the browser;
+returning to Automatic reads the browser again, even if a language is cached.
+URL paths, query parameters, hashes, cookies and the document's initial language
+do not participate in detection.
+
+`features/i18n/preference.ts` scopes two storage keys to the deployment base URL:
+`wd40.portal.language:<base>` is owned by the detector and contains its cached
+language; `wd40.portal.languageMode:<base>` contains `manual` only after a manual
+selection. An absent or invalid mode or manual language enables Automatic.
+Language changes synchronize across tabs. Browser `languagechange` events update
+Automatic mode and preserve manual selections. Blocked storage does not prevent
+selection within the current tab.
+
+`features/i18n/language-provider.tsx` wraps the root layout, including error
+boundaries and hydration fallbacks. Each provider initializes its own i18next
+instance synchronously with inline resources in French. Prerendering and the
+first hydration render therefore agree and do not read or overwrite browser
+preferences. Detection runs after hydration and updates `<html lang>`; a brief
+French render is possible on first load. Initialization never needs an HTTP
+translation backend or a JavaScript server in production.
+
+The console UI is extracted into the French source catalog, including route
+headings, accessibility labels, forms, errors, feedback and chart descriptions.
+The English catalog covers the same messages and route headings, using British
+English to match the `en-GB` formatting locale. French wording is preserved.
+The external OIDC provider's screens have their own language configuration.
+
+Catalogs live in `src/locales/{fr,en}/common.ts`. French messages are in
+`fr/messages.ts`, and route headings are in `fr/route-titles.ts`, with matching
+files under `en/`.
+`features/i18n/i18next.d.ts` types the selector API against the French shape.
+Components use `const { t } = useTranslation()` and calls such as
+`t($ => $.messages.signIn)`. Parameterized messages receive their values through
+the second argument. Plurals use `count` and i18next suffixes. Rich messages use
+`Trans` with named components. Add messages to both catalogs under the same keys,
+preserving interpolation names and component tags. The English catalogs use
+`satisfies` against the French shapes to require complete coverage. Missing
+English messages at runtime fall back to French.
+
+Route handles use `routeTitle(key)` and are translated by the console layout.
+API error helpers return message keys derived from the existing error codes.
+React state keeps raw errors or a `Message` identifier and its parameters so
+visible feedback follows language changes without repeating a request.
+
+`features/i18n/use-locale.ts` selects `fr-BE` or `en-GB` for dates, numbers,
+search comparisons and sorting. Dashboard formatters are recreated only when
+the locale changes. Byte units remain decimal, with the same rounding and
+reference-based chart scale: `o`/`Ko`/`Mo` in French, `B`/`kB`/`MB` in English.
+Chart dates retain UTC and the 24-hour clock; creation dates retain the browser's
+time zone. Changing language keeps the selected chart period and point.
+
+Run `node --test src/features/i18n/*.test.ts`, `npm run typecheck` and
+`npm run build` from `console/` to check preferences, detection, caching, typing
+and prerendering.
+
 ## Console authentication
 
 `console/src/features/auth/session.ts` owns the browser authentication protocol

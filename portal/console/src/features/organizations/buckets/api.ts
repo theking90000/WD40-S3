@@ -164,24 +164,24 @@ export async function updateOrganizationBucketAccess(
   return body;
 }
 
-export function bucketErrorMessage(error: unknown) {
+export function bucketErrorKey(error: unknown) {
   if (error instanceof AuthError) {
     switch (error.code) {
-      case "invalid_bucket_name": return "Utilisez un nom de 3 à 63 caractères conforme aux règles de nommage S3.";
-      case "bucket_already_exists": return "Ce nom de bucket est déjà utilisé. Choisissez un autre nom.";
-      case "bucket_not_found": return "Ce bucket n'est plus disponible. La liste a été actualisée.";
-      case "owner_required": return "Seul un propriétaire peut créer un bucket ou modifier son accès.";
-      case "organization_not_found": return "Cette organisation n'existe pas ou vous n'y avez plus accès.";
-      case "email_required": return "Votre compte doit fournir une adresse email pour consulter les buckets.";
-      case "email_not_verified": return "Une adresse email vérifiée est nécessaire pour consulter les buckets.";
-      case "invalid_buckets_response": return "Le service a renvoyé des données de buckets invalides.";
-      case "invalid_request": return "Vérifiez le nom et le niveau d'accès du bucket.";
-      case "csrf_rejected": return "La requête a été refusée. Rechargez la page avant de réessayer.";
-      case "payload_too_large": return "Les données du bucket dépassent la taille autorisée.";
-      case "database_error": return "Impossible d'enregistrer ou de charger les buckets pour le moment.";
-      case "metrics_unavailable": return "Les statistiques des buckets sont momentanément indisponibles.";
+      case "invalid_bucket_name": return "utilisezUnNomDe3A63CaracteresConforme" as const;
+      case "bucket_already_exists": return "ceNomDeBucketEstDejaUtiliseChoisissezUn" as const;
+      case "bucket_not_found": return "ceBucketNEstPlusDisponibleLaListeA" as const;
+      case "owner_required": return "seulUnProprietairePeutCreerUnBucketOuModifier" as const;
+      case "organization_not_found": return "cetteOrganisationNExistePasOuVousNY2" as const;
+      case "email_required": return "votreCompteDoitFournirUneAdresseEmailPourConsulter2" as const;
+      case "email_not_verified": return "uneAdresseEmailVerifieeEstNecessairePourConsulterLes2" as const;
+      case "invalid_buckets_response": return "leServiceARenvoyeDesDonneesDeBucketsInvalides" as const;
+      case "invalid_request": return "verifiezLeNomEtLeNiveauDAccesDu" as const;
+      case "csrf_rejected": return "laRequeteAEteRefuseeRechargezLaPageAvant" as const;
+      case "payload_too_large": return "lesDonneesDuBucketDepassentLaTailleAutorisee" as const;
+      case "database_error": return "impossibleDEnregistrerOuDeChargerLesBucketsPour" as const;
+      case "metrics_unavailable": return "lesStatistiquesDesBucketsSontMomentanementIndisponibles" as const;
     }
-    if (error.status === 401) return "Votre session a expiré. Reconnectez-vous pour continuer.";
+    if (error.status === 401) return "votreSessionAExpireReconnectezVousPourContinuer" as const;
   }
-  return "Impossible de joindre le service des buckets. Réessayez dans un instant.";
+  return "impossibleDeJoindreLeServiceDesBucketsReessayezDans" as const;
 }

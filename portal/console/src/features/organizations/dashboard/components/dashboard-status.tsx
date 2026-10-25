@@ -1,5 +1,6 @@
+import { useTranslation } from "react-i18next";
 import { Button } from "~/components/ui/button";
-import { dashboardErrorMessage } from "../api.ts";
+import { dashboardErrorKey } from "../api.ts";
 import type { OrganizationDashboard } from "../api.ts";
 
 export function DashboardStatus({ data, error, loading, refreshing, onRefresh }: {
@@ -9,12 +10,13 @@ export function DashboardStatus({ data, error, loading, refreshing, onRefresh }:
   refreshing: boolean;
   onRefresh: () => void;
 }) {
-  if (loading) return <p role="status" className="sr-only">Chargement des statistiques…</p>;
+  const { t } = useTranslation();
+  if (loading) return <p role="status" className="sr-only">{t($ => $.messages.chargementDesStatistiques)}</p>;
   if (!error) return null;
   return (
     <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-destructive-soft p-3 text-xs text-destructive-strong">
-      <p>{dashboardErrorMessage(error)}{data && " Les dernières valeurs sont conservées."}</p>
-      <Button type="button" variant="outline" size="sm" disabled={refreshing} onClick={onRefresh}>Réessayer</Button>
+      <p>{t($ => $.messages[dashboardErrorKey(error)])}{data && t($ => $.messages.lesDernieresValeursSontConservees)}</p>
+      <Button type="button" variant="outline" size="sm" disabled={refreshing} onClick={onRefresh}>{t($ => $.messages.retry)}</Button>
     </div>
   );
 }

@@ -1,8 +1,11 @@
+import frenchMessages from "../../../locales/fr/messages.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatBytes, formatCount, formatPercentage } from "./format.ts";
-import { dashboardErrorMessage } from "./api.ts";
+import { createDashboardFormatters } from "./format.ts";
+import { dashboardErrorKey } from "./api.ts";
 import { AuthError } from "../../../lib/api.ts";
+
+const { formatBytes, formatCount, formatPercentage } = createDashboardFormatters("fr-BE");
 
 test("dashboard volumes use decimal units and preserve zero", () => {
   for (const [bytes, expected] of [[0, "0 o"], [999, "999 o"], [1000, "1 Ko"],
@@ -21,9 +24,9 @@ test("counts and storage shares use French formatting", () => {
 });
 
 test("dashboard errors distinguish unavailable metrics, invalid data and lost access", () => {
-  assert.equal(dashboardErrorMessage(new AuthError("metrics_unavailable", 503)), "Les statistiques sont momentanément indisponibles.");
-  assert.equal(dashboardErrorMessage(new AuthError("invalid_dashboard_response", 502)), "Le service a renvoyé des statistiques invalides.");
-  assert.match(dashboardErrorMessage(new AuthError("unauthenticated", 401)), /session a expiré/);
-  assert.match(dashboardErrorMessage(new AuthError("organization_not_found", 404)), /plus accès/);
-  assert.match(dashboardErrorMessage(new TypeError("Failed to fetch")), /Impossible de charger/);
+  assert.equal(frenchMessages[dashboardErrorKey(new AuthError("metrics_unavailable", 503))], "Les statistiques sont momentanément indisponibles.");
+  assert.equal(frenchMessages[dashboardErrorKey(new AuthError("invalid_dashboard_response", 502))], "Le service a renvoyé des statistiques invalides.");
+  assert.match(frenchMessages[dashboardErrorKey(new AuthError("unauthenticated", 401))], /session a expiré/);
+  assert.match(frenchMessages[dashboardErrorKey(new AuthError("organization_not_found", 404))], /plus accès/);
+  assert.match(frenchMessages[dashboardErrorKey(new TypeError("Failed to fetch"))], /Impossible de charger/);
 });

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import * as React from "react"
 import { cn } from "~/lib/utils"
 import { XIcon } from "lucide-react"
@@ -51,6 +52,7 @@ function SheetContent({
   side?: "top" | "right" | "bottom" | "left"
   showCloseButton?: boolean
 }) {
+  const { t } = useTranslation();
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -74,7 +76,7 @@ function SheetContent({
         {showCloseButton && (
           <SheetPrimitive.Close className="absolute top-4 right-4 inline-flex size-9 items-center justify-center rounded-lg p-0 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none motion-reduce:transition-none">
             <XIcon className="size-4" />
-            <span className="sr-only">Fermer</span>
+            <span className="sr-only">{t($ => $.messages.close)}</span>
           </SheetPrimitive.Close>
         )}
       </SheetPrimitive.Content>

@@ -1,3 +1,4 @@
+import { Trans, useTranslation } from "react-i18next";
 import { useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { PencilIcon } from "lucide-react";
@@ -16,6 +17,7 @@ export function EditCredentialDialog({ user, organizationId, credential, disable
   onUpdated(credential: Credential): void;
   restoreFocus(): void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement | null>(null);
   const mutation = useMutation({
@@ -33,7 +35,7 @@ export function EditCredentialDialog({ user, organizationId, credential, disable
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
       <DialogTrigger asChild>
-        <Button ref={trigger} type="button" variant="ghost" size="icon-sm" disabled={disabled} title="Modifier les accès" aria-label={`Modifier les accès de la clé ${credential.key_id}`}><PencilIcon aria-hidden="true" className="size-3.5" /></Button>
+        <Button ref={trigger} type="button" variant="ghost" size="icon-sm" disabled={disabled} title={t($ => $.messages.modifierLesAcces)} aria-label={t($ => $.messages.modifierLesAccesDeLaCleKeyId, { key_id: credential.key_id })}><PencilIcon aria-hidden="true" className="size-3.5" /></Button>
       </DialogTrigger>
       <DialogContent showCloseButton={!mutation.isPending} onCloseAutoFocus={(event) => {
         if (!trigger.current?.isConnected || trigger.current.disabled) {
@@ -42,14 +44,14 @@ export function EditCredentialDialog({ user, organizationId, credential, disable
         }
       }}>
         <DialogHeader>
-          <DialogTitle>Modifier les accès</DialogTitle>
-          <DialogDescription className="break-words">Choisissez les buckets et les permissions de la clé <span className="break-all font-mono">{credential.key_id}</span>.</DialogDescription>
+          <DialogTitle>{t($ => $.messages.modifierLesAcces)}</DialogTitle>
+          <DialogDescription className="break-words"><Trans t={t} i18nKey={$ => $.messages.editCredentialDescription} values={{ keyId: credential.key_id }} components={{ key: <span className="break-all font-mono" /> }} /></DialogDescription>
         </DialogHeader>
         {open && <CredentialAccessForm user={user} organizationId={organizationId}
           initialInput={credential.access_type === "ALL"
             ? { access_type: "ALL", permissions: credential.permissions }
             : { access_type: "RESTRICTED", bucket_names: credential.bucket_names, permissions: credential.permissions }}
-          pending={mutation.isPending} disabled={disabled} error={mutation.error} submitLabel="Enregistrer"
+          pending={mutation.isPending} disabled={disabled} error={mutation.error} submitLabel={t($ => $.messages.enregistrer)}
           onEdit={() => { if (mutation.isError) mutation.reset(); }}
           onSubmit={(input) => mutation.mutate(input)} onCancel={() => changeOpen(false)} />}
       </DialogContent>

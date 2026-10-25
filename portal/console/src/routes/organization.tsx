@@ -1,3 +1,7 @@
+import type { Message } from "~/features/i18n/message";
+import { useLocale } from "~/features/i18n/use-locale";
+import { useTranslation } from "react-i18next";
+import { routeTitle } from "~/features/i18n/route-titles";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -6,8 +10,8 @@ import { ArrowRightIcon, ChevronRightIcon, DatabaseIcon, HistoryIcon, KeyRoundIc
 import type { LucideIcon } from "lucide-react";
 import type { CurrentUser } from "~/features/auth/session.ts";
 import type { Organization } from "~/features/organizations/api.ts";
-import { organizationErrorMessage, organizationQuery } from "~/features/organizations/api.ts";
-import { bucketErrorMessage, organizationBucketsQuery } from "~/features/organizations/buckets/api.ts";
+import { organizationErrorKey, organizationQuery } from "~/features/organizations/api.ts";
+import { bucketErrorKey, organizationBucketsQuery } from "~/features/organizations/buckets/api.ts";
 import { BucketAccessBadge } from "~/features/organizations/buckets/components/access";
 import { BucketDetails } from "~/features/organizations/buckets/components/bucket-details";
 import { organizationDashboardQuery } from "~/features/organizations/dashboard/api.ts";
@@ -22,7 +26,7 @@ import { Card, CardContent, CardDescription, CardHeader } from "~/components/ui/
 import { Skeleton } from "~/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/ui/table";
 
-export const handle = { title: "Vue d'ensemble" };
+export const handle = routeTitle("overview");
 
 export default function OrganizationHome() {
   const organization = useOrganization();
@@ -40,6 +44,8 @@ function Unavailable({ icon: Icon, children }: { icon: LucideIcon; children: Rea
 }
 
 function Overview({ user, organization }: { user: CurrentUser; organization: Organization }) {
+  const { t } = useTranslation();
+  const locale = useLocale();
   const details = useQuery(organizationQuery(user, organization.id));
   const buckets = useQuery({
     ...organizationBucketsQuery(user, organization.id),
@@ -47,21 +53,21 @@ function Overview({ user, organization }: { user: CurrentUser; organization: Org
     refetchIntervalInBackground: false,
   });
   const dashboard = useQuery(organizationDashboardQuery(user, organization.id));
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState<Message | null>(null);
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const heading = useRef<HTMLHeadingElement | null>(null);
   const detailTrigger = useRef<HTMLElement | null>(null);
   const counts = details.data?.counts;
-  const recentBuckets = [...(buckets.data ?? [])].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || a.name.localeCompare(b.name)).slice(0, 3);
+  const recentBuckets = [...(buckets.data ?? [])].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || a.name.localeCompare(b.name, locale)).slice(0, 3);
   const selectedBucket = buckets.data?.find((bucket) => bucket.name === selectedName);
-  const dateFormat = new Intl.DateTimeFormat("fr-BE", { dateStyle: "medium" });
-  const numberFormat = new Intl.NumberFormat("fr-BE");
+  const dateFormat = new Intl.DateTimeFormat(locale, { dateStyle: "medium" });
+  const numberFormat = new Intl.NumberFormat(locale);
   const countLinks = [
-    { path: "buckets", icon: DatabaseIcon, count: counts?.buckets, singular: "bucket", plural: "buckets" },
-    { path: "credentials", icon: KeyRoundIcon, count: counts?.credentials, singular: "clé d'accès", plural: "clés d'accès" },
-    { path: "members", icon: UsersIcon, count: counts?.members, singular: "membre", plural: "membres" },
-  ];
+    { path: "buckets", icon: DatabaseIcon, count: counts?.buckets, messageKey: "overviewBucketCount", unavailableKey: "overviewBucketsUnavailable" },
+    { path: "credentials", icon: KeyRoundIcon, count: counts?.credentials, messageKey: "overviewCredentialCount", unavailableKey: "overviewCredentialsUnavailable" },
+    { path: "members", icon: UsersIcon, count: counts?.members, messageKey: "overviewMemberCount", unavailableKey: "overviewMembersUnavailable" },
+  ] as const;
 
   useEffect(() => {
     if (buckets.data && selectedName !== null && !selectedBucket) {
@@ -81,28 +87,29 @@ function Overview({ user, organization }: { user: CurrentUser; organization: Org
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 space-y-3">
           <div className="space-y-2">
-            <p className="text-[10.5px] font-semibold text-muted-foreground">Vue d'ensemble</p>
+            <p className="text-[10.5px] font-semibold text-muted-foreground">{t($ => $.messages.overview)}</p>
             <h1 ref={heading} tabIndex={-1} className="break-words text-page-title">{organization.name}</h1>
-            <p className="text-xs text-muted-foreground">Stockage, accès et activité de l'organisation.</p>
+            <p className="text-xs text-muted-foreground">{t($ => $.messages.stockageAccesEtActiviteDeLOrganisation)}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2" aria-busy={details.isPending}>
             {details.isPending ? <>
-              <span role="status" className="sr-only">Chargement des compteurs…</span>
+              <span role="status" className="sr-only">{t($ => $.messages.chargementDesCompteurs)}</span>
               {[0, 1, 2].map((item) => <Skeleton key={item} className="h-6 w-24 rounded-full" />)}
             </> : countLinks.map((item) => <Badge key={item.path} variant="outline" asChild>
               <Link to={`/${organization.id}/${item.path}`}>
                 <item.icon aria-hidden="true" />
-                {item.count === undefined ? "—" : numberFormat.format(item.count)} {item.count === 1 ? item.singular : item.plural}
+                {item.count === undefined ? t($ => $.messages[item.unavailableKey])
+                  : t($ => $.messages[item.messageKey], { count: item.count, formattedCount: numberFormat.format(item.count) })}
               </Link>
             </Badge>)}
           </div>
         </div>
       </div>
 
-      {notice && <p role="status" className="rounded-lg border bg-success-soft p-3 text-xs text-success-strong">{notice}</p>}
+      {notice && <p role="status" className="rounded-lg border bg-success-soft p-3 text-xs text-success-strong">{t($ => $.messages[notice.key], notice.values)}</p>}
       {details.error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-destructive-soft p-3 text-xs text-destructive-strong">
-        <p>{organizationErrorMessage(details.error)}{details.data && " Les compteurs affichés proviennent du dernier chargement réussi."}</p>
-        <Button type="button" variant="outline" size="sm" disabled={details.isFetching} onClick={() => void details.refetch()}>Réessayer</Button>
+        <p>{t($ => $.messages[organizationErrorKey(details.error)])}{details.data && t($ => $.messages.lesCompteursAffichesProviennentDuDernierChargementReussi)}</p>
+        <Button type="button" variant="outline" size="sm" disabled={details.isFetching} onClick={() => void details.refetch()}>{t($ => $.messages.retry)}</Button>
       </div>}
 
       <DashboardStatus data={dashboard.data} error={dashboard.error} loading={dashboard.isPending}
@@ -118,30 +125,30 @@ function Overview({ user, organization }: { user: CurrentUser; organization: Org
       <div className="grid gap-3.5 min-[1161px]:grid-cols-[minmax(0,1.42fr)_minmax(300px,1fr)]">
         <Card className="min-w-0 gap-0 overflow-hidden py-0">
           <CardHeader className="flex flex-wrap items-center justify-between gap-3 border-b py-4">
-            <div className="space-y-1"><h2 className="text-card-title">Derniers buckets créés</h2><CardDescription>Les plus récents dans l'organisation</CardDescription></div>
-            <Link to={`/${organization.id}/buckets`} className="inline-flex items-center gap-1 text-[10.5px] text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">Voir tout<ArrowRightIcon aria-hidden="true" className="size-3" /></Link>
+            <div className="space-y-1"><h2 className="text-card-title">{t($ => $.messages.derniersBucketsCrees)}</h2><CardDescription>{t($ => $.messages.lesPlusRecentsDansLOrganisation)}</CardDescription></div>
+            <Link to={`/${organization.id}/buckets`} className="inline-flex items-center gap-1 text-[10.5px] text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">{t($ => $.messages.voirTout)}<ArrowRightIcon aria-hidden="true" className="size-3" /></Link>
           </CardHeader>
           {buckets.error && <div role="alert" className="space-y-3 border-b bg-destructive-soft p-4 text-xs text-destructive-strong">
-            <p>{bucketErrorMessage(buckets.error)}{buckets.data && " Les données affichées proviennent du dernier chargement réussi. Les modifications sont suspendues."}</p>
-            <Button type="button" variant="outline" size="sm" disabled={buckets.isFetching} onClick={() => void buckets.refetch()}>Réessayer</Button>
+            <p>{t($ => $.messages[bucketErrorKey(buckets.error)])}{buckets.data && t($ => $.messages.lesDonneesAfficheesProviennentDuDernierChargementReussiLes2)}</p>
+            <Button type="button" variant="outline" size="sm" disabled={buckets.isFetching} onClick={() => void buckets.refetch()}>{t($ => $.messages.retry)}</Button>
           </div>}
           {!buckets.data && !buckets.error ? <CardContent role="status" className="space-y-3 py-5">
-            <span className="sr-only">Chargement des buckets…</span>
+            <span className="sr-only">{t($ => $.messages.chargementDesBuckets)}</span>
             {[0, 1, 2].map((row) => <Skeleton key={row} className="h-10 w-full" />)}
           </CardContent> : buckets.data && (recentBuckets.length === 0 ? <div className="flex min-h-52 flex-col items-center justify-center gap-3 p-5 text-center">
             <DatabaseIcon aria-hidden="true" className="size-7 text-muted-foreground" strokeWidth={1.5} />
-            <p className="text-xs font-semibold">Aucun bucket</p>
-            <p className="text-[10.5px] text-muted-foreground">Les buckets de cette organisation apparaîtront ici.</p>
+            <p className="text-xs font-semibold">{t($ => $.messages.aucunBucket)}</p>
+            <p className="text-[10.5px] text-muted-foreground">{t($ => $.messages.lesBucketsDeCetteOrganisationApparaitrontIci)}</p>
           </div> : <Table className="table-fixed" aria-busy={buckets.isFetching}>
-            <caption className="sr-only">Derniers buckets créés dans {organization.name}</caption>
+            <caption className="sr-only">{t($ => $.messages.derniersBucketsCreesDansName, { name: organization.name })}</caption>
             <TableHeader><TableRow>
-              <TableHead scope="col">Bucket</TableHead>
-              <TableHead scope="col" className="hidden w-28 min-[621px]:table-cell">Accès</TableHead>
-              <TableHead scope="col" className="hidden w-28 min-[761px]:table-cell">Créé le</TableHead>
-              <TableHead scope="col" className="w-9"><span className="sr-only">Ouvrir</span></TableHead>
+              <TableHead scope="col">{t($ => $.messages.bucket)}</TableHead>
+              <TableHead scope="col" className="hidden w-28 min-[621px]:table-cell">{t($ => $.messages.access)}</TableHead>
+              <TableHead scope="col" className="hidden w-28 min-[761px]:table-cell">{t($ => $.messages.createdAt)}</TableHead>
+              <TableHead scope="col" className="w-9"><span className="sr-only">{t($ => $.messages.open)}</span></TableHead>
             </TableRow></TableHeader>
             <TableBody>{recentBuckets.map((bucket) => <TableRow key={bucket.name} tabIndex={0} className="cursor-pointer focus-visible:-outline-offset-2"
-              aria-label={`Ouvrir le bucket ${bucket.name}`} aria-haspopup="dialog" aria-expanded={detailsOpen && selectedName === bucket.name}
+              aria-label={t($ => $.messages.ouvrirLeBucketName, { name: bucket.name })} aria-haspopup="dialog" aria-expanded={detailsOpen && selectedName === bucket.name}
               onClick={(event) => openBucket(bucket.name, event.currentTarget)}
               onKeyDown={(event) => {
                 if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
@@ -156,7 +163,7 @@ function Overview({ user, organization }: { user: CurrentUser; organization: Org
                     <p className="break-all font-semibold">{bucket.name}</p>
                     <p className="hidden truncate font-mono text-[10px] text-muted-foreground min-[621px]:block">s3://{bucket.name}</p>
                     <div className="min-[621px]:hidden"><BucketAccessBadge access={bucket.access} /></div>
-                    <time className="block text-[10px] text-muted-foreground min-[761px]:hidden" dateTime={bucket.created_at}>Créé le {dateFormat.format(new Date(bucket.created_at))}</time>
+                    <time className="block text-[10px] text-muted-foreground min-[761px]:hidden" dateTime={bucket.created_at}>{t($ => $.messages.creeLeValue, { value: dateFormat.format(new Date(bucket.created_at)) })}</time>
                   </div>
                 </div>
               </TableCell>
@@ -167,13 +174,13 @@ function Overview({ user, organization }: { user: CurrentUser; organization: Org
           </Table>)}
         </Card>
         <Card className="min-w-0 gap-0 pb-0">
-          <CardHeader><h2 className="text-card-title">Activité récente</h2><CardDescription>Derniers événements de l'organisation</CardDescription></CardHeader>
-          <Unavailable icon={HistoryIcon}>Historique non disponible</Unavailable>
+          <CardHeader><h2 className="text-card-title">{t($ => $.messages.activiteRecente)}</h2><CardDescription>{t($ => $.messages.derniersEvenementsDeLOrganisation)}</CardDescription></CardHeader>
+          <Unavailable icon={HistoryIcon}>{t($ => $.messages.historiqueNonDisponible)}</Unavailable>
         </Card>
       </div>
       {selectedBucket && <BucketDetails key={selectedBucket.name} user={user} organization={organization} bucket={selectedBucket}
         open={detailsOpen} disabled={!!buckets.error} onOpenChange={setDetailsOpen}
-        onUpdated={() => setNotice("Le niveau d'accès du bucket a été enregistré.")}
+        onUpdated={() => setNotice({ key: "leNiveauDAccesDuBucketAEteEnregistre" })}
         restoreFocus={() => {
           if (detailTrigger.current?.isConnected) detailTrigger.current.focus();
           else heading.current?.focus();

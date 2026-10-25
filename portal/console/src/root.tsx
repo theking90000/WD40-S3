@@ -1,9 +1,11 @@
+import { useTranslation } from "react-i18next";
 import type { ReactNode } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration, useRouteError } from "react-router";
 import { authMiddleware } from "./features/auth/router.ts";
 import { AuthFailure } from "~/features/auth/components/auth-screen";
 import { ThemeProvider, themeScript } from "~/features/theme/theme";
+import { LanguageProvider } from "~/features/i18n/language-provider";
 import "./style.css";
 import { queryClient } from "./lib/query-client.ts";
 
@@ -31,9 +33,11 @@ export function Layout({ children }: { children: ReactNode }) {
         <Links />
       </head>
       <body>
-        <ThemeProvider>
-          <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-        </ThemeProvider>
+        <LanguageProvider>
+          <ThemeProvider>
+            <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+          </ThemeProvider>
+        </LanguageProvider>
         <ScrollRestoration />
         <Scripts />
       </body>
@@ -46,9 +50,10 @@ export default function App() {
 }
 
 export function ErrorBoundary() {
+  const { t } = useTranslation();
   const error = useRouteError();
   if (isRouteErrorResponse(error) && error.status === 404) {
-    return <AuthFailure title="Page introuvable" description="Cette page n'existe pas." />;
+    return <AuthFailure title={t($ => $.messages.pageIntrouvable)} description={t($ => $.messages.cettePageNExistePas)} />;
   }
   return <AuthFailure />;
 }

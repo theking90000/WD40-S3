@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useId, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChartColumnIcon } from "lucide-react";
@@ -5,11 +6,13 @@ import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader } from "~/components/ui/card";
 import { Skeleton } from "~/components/ui/skeleton";
 import type { CurrentUser } from "~/features/auth/session.ts";
-import { dashboardErrorMessage, organizationUploadsQuery } from "../api.ts";
+import { dashboardErrorKey, organizationUploadsQuery } from "../api.ts";
 import type { OrganizationUploads, UploadPeriod, UploadPoint } from "../api.ts";
-import { formatBytes, formatChartDate, formatCount, formatUploadDate } from "../format.ts";
+import { useDashboardFormatters } from "~/features/organizations/dashboard/use-dashboard-formatters";
 
 export function UploadsChart({ user, organizationId }: { user: CurrentUser; organizationId: string }) {
+  const { t } = useTranslation();
+  const { formatBytes, formatUploadDate } = useDashboardFormatters();
   const [period, setPeriod] = useState<UploadPeriod>("7d");
   const [selectedStart, setSelectedStart] = useState<number | null>(null);
   const uploads = useQuery(organizationUploadsQuery(user, organizationId, period));
@@ -21,35 +24,35 @@ export function UploadsChart({ user, organizationId }: { user: CurrentUser; orga
     <Card className="min-w-0 gap-0 pb-0" aria-labelledby={headingId}>
       <CardHeader className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h2 id={headingId} className="text-card-title">Volume ajouté</h2>
+          <h2 id={headingId} className="text-card-title">{t($ => $.messages.volumeAjoute)}</h2>
           <CardDescription id={descriptionId} className="flex min-h-4 flex-wrap items-baseline gap-x-2 gap-y-1">
             {selected ? <>
               <time dateTime={new Date(selected.start * 1000).toISOString()}>{formatUploadDate(selected.start, uploads.data?.period.resolution_seconds)}</time>
               <span className="font-semibold text-foreground tabular-nums">{formatBytes(selected.uploaded_bytes)}</span>
-              {!selected.complete && <span>{period === "1d" ? "Période en cours" : "Journée en cours"}</span>}
+              {!selected.complete && <span>{period === "1d" ? t($ => $.messages.periodeEnCours) : t($ => $.messages.journeeEnCours)}</span>}
             </> : "—"}
           </CardDescription>
         </div>
-        <div role="group" aria-label="Période du graphique" className="flex gap-0.5 rounded-lg border bg-background p-0.5">
+        <div role="group" aria-label={t($ => $.messages.periodeDuGraphique)} className="flex gap-0.5 rounded-lg border bg-background p-0.5">
           {(["1d", "7d", "30d"] as const).map((value) => <Button key={value} type="button" size="xs"
             variant={period === value ? "outline" : "ghost"} aria-pressed={period === value}
-            onClick={() => { setPeriod(value); setSelectedStart(null); }}>{value === "1d" ? "24h" : value === "7d" ? "7 j" : "30 j"}</Button>)}
+            onClick={() => { setPeriod(value); setSelectedStart(null); }}>{value === "1d" ? t($ => $.messages.rangeDay) : value === "7d" ? t($ => $.messages.rangeWeek) : t($ => $.messages.rangeMonth)}</Button>)}
         </div>
       </CardHeader>
       <CardContent className="flex min-h-64 flex-1 flex-col py-4" aria-busy={uploads.isFetching}>
         {uploads.error && <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-destructive-soft p-3 text-xs text-destructive-strong">
-          <p>{dashboardErrorMessage(uploads.error)}{uploads.data && " Les dernières valeurs sont conservées."}</p>
+          <p>{t($ => $.messages[dashboardErrorKey(uploads.error)])}{uploads.data && t($ => $.messages.lesDernieresValeursSontConservees)}</p>
           <Button type="button" variant="outline" size="sm" disabled={uploads.isFetching}
-            onClick={() => void uploads.refetch()}>Réessayer</Button>
+            onClick={() => void uploads.refetch()}>{t($ => $.messages.retry)}</Button>
         </div>}
         {uploads.isPending ? <div role="status" className="mt-auto space-y-6">
-          <span className="sr-only">Chargement du volume téléversé…</span>
+          <span className="sr-only">{t($ => $.messages.chargementDuVolumeTeleverse)}</span>
           <Skeleton className="h-4 w-48" />
           <Skeleton className="h-40 w-full" />
         </div> : uploads.data && (uploads.data.points.every((point) => point.uploaded_bytes === 0)
           ? <div className="flex min-h-56 flex-1 flex-col items-center justify-center gap-3 text-center text-xs text-muted-foreground">
             <ChartColumnIcon aria-hidden="true" className="size-5" strokeWidth={1.5} />
-            <p>Aucun volume téléversé sur cette période.</p>
+            <p>{t($ => $.messages.aucunVolumeTeleverseSurCettePeriode)}</p>
           </div>
           : <DailyUploads key={period} data={uploads.data} selected={selected} onSelect={setSelectedStart} descriptionId={descriptionId} />)}
       </CardContent>
@@ -63,6 +66,8 @@ function DailyUploads({ data, selected, onSelect, descriptionId }: {
   onSelect: (start: number | null) => void;
   descriptionId: string;
 }) {
+  const { t } = useTranslation();
+  const { formatBytes, formatChartDate, formatCount, formatUploadDate } = useDashboardFormatters();
   const peak = Math.max(...data.points.map((point) => point.uploaded_bytes), 1);
   const magnitude = 10 ** Math.floor(Math.log10(peak / 4));
   const step = Math.max(1, Math.ceil(peak / 4 / magnitude) * magnitude);
@@ -73,7 +78,7 @@ function DailyUploads({ data, selected, onSelect, descriptionId }: {
   const barWidth = Math.min(70, slot * 0.62);
   const resolution = data.period.resolution_seconds;
   const intraday = resolution < 86_400;
-  const pendingLabel = intraday ? "Période en cours" : "Journée en cours";
+  const pendingLabel = intraday ? t($ => $.messages.periodeEnCours) : t($ => $.messages.journeeEnCours);
 
   return (
     <div className="mt-auto">
@@ -83,14 +88,17 @@ function DailyUploads({ data, selected, onSelect, descriptionId }: {
             style={{ top: `${100 - tick * 25}%` }}>{formatBytes(step * tick, maximum)}</span>)}
         </div>
         <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-40 w-full overflow-visible"
-          role="group" aria-label={intraday ? "Volume téléversé par période de 30 minutes en UTC" : "Volume téléversé par jour en UTC"} aria-describedby={descriptionId}>
+          role="group" aria-label={intraday ? t($ => $.messages.volumeTeleverseParPeriodeDe30MinutesEnUtc) : t($ => $.messages.volumeTeleverseParJourEnUtc)} aria-describedby={descriptionId}>
           <g aria-hidden="true">{[0, 1, 2, 3, 4].map((tick) => <line key={tick} x1={0} x2={width}
             y1={height - tick * height / 4} y2={height - tick * height / 4}
             className="stroke-border" vectorEffect="non-scaling-stroke" />)}</g>
           {data.points.map((point, index) => {
             const x = index * slot;
             const barHeight = point.uploaded_bytes / maximum * height;
-            const label = `${formatUploadDate(point.start, resolution)}, ${formatCount(point.uploaded_bytes)} octets${point.complete ? "" : `, ${pendingLabel.toLowerCase()}`}`;
+            const label = t($ => $.messages[point.complete ? "chartUploadLabel"
+              : intraday ? "chartUploadLabelCurrentPeriod" : "chartUploadLabelCurrentDay"], {
+              date: formatUploadDate(point.start, resolution), bytes: formatCount(point.uploaded_bytes),
+            });
             return <g key={point.start} tabIndex={0} role="button" aria-label={label}
               className="group cursor-pointer outline-none"
               onPointerEnter={() => onSelect(point.start)} onFocus={() => onSelect(point.start)}
@@ -123,11 +131,11 @@ function DailyUploads({ data, selected, onSelect, descriptionId }: {
           })}
         </div>
       </div>
-      <table className="sr-only" aria-label="Volumes téléversés par période">
-        <thead><tr><th scope="col">{intraday ? "Date et heure (UTC)" : "Date"}</th><th scope="col">Octets téléversés</th><th scope="col">État</th></tr></thead>
+      <table className="sr-only" aria-label={t($ => $.messages.volumesTeleversesParPeriode)}>
+        <thead><tr><th scope="col">{intraday ? t($ => $.messages.dateEtHeureUtc) : t($ => $.messages.date)}</th><th scope="col">{t($ => $.messages.octetsTeleverses)}</th><th scope="col">{t($ => $.messages.etat)}</th></tr></thead>
         <tbody>{data.points.map((point) => <tr key={point.start}>
           <th scope="row">{formatUploadDate(point.start, resolution)}</th><td>{formatCount(point.uploaded_bytes)}</td>
-          <td>{point.complete ? (intraday ? "Période terminée" : "Journée terminée") : pendingLabel}</td>
+          <td>{point.complete ? (intraday ? t($ => $.messages.periodeTerminee) : t($ => $.messages.journeeTerminee)) : pendingLabel}</td>
         </tr>)}</tbody>
       </table>
     </div>

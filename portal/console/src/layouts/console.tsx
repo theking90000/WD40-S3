@@ -1,9 +1,11 @@
+import { isRouteTitleHandle } from "~/features/i18n/route-titles";
+import { useTranslation } from "react-i18next";
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { DatabaseIcon, KeyRoundIcon, LayoutGridIcon, Settings2Icon, UsersIcon } from "lucide-react";
 import { Outlet, useMatches, useNavigate } from "react-router";
 import { organizationLoader, organizationMiddleware, useOrganization, useOrganizations } from "~/features/organizations/router.ts";
-import { organizationErrorMessage, organizationQuery } from "~/features/organizations/api.ts";
+import { organizationErrorKey, organizationQuery } from "~/features/organizations/api.ts";
 import { AuthFailure, AuthPending } from "~/features/auth/components/auth-screen";
 import { Account } from "~/features/auth/components/account";
 import { OrganizationSwitcher } from "~/features/organizations/components/organization-switcher";
@@ -16,6 +18,7 @@ export { AuthPending as HydrateFallback } from "~/features/auth/components/auth-
 export { ErrorBoundary } from "./session";
 
 export default function ConsoleLayout() {
+  const { t } = useTranslation();
   const { user, data, error, refetch, isFetching } = useOrganizations();
   const organization = useOrganization();
   const details = useQuery({
@@ -24,10 +27,10 @@ export default function ConsoleLayout() {
   const counts = details.isError ? undefined : details.data?.counts;
   const navigate = useNavigate();
   const matches = useMatches();
-  let title = "Console";
+  let title = t($ => $.messages.console);
   for (const { handle } of matches) {
-    if (handle && typeof handle === "object" && "title" in handle && typeof handle.title === "string") {
-      title = handle.title;
+    if (isRouteTitleHandle(handle)) {
+      title = t($ => $.routeTitles[handle.titleKey]);
     }
   }
 
@@ -35,26 +38,26 @@ export default function ConsoleLayout() {
     if (data && !organization) void navigate("/?organization_unavailable=1", { replace: true });
   }, [data, organization, navigate]);
 
-  if (error) return <AuthFailure title="Organisation indisponible" description={organizationErrorMessage(error)} retry={() => void refetch()} busy={isFetching} />;
+  if (error) return <AuthFailure title={t($ => $.messages.organisationIndisponible)} description={t($ => $.messages[organizationErrorKey(error)])} retry={() => void refetch()} busy={isFetching} />;
   if (!organization) return <AuthPending />;
 
   const navigation: readonly ShellNavigationGroup[] = [
     {
-      label: "Espace de travail",
-      items: [{ label: "Vue d'ensemble", to: `/${organization.id}/`, icon: LayoutGridIcon, end: true }],
+      label: t($ => $.messages.workspace),
+      items: [{ label: t($ => $.messages.overview), to: `/${organization.id}/`, icon: LayoutGridIcon, end: true }],
     },
     {
-      label: "Stockage",
+      label: t($ => $.messages.storage),
       items: [
-        { label: "Buckets", to: `/${organization.id}/buckets`, icon: DatabaseIcon, count: counts?.buckets },
-        { label: "Clés d'accès", to: `/${organization.id}/credentials`, icon: KeyRoundIcon, count: counts?.credentials },
+        { label: t($ => $.messages.buckets), to: `/${organization.id}/buckets`, icon: DatabaseIcon, count: counts?.buckets },
+        { label: t($ => $.messages.credentials), to: `/${organization.id}/credentials`, icon: KeyRoundIcon, count: counts?.credentials },
       ],
     },
     {
-      label: "Organisation",
+      label: t($ => $.messages.organization),
       items: [
-        { label: "Membres", to: `/${organization.id}/members`, icon: UsersIcon, count: counts?.members },
-        { label: "Paramètres", to: `/${organization.id}/settings`, icon: Settings2Icon },
+        { label: t($ => $.messages.members), to: `/${organization.id}/members`, icon: UsersIcon, count: counts?.members },
+        { label: t($ => $.messages.settings), to: `/${organization.id}/settings`, icon: Settings2Icon },
       ],
     },
   ];

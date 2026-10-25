@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
 import { useLoaderData } from "react-router";
 import { LoaderCircleIcon, LogInIcon } from "lucide-react";
@@ -13,9 +14,10 @@ export {
 } from "~/features/auth/components/auth-screen";
 
 export default function Login() {
+  const { t } = useTranslation();
   const { returnTo } = useLoaderData<typeof loginLoader>();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     function restore(event: PageTransitionEvent) {
@@ -28,21 +30,19 @@ export default function Login() {
 
   async function connect() {
     setBusy(true);
-    setError(null);
+    setError(false);
     try {
       await login(returnTo);
     } catch {
-      setError(
-        "Impossible de démarrer la connexion. Réessayez dans un instant.",
-      );
+      setError(true);
       setBusy(false);
     }
   }
 
   return (
     <AuthScreen
-      title="Connexion"
-      description="Connectez-vous pour gérer votre espace de stockage."
+      title={t($ => $.messages.signIn)}
+      description={t($ => $.messages.connectezVousPourGererVotreEspaceDeStockage)}
     >
       <Button
         variant="outline"
@@ -59,12 +59,12 @@ export default function Login() {
         ) : (
           <LogInIcon aria-hidden="true" className="size-4" />
         )}
-        {busy ? "Connexion en cours…" : "Se connecter avec SSO"}
+        {busy ? t($ => $.messages.connexionEnCours) : t($ => $.messages.seConnecterAvecSso)}
       </Button>
-      <p className="auth-security-note">Connexion sécurisée</p>
+      <p className="auth-security-note">{t($ => $.messages.connexionSecurisee)}</p>
       {error && (
         <p role="alert" className="text-sm text-destructive-strong">
-          {error}
+          {t($ => $.messages.impossibleDeDemarrerLaConnexionReessayezDansUnInstant)}
         </p>
       )}
     </AuthScreen>

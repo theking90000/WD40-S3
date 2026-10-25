@@ -190,17 +190,17 @@ export async function deleteOrganization(user: CurrentUser, organizationId: stri
   queryClient.setQueryData<Organization[]>(listKey, (previous) => previous?.filter(({ id }) => id !== organizationId));
 }
 
-export function organizationErrorMessage(error: unknown) {
+export function organizationErrorKey(error: unknown) {
   if (error instanceof AuthError) {
-    if (error.code === "invalid_name") return "Le nom doit contenir entre 1 et 128 caractères.";
-    if (error.code === "organization_name_taken") return "Une organisation porte déjà ce nom.";
-    if (error.code === "organization_not_empty") return "Cette organisation contient encore des buckets ou des clés d'accès. Elle ne peut pas être supprimée.";
-    if (error.code === "owner_required") return "Seul un propriétaire peut modifier ou supprimer cette organisation.";
-    if (error.code === "organization_not_found") return "Cette organisation n'existe plus ou vous n'y avez plus accès.";
-    if (error.code === "csrf_rejected") return "La requête a été refusée. Rechargez la page et réessayez.";
-    if (error.code === "email_required") return "Votre compte doit fournir une adresse email pour accéder aux organisations.";
-    if (error.code === "email_not_verified") return "Une adresse email vérifiée est nécessaire pour accéder aux organisations.";
-    if (error.status === 401) return "Votre session a expiré. Reconnectez-vous pour continuer.";
+    if (error.code === "invalid_name") return "leNomDoitContenirEntre1Et128Caracteres" as const;
+    if (error.code === "organization_name_taken") return "uneOrganisationPorteDejaCeNom" as const;
+    if (error.code === "organization_not_empty") return "cetteOrganisationContientEncoreDesBucketsOuDesCles" as const;
+    if (error.code === "owner_required") return "seulUnProprietairePeutModifierOuSupprimerCetteOrganisation" as const;
+    if (error.code === "organization_not_found") return "cetteOrganisationNExistePlusOuVousNY" as const;
+    if (error.code === "csrf_rejected") return "laRequeteAEteRefuseeRechargezLaPageEt" as const;
+    if (error.code === "email_required") return "votreCompteDoitFournirUneAdresseEmailPourAcceder" as const;
+    if (error.code === "email_not_verified") return "uneAdresseEmailVerifieeEstNecessairePourAccederAux" as const;
+    if (error.status === 401) return "votreSessionAExpireReconnectezVousPourContinuer" as const;
   }
-  return "Impossible de joindre le service des organisations. Réessayez dans un instant.";
+  return "impossibleDeJoindreLeServiceDesOrganisationsReessayezDans" as const;
 }
