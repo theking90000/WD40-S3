@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { DatabaseIcon, KeyRoundIcon, LayoutGridIcon, Settings2Icon, UsersIcon } from "lucide-react";
 import { Outlet, useMatches, useNavigate } from "react-router";
 import { organizationLoader, organizationMiddleware, useOrganization, useOrganizations } from "~/features/organizations/router.ts";
-import { organizationErrorMessage, organizationQuery } from "~/features/organizations/api.ts";
+import { organizationErrorKey, organizationQuery } from "~/features/organizations/api.ts";
 import { AuthFailure, AuthPending } from "~/features/auth/components/auth-screen";
 import { Account } from "~/features/auth/components/account";
 import { OrganizationSwitcher } from "~/features/organizations/components/organization-switcher";
@@ -38,7 +38,7 @@ export default function ConsoleLayout() {
     if (data && !organization) void navigate("/?organization_unavailable=1", { replace: true });
   }, [data, organization, navigate]);
 
-  if (error) return <AuthFailure title={t($ => $.messages.organisationIndisponible)} description={organizationErrorMessage(error)} retry={() => void refetch()} busy={isFetching} />;
+  if (error) return <AuthFailure title={t($ => $.messages.organisationIndisponible)} description={t($ => $.messages[organizationErrorKey(error)])} retry={() => void refetch()} busy={isFetching} />;
   if (!organization) return <AuthPending />;
 
   const navigation: readonly ShellNavigationGroup[] = [

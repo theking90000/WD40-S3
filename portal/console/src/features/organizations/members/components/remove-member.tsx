@@ -1,9 +1,10 @@
+import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Trash2Icon } from "lucide-react";
 import type { CurrentUser } from "~/features/auth/session.ts";
 import type { OrganizationMember } from "~/features/organizations/members/api.ts";
-import { memberErrorMessage, removeOrganizationMember } from "~/features/organizations/members/api.ts";
+import { memberErrorKey, removeOrganizationMember } from "~/features/organizations/members/api.ts";
 import { Button } from "~/components/ui/button";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -17,6 +18,7 @@ export function RemoveMemberDialog({ user, organizationId, member, onRemoved, on
   onRemoved(email: string): void;
   onError(error: Error): void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const mutation = useMutation({
     mutationFn: () => removeOrganizationMember(user, organizationId, member.email),
@@ -37,27 +39,25 @@ export function RemoveMemberDialog({ user, organizationId, member, onRemoved, on
   return (
     <AlertDialog open={open} onOpenChange={changeOpen}>
       <AlertDialogTrigger asChild>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={`Retirer ${member.email}`}
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={t($ => $.messages.retirerEmail, { email: member.email })}
           className="hover:bg-destructive-soft hover:text-destructive-strong">
           <Trash2Icon aria-hidden="true" className="size-3.5" />
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Retirer ce membre ?</AlertDialogTitle>
-          <AlertDialogDescription className="break-words">
-            {member.email} perdra immédiatement l'accès à cette organisation et à ses ressources.
-          </AlertDialogDescription>
+          <AlertDialogTitle>{t($ => $.messages.retirerCeMembre)}</AlertDialogTitle>
+          <AlertDialogDescription className="break-words">{t($ => $.messages.emailPerdraImmediatementLAccesACetteOrganisationEt2, { email: member.email })}</AlertDialogDescription>
         </AlertDialogHeader>
-        {mutation.isError && <p role="alert" className="text-xs text-destructive-strong">{memberErrorMessage(mutation.error)}</p>}
+        {mutation.isError && <p role="alert" className="text-xs text-destructive-strong">{t($ => $.messages[memberErrorKey(mutation.error)])}</p>}
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={mutation.isPending}>Annuler</AlertDialogCancel>
+          <AlertDialogCancel disabled={mutation.isPending}>{t($ => $.messages.cancel)}</AlertDialogCancel>
           <AlertDialogAction variant="destructive" disabled={mutation.isPending} aria-busy={mutation.isPending}
             onClick={(event) => {
               event.preventDefault();
               if (!mutation.isPending) mutation.mutate();
             }}>
-            {mutation.isPending ? "Retrait en cours…" : "Retirer le membre"}
+            {mutation.isPending ? t($ => $.messages.retraitEnCours) : t($ => $.messages.retirerLeMembre)}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

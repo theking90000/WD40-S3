@@ -1,8 +1,9 @@
+import { useTranslation } from "react-i18next";
 import { useId, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import type { CurrentUser } from "~/features/auth/session.ts";
-import { createOrganization, organizationErrorMessage } from "~/features/organizations/api.ts";
+import { createOrganization, organizationErrorKey } from "~/features/organizations/api.ts";
 import { Button } from "~/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { Field, FieldError, FieldLabel } from "~/components/ui/field";
@@ -13,12 +14,13 @@ export function CreateOrganizationDialog({ user, open, onOpenChange }: {
   open: boolean;
   onOpenChange(open: boolean): void;
 }) {
+  const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Créer une organisation</DialogTitle>
-          <DialogDescription>Une organisation regroupe votre espace de travail WD40-S3.</DialogDescription>
+          <DialogTitle>{t($ => $.messages.creerUneOrganisation)}</DialogTitle>
+          <DialogDescription>{t($ => $.messages.uneOrganisationRegroupeVotreEspaceDeTravailWd40S3)}</DialogDescription>
         </DialogHeader>
         <CreateOrganizationForm user={user} close={() => onOpenChange(false)} />
       </DialogContent>
@@ -27,6 +29,7 @@ export function CreateOrganizationDialog({ user, open, onOpenChange }: {
 }
 
 function CreateOrganizationForm({ user, close }: { user: CurrentUser; close(): void }) {
+  const { t } = useTranslation();
   const nameId = useId();
   const errorId = useId();
   const [name, setName] = useState("");
@@ -46,19 +49,19 @@ function CreateOrganizationForm({ user, close }: { user: CurrentUser; close(): v
       if (!mutation.isPending) mutation.mutate(name);
     }}>
       <Field data-invalid={mutation.isError}>
-        <FieldLabel htmlFor={nameId}>Nom de l'organisation</FieldLabel>
+        <FieldLabel htmlFor={nameId}>{t($ => $.messages.nomDeLOrganisation)}</FieldLabel>
         <Input id={nameId} name="name" value={name} onChange={(event) => {
           setName(event.target.value);
           if (mutation.isError) mutation.reset();
         }}
-          placeholder="Mon organisation" autoComplete="organization" required disabled={mutation.isPending}
+          placeholder={t($ => $.messages.monOrganisation)} autoComplete="organization" required disabled={mutation.isPending}
           aria-invalid={mutation.isError} aria-describedby={mutation.isError ? errorId : undefined} />
-        {mutation.isError && <FieldError id={errorId}>{organizationErrorMessage(mutation.error)}</FieldError>}
+        {mutation.isError && <FieldError id={errorId}>{t($ => $.messages[organizationErrorKey(mutation.error)])}</FieldError>}
       </Field>
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={close} disabled={mutation.isPending}>Annuler</Button>
+        <Button type="button" variant="outline" onClick={close} disabled={mutation.isPending}>{t($ => $.messages.cancel)}</Button>
         <Button type="submit" disabled={mutation.isPending || !name.trim()} aria-busy={mutation.isPending}>
-          {mutation.isPending ? "Création en cours…" : "Créer l'organisation"}
+          {mutation.isPending ? t($ => $.messages.creationEnCours) : t($ => $.messages.creerLOrganisation)}
         </Button>
       </DialogFooter>
     </form>

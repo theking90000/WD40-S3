@@ -1,10 +1,11 @@
+import { useTranslation } from "react-i18next";
 import { useEffect, useId, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCwIcon, SearchIcon } from "lucide-react";
 import type { CurrentUser } from "~/features/auth/session.ts";
 import type { Credential, CredentialInput, CredentialPermission } from "~/features/organizations/credentials/api.ts";
-import { CREDENTIAL_PERMISSIONS, credentialErrorMessage } from "~/features/organizations/credentials/api.ts";
-import { bucketErrorMessage, organizationBucketsQuery } from "~/features/organizations/buckets/api.ts";
+import { CREDENTIAL_PERMISSIONS, credentialErrorKey } from "~/features/organizations/credentials/api.ts";
+import { bucketErrorKey, organizationBucketsQuery } from "~/features/organizations/buckets/api.ts";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "~/components/ui/field";
@@ -12,16 +13,21 @@ import { Input } from "~/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "~/components/ui/native-select";
 import { Skeleton } from "~/components/ui/skeleton";
 
-const permissionLabels: Record<CredentialPermission, string> = {
-  READ: "Lecture",
-  WRITE: "Écriture",
-  LIST: "Liste",
-  DELETE: "Suppression",
-};
+function usePermissionLabels(): Record<CredentialPermission, string> {
+  const { t } = useTranslation();
+  return {
+    READ: t($ => $.messages.lecture),
+    WRITE: t($ => $.messages.ecriture),
+    LIST: t($ => $.messages.liste),
+    DELETE: t($ => $.messages.suppression),
+  };
+}
 
 export function CredentialPermissions({ credential }: { credential: Credential }) {
-  if (credential.permissions.length === 0) return <Badge variant="neutral">Aucune permission</Badge>;
-  if (credential.permissions.length === CREDENTIAL_PERMISSIONS.length) return <Badge variant="neutral">Toutes les permissions</Badge>;
+  const { t } = useTranslation();
+  const permissionLabels = usePermissionLabels();
+  if (credential.permissions.length === 0) return <Badge variant="neutral">{t($ => $.messages.aucunePermission)}</Badge>;
+  if (credential.permissions.length === CREDENTIAL_PERMISSIONS.length) return <Badge variant="neutral">{t($ => $.messages.toutesLesPermissions)}</Badge>;
   return <div className="flex flex-wrap gap-1">
     {CREDENTIAL_PERMISSIONS.filter((permission) => credential.permissions.includes(permission)).map((permission) => (
       <Badge key={permission} variant="neutral" title={permissionLabels[permission]}>{permission}</Badge>
@@ -30,11 +36,12 @@ export function CredentialPermissions({ credential }: { credential: Credential }
 }
 
 export function CredentialScope({ credential }: { credential: Credential }) {
-  if (credential.access_type === "ALL") return <Badge variant="neutral">Tous les buckets</Badge>;
-  if (credential.bucket_names.length === 0) return <Badge variant="warning">Aucun bucket autorisé</Badge>;
+  const { t } = useTranslation();
+  if (credential.access_type === "ALL") return <Badge variant="neutral">{t($ => $.messages.tousLesBuckets)}</Badge>;
+  if (credential.bucket_names.length === 0) return <Badge variant="warning">{t($ => $.messages.aucunBucketAutorise)}</Badge>;
   return (
     <details className="max-w-full text-xs">
-      <summary className="cursor-pointer text-muted-foreground">{credential.bucket_names.length} bucket{credential.bucket_names.length > 1 ? "s" : ""} sélectionné{credential.bucket_names.length > 1 ? "s" : ""}</summary>
+      <summary className="cursor-pointer text-muted-foreground">{t($ => $.messages.selectedBuckets, { count: credential.bucket_names.length })}</summary>
       <ul className="mt-2 space-y-1 break-all font-mono text-[10.5px]">
         {credential.bucket_names.map((name) => <li key={name}>{name}</li>)}
       </ul>
@@ -54,6 +61,8 @@ export function CredentialAccessForm({ user, organizationId, initialInput, pendi
   onCancel(): void;
   submitLabel: string;
 }) {
+  const { t } = useTranslation();
+  const permissionLabels = usePermissionLabels();
   const [input, setInput] = useState<CredentialInput>(initialInput ?? { access_type: "ALL", permissions: [...CREDENTIAL_PERMISSIONS] });
   const [search, setSearch] = useState("");
   const scopeId = useId();
@@ -98,39 +107,38 @@ export function CredentialAccessForm({ user, organizationId, initialInput, pendi
       if (!pending && !disabled && valid && !unchanged) onSubmit(input);
     }}>
       <Field>
-        <FieldLabel htmlFor={scopeId}>Portée des buckets</FieldLabel>
+        <FieldLabel htmlFor={scopeId}>{t($ => $.messages.porteeDesBuckets)}</FieldLabel>
         <NativeSelect id={scopeId} name="access_type" value={input.access_type} disabled={pending || disabled} aria-describedby={hintId}
           onChange={(event) => {
             if (event.target.value === "ALL") changeInput({ access_type: "ALL", permissions: input.permissions });
             if (event.target.value === "RESTRICTED") changeInput({ access_type: "RESTRICTED", bucket_names: [], permissions: input.permissions });
           }}>
-          <NativeSelectOption value="ALL">Tous les buckets</NativeSelectOption>
-          <NativeSelectOption value="RESTRICTED">Buckets sélectionnés</NativeSelectOption>
+          <NativeSelectOption value="ALL">{t($ => $.messages.tousLesBuckets)}</NativeSelectOption>
+          <NativeSelectOption value="RESTRICTED">{t($ => $.messages.bucketsSelectionnes)}</NativeSelectOption>
         </NativeSelect>
         <FieldDescription id={hintId}>{input.access_type === "ALL"
-          ? "Tous les buckets de l'organisation, y compris ceux créés ensuite."
-          : "Uniquement les buckets cochés ci-dessous. Une sélection vide n'autorise aucun bucket."}</FieldDescription>
+          ? t($ => $.messages.tousLesBucketsDeLOrganisationYComprisCeux)
+          : t($ => $.messages.uniquementLesBucketsCochesCiDessousUneSelectionVide)}</FieldDescription>
       </Field>
       {input.access_type === "RESTRICTED" && (
         <fieldset disabled={pending || disabled} className="min-w-0 space-y-3" aria-invalid={unavailable.length > 0}
           aria-describedby={`${selectionId}${unavailable.length > 0 ? ` ${unavailableId}` : ""}`}>
-          <legend className="mb-3 text-xs font-semibold">Buckets autorisés</legend>
+          <legend className="mb-3 text-xs font-semibold">{t($ => $.messages.bucketsAutorises)}</legend>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-0 flex-1 basis-40">
               <SearchIcon aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input type="search" value={search} onChange={(event) => setSearch(event.target.value)} className="pl-9"
-                autoComplete="off" placeholder="Rechercher un bucket…" aria-label="Rechercher un bucket à autoriser" disabled={!buckets} />
+                autoComplete="off" placeholder={t($ => $.messages.rechercherUnBucket2)} aria-label={t($ => $.messages.rechercherUnBucketAAutoriser)} disabled={!buckets} />
             </div>
             <Button type="button" variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching} aria-busy={isFetching}>
-              <RefreshCwIcon aria-hidden="true" />Actualiser
-            </Button>
+              <RefreshCwIcon aria-hidden="true" />{t($ => $.messages.refresh)}</Button>
           </div>
-          {bucketsError && <p role="alert" className="text-xs text-destructive-strong">{bucketErrorMessage(bucketsError)}{buckets && " La liste affichée provient du dernier chargement réussi. Actualisez-la avant d'enregistrer la sélection."}</p>}
+          {bucketsError && <p role="alert" className="text-xs text-destructive-strong">{t($ => $.messages[bucketErrorKey(bucketsError)])}{buckets && t($ => $.messages.laListeAfficheeProvientDuDernierChargementReussiActualisez)}</p>}
           {!buckets && !bucketsError ? (
-            <div role="status" className="space-y-2 rounded-lg border p-3"><span className="sr-only">Chargement des buckets…</span><Skeleton className="h-7 w-full" /><Skeleton className="h-7 w-full" /></div>
+            <div role="status" className="space-y-2 rounded-lg border p-3"><span className="sr-only">{t($ => $.messages.chargementDesBuckets)}</span><Skeleton className="h-7 w-full" /><Skeleton className="h-7 w-full" /></div>
           ) : buckets && (
             <div className="max-h-64 overflow-y-auto rounded-lg border bg-background">
-              {filtered.length === 0 ? <p className="p-4 text-xs text-muted-foreground">{buckets.length === 0 ? "Aucun bucket disponible dans cette organisation." : "Aucun bucket ne correspond à la recherche."}</p>
+              {filtered.length === 0 ? <p className="p-4 text-xs text-muted-foreground">{buckets.length === 0 ? t($ => $.messages.aucunBucketDisponibleDansCetteOrganisation) : t($ => $.messages.aucunBucketNeCorrespondALaRecherche)}</p>
                 : filtered.map((bucket) => (
                   <label key={bucket.name} className="flex cursor-pointer items-center gap-3 border-b px-3 py-2.5 text-xs last:border-0 hover:bg-accent has-[:checked]:bg-accent has-[:focus-visible]:bg-accent has-disabled:cursor-not-allowed has-disabled:opacity-50">
                     <input type="checkbox" className="size-3.5 shrink-0 accent-foreground" checked={names.includes(bucket.name)} disabled={!!bucketsError}
@@ -144,22 +152,21 @@ export function CredentialAccessForm({ user, organizationId, initialInput, pendi
             </div>
           )}
           {unavailable.length > 0 && <div id={unavailableId} role="alert" className="space-y-2 rounded-lg border bg-destructive-soft p-3 text-xs text-destructive-strong">
-            <p>Ces buckets ne sont plus disponibles dans l'organisation :</p>
+            <p>{t($ => $.messages.cesBucketsNeSontPlusDisponiblesDansLOrganisation)}</p>
             <ul className="space-y-1 break-all font-mono">{unavailable.map((name) => <li key={name}>{name}</li>)}</ul>
-            <Button type="button" variant="outline" size="sm" onClick={() => changeInput({ access_type: "RESTRICTED", bucket_names: names.filter((name) => available.has(name)), permissions: input.permissions })}>Retirer de la sélection</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => changeInput({ access_type: "RESTRICTED", bucket_names: names.filter((name) => available.has(name)), permissions: input.permissions })}>{t($ => $.messages.retirerDeLaSelection)}</Button>
           </div>}
-          <p id={selectionId} className="text-[10.5px] text-muted-foreground" aria-live="polite">{names.length === 0 ? "Aucun bucket autorisé." : `${names.length} bucket${names.length > 1 ? "s" : ""} sélectionné${names.length > 1 ? "s" : ""}.`}</p>
+          <p id={selectionId} className="text-[10.5px] text-muted-foreground" aria-live="polite">{names.length === 0 ? t($ => $.messages.aucunBucketAutorise2) : t($ => $.messages.selectedBucketsSentence, { count: names.length })}</p>
         </fieldset>
       )}
       <fieldset disabled={pending || disabled} className="min-w-0 space-y-3" aria-describedby={permissionsHintId}>
-        <legend className="mb-3 text-xs font-semibold">Permissions</legend>
+        <legend className="mb-3 text-xs font-semibold">{t($ => $.messages.permissions)}</legend>
         <label className="flex cursor-pointer items-center gap-3 rounded-lg border bg-background px-3 py-2.5 text-xs font-semibold has-[:checked]:border-input has-[:checked]:bg-accent has-[:focus-visible]:bg-accent has-disabled:cursor-not-allowed has-disabled:opacity-50">
           <input ref={selectAll} type="checkbox" className="size-3.5 shrink-0 accent-foreground"
             checked={input.permissions.length === CREDENTIAL_PERMISSIONS.length}
             aria-checked={input.permissions.length > 0 && input.permissions.length < CREDENTIAL_PERMISSIONS.length ? "mixed" : input.permissions.length === CREDENTIAL_PERMISSIONS.length}
             onChange={(event) => changeInput({ ...input, permissions: event.target.checked ? [...CREDENTIAL_PERMISSIONS] : [] })} />
-          Tout sélectionner
-        </label>
+          {t($ => $.messages.toutSelectionner)}</label>
         <div className="grid gap-2 min-[461px]:grid-cols-2">
           {CREDENTIAL_PERMISSIONS.map((permission) => <label key={permission}
             className="flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-xs hover:bg-accent has-[:checked]:border-input has-[:checked]:bg-accent has-[:focus-visible]:bg-accent has-disabled:cursor-not-allowed has-disabled:opacity-50">
@@ -172,14 +179,14 @@ export function CredentialAccessForm({ user, organizationId, initialInput, pendi
           </label>)}
         </div>
         <p className="text-[10.5px] text-muted-foreground" aria-live="polite">{input.permissions.length === 0
-          ? "Aucune permission accordée par cette clé."
-          : `${input.permissions.length} permission${input.permissions.length > 1 ? "s" : ""} sélectionnée${input.permissions.length > 1 ? "s" : ""}.`}</p>
-        <p id={permissionsHintId} className="text-[10.5px] text-muted-foreground">Ces permissions s'appliquent aux buckets autorisés. Les accès publics des buckets restent applicables.</p>
+          ? t($ => $.messages.aucunePermissionAccordeeParCetteCle)
+          : t($ => $.messages.selectedPermissions, { count: input.permissions.length })}</p>
+        <p id={permissionsHintId} className="text-[10.5px] text-muted-foreground">{t($ => $.messages.cesPermissionsSAppliquentAuxBucketsAutorisesLesAcces)}</p>
       </fieldset>
-      {error && <p ref={errorMessage} tabIndex={-1} role="alert" className="rounded-lg border bg-destructive-soft p-3 text-xs text-destructive-strong">{credentialErrorMessage(error)}</p>}
+      {error && <p ref={errorMessage} tabIndex={-1} role="alert" className="rounded-lg border bg-destructive-soft p-3 text-xs text-destructive-strong">{t($ => $.messages[credentialErrorKey(error)])}</p>}
       <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
-        <Button type="button" variant="outline" disabled={pending} onClick={onCancel}>Annuler</Button>
-        <Button type="submit" disabled={pending || disabled || !valid || unchanged} aria-busy={pending}>{pending ? "Enregistrement…" : submitLabel}</Button>
+        <Button type="button" variant="outline" disabled={pending} onClick={onCancel}>{t($ => $.messages.cancel)}</Button>
+        <Button type="submit" disabled={pending || disabled || !valid || unchanged} aria-busy={pending}>{pending ? t($ => $.messages.enregistrement) : submitLabel}</Button>
       </div>
     </form>
   );

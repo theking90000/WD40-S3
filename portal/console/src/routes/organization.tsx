@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { routeTitle } from "~/features/i18n/route-titles";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -7,8 +8,8 @@ import { ArrowRightIcon, ChevronRightIcon, DatabaseIcon, HistoryIcon, KeyRoundIc
 import type { LucideIcon } from "lucide-react";
 import type { CurrentUser } from "~/features/auth/session.ts";
 import type { Organization } from "~/features/organizations/api.ts";
-import { organizationErrorMessage, organizationQuery } from "~/features/organizations/api.ts";
-import { bucketErrorMessage, organizationBucketsQuery } from "~/features/organizations/buckets/api.ts";
+import { organizationErrorKey, organizationQuery } from "~/features/organizations/api.ts";
+import { bucketErrorKey, organizationBucketsQuery } from "~/features/organizations/buckets/api.ts";
 import { BucketAccessBadge } from "~/features/organizations/buckets/components/access";
 import { BucketDetails } from "~/features/organizations/buckets/components/bucket-details";
 import { organizationDashboardQuery } from "~/features/organizations/dashboard/api.ts";
@@ -41,6 +42,7 @@ function Unavailable({ icon: Icon, children }: { icon: LucideIcon; children: Rea
 }
 
 function Overview({ user, organization }: { user: CurrentUser; organization: Organization }) {
+  const { t } = useTranslation();
   const details = useQuery(organizationQuery(user, organization.id));
   const buckets = useQuery({
     ...organizationBucketsQuery(user, organization.id),
@@ -102,7 +104,7 @@ function Overview({ user, organization }: { user: CurrentUser; organization: Org
 
       {notice && <p role="status" className="rounded-lg border bg-success-soft p-3 text-xs text-success-strong">{notice}</p>}
       {details.error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-destructive-soft p-3 text-xs text-destructive-strong">
-        <p>{organizationErrorMessage(details.error)}{details.data && " Les compteurs affichés proviennent du dernier chargement réussi."}</p>
+        <p>{t($ => $.messages[organizationErrorKey(details.error)])}{details.data && " Les compteurs affichés proviennent du dernier chargement réussi."}</p>
         <Button type="button" variant="outline" size="sm" disabled={details.isFetching} onClick={() => void details.refetch()}>Réessayer</Button>
       </div>}
 
@@ -123,7 +125,7 @@ function Overview({ user, organization }: { user: CurrentUser; organization: Org
             <Link to={`/${organization.id}/buckets`} className="inline-flex items-center gap-1 text-[10.5px] text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">Voir tout<ArrowRightIcon aria-hidden="true" className="size-3" /></Link>
           </CardHeader>
           {buckets.error && <div role="alert" className="space-y-3 border-b bg-destructive-soft p-4 text-xs text-destructive-strong">
-            <p>{bucketErrorMessage(buckets.error)}{buckets.data && " Les données affichées proviennent du dernier chargement réussi. Les modifications sont suspendues."}</p>
+            <p>{t($ => $.messages[bucketErrorKey(buckets.error)])}{buckets.data && " Les données affichées proviennent du dernier chargement réussi. Les modifications sont suspendues."}</p>
             <Button type="button" variant="outline" size="sm" disabled={buckets.isFetching} onClick={() => void buckets.refetch()}>Réessayer</Button>
           </div>}
           {!buckets.data && !buckets.error ? <CardContent role="status" className="space-y-3 py-5">

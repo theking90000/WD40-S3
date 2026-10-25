@@ -1,3 +1,4 @@
+import frenchMessages from "../../locales/fr/messages.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createMemoryRouter } from "react-router";
@@ -8,7 +9,7 @@ import { logout } from "../auth/session.ts";
 import type { CurrentUser } from "../auth/session.ts";
 import { authMiddleware, requireUserMiddleware, withUser } from "../auth/router.ts";
 import { organizationLoader, organizationMiddleware, selectionLoader } from "./router.ts";
-import { createOrganization, deleteOrganization, organizationErrorMessage, organizationQuery, organizationsQuery, refreshOrganizations, updateOrganization } from "./api.ts";
+import { createOrganization, deleteOrganization, organizationErrorKey, organizationQuery, organizationsQuery, refreshOrganizations, updateOrganization } from "./api.ts";
 import type { Organization } from "./api.ts";
 import { currentUserKey, queryClient, resetQuerySession, setQueryUser } from "../../lib/query-client.ts";
 
@@ -159,7 +160,7 @@ test("organization cache and routing share requests and follow membership and se
     assert.ok(error instanceof AuthError);
     assert.equal(error.status, 409);
     assert.equal(error.code, "organization_name_taken");
-    assert.equal(organizationErrorMessage(error), "Une organisation porte déjà ce nom.");
+    assert.equal(frenchMessages[organizationErrorKey(error)], "Une organisation porte déjà ce nom.");
     return true;
   });
   assert.equal(queryClient.getQueryData(organizationsQuery(alice).queryKey), cachedOrganizations);
@@ -207,7 +208,7 @@ test("organization cache and routing share requests and follow membership and se
     if (backendError) {
       assert.ok(Object.values(router.state.errors ?? {}).some((error) => error instanceof AuthError
         && error.status === 403 && error.code === backendError));
-      assert.equal(organizationErrorMessage(new AuthError(backendError, 403)), backendError === "email_required"
+      assert.equal(frenchMessages[organizationErrorKey(new AuthError(backendError, 403))], backendError === "email_required"
         ? "Votre compte doit fournir une adresse email pour accéder aux organisations."
         : "Une adresse email vérifiée est nécessaire pour accéder aux organisations.");
     } else {

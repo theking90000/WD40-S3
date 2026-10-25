@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Outlet, useLoaderData, useRevalidator, useRouteError } from "react-router";
 import { requireUserMiddleware, withUser } from "~/features/auth/router.ts";
 import { AuthFailure, AuthPending } from "~/features/auth/components/auth-screen";
-import { organizationErrorMessage } from "~/features/organizations/api.ts";
+import { organizationErrorKey } from "~/features/organizations/api.ts";
 import { AuthError } from "~/lib/api.ts";
 import { currentUserQuery } from "~/features/auth/queries.ts";
 
@@ -35,7 +35,7 @@ export function ErrorBoundary() {
         ? t($ => $.messages.verifiezVotreAdresseEmail)
         : error instanceof AuthError && error.code === "email_required"
           ? t($ => $.messages.adresseEmailNecessaire) : t($ => $.messages.consoleIndisponible)}
-      description={organizationErrorMessage(error)}
+      description={t($ => $.messages[organizationErrorKey(error)])}
     />
   );
 }

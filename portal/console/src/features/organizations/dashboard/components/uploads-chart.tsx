@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useId, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChartColumnIcon } from "lucide-react";
@@ -5,11 +6,12 @@ import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader } from "~/components/ui/card";
 import { Skeleton } from "~/components/ui/skeleton";
 import type { CurrentUser } from "~/features/auth/session.ts";
-import { dashboardErrorMessage, organizationUploadsQuery } from "../api.ts";
+import { dashboardErrorKey, organizationUploadsQuery } from "../api.ts";
 import type { OrganizationUploads, UploadPeriod, UploadPoint } from "../api.ts";
 import { formatBytes, formatChartDate, formatCount, formatUploadDate } from "../format.ts";
 
 export function UploadsChart({ user, organizationId }: { user: CurrentUser; organizationId: string }) {
+  const { t } = useTranslation();
   const [period, setPeriod] = useState<UploadPeriod>("7d");
   const [selectedStart, setSelectedStart] = useState<number | null>(null);
   const uploads = useQuery(organizationUploadsQuery(user, organizationId, period));
@@ -38,7 +40,7 @@ export function UploadsChart({ user, organizationId }: { user: CurrentUser; orga
       </CardHeader>
       <CardContent className="flex min-h-64 flex-1 flex-col py-4" aria-busy={uploads.isFetching}>
         {uploads.error && <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-destructive-soft p-3 text-xs text-destructive-strong">
-          <p>{dashboardErrorMessage(uploads.error)}{uploads.data && " Les dernières valeurs sont conservées."}</p>
+          <p>{t($ => $.messages[dashboardErrorKey(uploads.error)])}{uploads.data && " Les dernières valeurs sont conservées."}</p>
           <Button type="button" variant="outline" size="sm" disabled={uploads.isFetching}
             onClick={() => void uploads.refetch()}>Réessayer</Button>
         </div>}

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { Building2Icon, CheckIcon, ChevronsUpDownIcon, PlusIcon } from "lucide-react";
 import { Link } from "react-router";
@@ -7,6 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { CreateOrganizationDialog } from "./create-organization";
 
 export function OrganizationSwitcher() {
+  const { t } = useTranslation();
   const [creating, setCreating] = useState(false);
   const { user, data = [] } = useOrganizations();
   const organization = useOrganization();
@@ -15,14 +17,14 @@ export function OrganizationSwitcher() {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button type="button" variant="outline" className="w-full min-w-0 justify-start" aria-label={`Organisation : ${organization?.name ?? "Choisir une organisation"}`}>
+          <Button type="button" variant="outline" className="w-full min-w-0 justify-start" aria-label={t($ => $.messages.organisationValue, { value: organization?.name ?? "Choisir une organisation" })}>
             <Building2Icon aria-hidden="true" className="size-4 text-brand" />
-            <span className="min-w-0 flex-1 truncate text-left">{organization?.name ?? "Choisir une organisation"}</span>
+            <span className="min-w-0 flex-1 truncate text-left">{organization?.name ?? t($ => $.messages.choisirUneOrganisation)}</span>
             <ChevronsUpDownIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-72">
-          <DropdownMenuLabel>Vos organisations</DropdownMenuLabel>
+          <DropdownMenuLabel>{t($ => $.messages.yourOrganizations)}</DropdownMenuLabel>
           {data.map((item) => (
             <DropdownMenuItem key={item.id} asChild>
               <Link to={`/${item.id}/`} aria-current={item.id === organization?.id ? "true" : undefined}>
@@ -33,8 +35,7 @@ export function OrganizationSwitcher() {
           ))}
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => setCreating(true)}>
-            <PlusIcon aria-hidden="true" />Créer une organisation
-          </DropdownMenuItem>
+            <PlusIcon aria-hidden="true" />{t($ => $.messages.creerUneOrganisation)}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <CreateOrganizationDialog user={user} open={creating} onOpenChange={setCreating} />

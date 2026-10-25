@@ -2,7 +2,7 @@ import { queryOptions } from "@tanstack/react-query";
 import { api, AuthError } from "../../../lib/api.ts";
 import { querySession } from "../../../lib/query-client.ts";
 import type { CurrentUser } from "../../auth/session.ts";
-import { organizationErrorMessage, organizationsQuery, refreshOrganizations } from "../api.ts";
+import { organizationErrorKey, organizationsQuery, refreshOrganizations } from "../api.ts";
 
 export interface DashboardPeriod {
   from: number;
@@ -135,13 +135,13 @@ export function organizationUploadsQuery(user: CurrentUser, organizationId: stri
   });
 }
 
-export function dashboardErrorMessage(error: unknown) {
+export function dashboardErrorKey(error: unknown) {
   if (error instanceof AuthError) {
-    if (error.code === "metrics_unavailable") return "Les statistiques sont momentanément indisponibles.";
-    if (error.code === "invalid_dashboard_response") return "Le service a renvoyé des statistiques invalides.";
+    if (error.code === "metrics_unavailable") return "lesStatistiquesSontMomentanementIndisponibles" as const;
+    if (error.code === "invalid_dashboard_response") return "leServiceARenvoyeDesStatistiquesInvalides" as const;
     if (error.status === 401 || ["organization_not_found", "email_required", "email_not_verified"].includes(error.code)) {
-      return organizationErrorMessage(error);
+      return organizationErrorKey(error);
     }
   }
-  return "Impossible de charger les statistiques. Réessayez dans un instant.";
+  return "impossibleDeChargerLesStatistiquesReessayezDansUnInstant" as const;
 }

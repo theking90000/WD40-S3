@@ -113,20 +113,20 @@ export async function updateOrganizationMemberAccess(
   return member;
 }
 
-export function memberErrorMessage(error: unknown) {
+export function memberErrorKey(error: unknown) {
   if (error instanceof AuthError) {
     switch (error.code) {
-      case "invalid_email": return "Saisissez une adresse email valide de 254 octets maximum.";
-      case "member_already_exists": return "Cette adresse email est déjà membre de l'organisation.";
-      case "member_not_found": return "Ce membre a déjà été retiré. La liste a été actualisée.";
-      case "owner_removal_forbidden": return "Un propriétaire ne peut pas être retiré de l'organisation.";
-      case "owner_required": return "Seul un propriétaire peut ajouter ou retirer des membres et modifier leur rôle.";
-      case "self_update_forbidden": return "Vous ne pouvez pas modifier votre propre rôle.";
-      case "organization_not_found": return "Cette organisation n'existe pas ou vous n'y avez plus accès.";
-      case "email_required": return "Votre compte doit fournir une adresse email pour consulter les membres.";
-      case "email_not_verified": return "Une adresse email vérifiée est nécessaire pour consulter les membres.";
+      case "invalid_email": return "saisissezUneAdresseEmailValideDe254OctetsMaximum" as const;
+      case "member_already_exists": return "cetteAdresseEmailEstDejaMembreDeLOrganisation" as const;
+      case "member_not_found": return "ceMembreADejaEteRetireLaListeA" as const;
+      case "owner_removal_forbidden": return "unProprietaireNePeutPasEtreRetireDeL" as const;
+      case "owner_required": return "seulUnProprietairePeutAjouterOuRetirerDesMembres" as const;
+      case "self_update_forbidden": return "vousNePouvezPasModifierVotrePropreRole" as const;
+      case "organization_not_found": return "cetteOrganisationNExistePasOuVousNY2" as const;
+      case "email_required": return "votreCompteDoitFournirUneAdresseEmailPourConsulter" as const;
+      case "email_not_verified": return "uneAdresseEmailVerifieeEstNecessairePourConsulterLes" as const;
     }
-    if (error.status === 401) return "Votre session a expiré. Reconnectez-vous pour continuer.";
+    if (error.status === 401) return "votreSessionAExpireReconnectezVousPourContinuer" as const;
   }
-  return "Impossible de joindre le service des membres. Réessayez dans un instant.";
+  return "impossibleDeJoindreLeServiceDesMembresReessayezDans" as const;
 }

@@ -1,9 +1,10 @@
+import { useTranslation } from "react-i18next";
 import { ChartPieIcon } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader } from "~/components/ui/card";
 import { Progress } from "~/components/ui/progress";
 import { Skeleton } from "~/components/ui/skeleton";
-import { bucketErrorMessage } from "../../buckets/api.ts";
+import { bucketErrorKey } from "../../buckets/api.ts";
 import type { BucketWithUsage } from "../../buckets/api.ts";
 import { formatBytes, formatPercentage } from "../format.ts";
 
@@ -14,13 +15,14 @@ export function BucketDistribution({ data, loading, error, refreshing, onRefresh
   refreshing: boolean;
   onRefresh: () => void;
 }) {
+  const { t } = useTranslation();
   const buckets = [...(data ?? [])].sort((a, b) => b.stored_bytes - a.stored_bytes || a.name.localeCompare(b.name, "fr-BE"));
   const total = buckets.reduce((sum, bucket) => sum + bucket.stored_bytes, 0);
   return (
     <Card className="min-w-0 gap-0 pb-0" aria-busy={loading}>
       <CardHeader><h2 className="text-card-title">Répartition par bucket</h2></CardHeader>
       {error && <div role="alert" className="mx-4.5 mb-4 space-y-3 rounded-lg border bg-destructive-soft p-3 text-xs text-destructive-strong">
-        <p>{bucketErrorMessage(error)}{data && " Les dernières valeurs sont conservées."}</p>
+        <p>{t($ => $.messages[bucketErrorKey(error)])}{data && " Les dernières valeurs sont conservées."}</p>
         <Button type="button" variant="outline" size="sm" disabled={refreshing} onClick={onRefresh}>Réessayer</Button>
       </div>}
       {loading ? <CardContent className="space-y-5 py-5">

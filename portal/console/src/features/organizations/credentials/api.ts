@@ -212,26 +212,26 @@ export async function deleteOrganizationCredential(user: CurrentUser, organizati
   requireSession(session);
 }
 
-export function credentialErrorMessage(error: unknown) {
+export function credentialErrorKey(error: unknown) {
   if (error instanceof AuthError) {
     switch (error.code) {
-      case "invalid_key_id": return "L'identifiant doit contenir exactement 20 caractères alphanumériques.";
-      case "invalid_bucket_selection": return "Sélectionnez des buckets existants de cette organisation, sans doublons.";
-      case "invalid_permissions": return "Sélectionnez les permissions READ, WRITE, LIST et DELETE, sans doublons.";
-      case "synchronization_failed": return "La synchronisation avec WD40 a échoué. Les changements peuvent être enregistrés sans être appliqués. Actualisez la liste avant de réessayer.";
-      case "credential_not_found": return "Cette clé n'est plus disponible. La liste a été actualisée.";
-      case "owner_required": return "Seul un propriétaire peut créer, modifier ou supprimer une clé d'accès.";
-      case "organization_not_found": return "Cette organisation n'existe pas ou vous n'y avez plus accès.";
-      case "email_required": return "Votre compte doit fournir une adresse email pour consulter les clés d'accès.";
-      case "email_not_verified": return "Une adresse email vérifiée est nécessaire pour consulter les clés d'accès.";
-      case "invalid_credentials_response": return "Le service a renvoyé des données de clés invalides.";
-      case "invalid_request": return "Vérifiez la portée, les buckets et les permissions de la clé.";
-      case "csrf_rejected": return "La requête a été refusée. Rechargez la page avant de réessayer.";
-      case "payload_too_large": return "La sélection de buckets dépasse la taille autorisée.";
-      case "key_generation_failed": return "La génération de la clé a échoué. Réessayez dans un instant.";
-      case "database_error": return "Impossible d'enregistrer ou de charger les clés pour le moment.";
+      case "invalid_key_id": return "lIdentifiantDoitContenirExactement20CaracteresAlphanumeriques" as const;
+      case "invalid_bucket_selection": return "selectionnezDesBucketsExistantsDeCetteOrganisationSansDoublons" as const;
+      case "invalid_permissions": return "selectionnezLesPermissionsReadWriteListEtDeleteSans" as const;
+      case "synchronization_failed": return "laSynchronisationAvecWd40AEchoueLesChangementsPeuvent" as const;
+      case "credential_not_found": return "cetteCleNEstPlusDisponibleLaListeA" as const;
+      case "owner_required": return "seulUnProprietairePeutCreerModifierOuSupprimerUne" as const;
+      case "organization_not_found": return "cetteOrganisationNExistePasOuVousNY2" as const;
+      case "email_required": return "votreCompteDoitFournirUneAdresseEmailPourConsulter3" as const;
+      case "email_not_verified": return "uneAdresseEmailVerifieeEstNecessairePourConsulterLes3" as const;
+      case "invalid_credentials_response": return "leServiceARenvoyeDesDonneesDeClesInvalides" as const;
+      case "invalid_request": return "verifiezLaPorteeLesBucketsEtLesPermissionsDe" as const;
+      case "csrf_rejected": return "laRequeteAEteRefuseeRechargezLaPageAvant" as const;
+      case "payload_too_large": return "laSelectionDeBucketsDepasseLaTailleAutorisee" as const;
+      case "key_generation_failed": return "laGenerationDeLaCleAEchoueReessayezDans" as const;
+      case "database_error": return "impossibleDEnregistrerOuDeChargerLesClesPour" as const;
     }
-    if (error.status === 401) return "Votre session a expiré. Reconnectez-vous pour continuer.";
+    if (error.status === 401) return "votreSessionAExpireReconnectezVousPourContinuer" as const;
   }
-  return "Impossible de joindre le service des clés d'accès. Réessayez dans un instant.";
+  return "impossibleDeJoindreLeServiceDesClesDAcces" as const;
 }

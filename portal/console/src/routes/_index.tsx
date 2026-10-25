@@ -1,9 +1,10 @@
+import { useTranslation } from "react-i18next";
 import { routeTitle } from "~/features/i18n/route-titles";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRightIcon, Building2Icon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { selectionLoader, useOrganizations } from "~/features/organizations/router.ts";
-import { organizationErrorMessage } from "~/features/organizations/api.ts";
+import { organizationErrorKey } from "~/features/organizations/api.ts";
 import { Account } from "~/features/auth/components/account";
 import { AuthFailure, AuthPending } from "~/features/auth/components/auth-screen";
 import { CreateOrganizationDialog } from "~/features/organizations/components/create-organization";
@@ -16,6 +17,7 @@ export { AuthPending as HydrateFallback } from "~/features/auth/components/auth-
 export const handle = routeTitle("organizations");
 
 export default function SelectOrganization() {
+  const { t } = useTranslation();
   const { user, data, error, isFetching, refetch } = useOrganizations();
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
@@ -33,30 +35,30 @@ export default function SelectOrganization() {
     if (deleted && data && !error) heading.current?.focus();
   }, [deleted, data, error]);
 
-  if (error) return <AuthFailure title="Organisations indisponibles" description={organizationErrorMessage(error)} retry={() => void refetch()} busy={isFetching} />;
+  if (error) return <AuthFailure title={t($ => $.messages.organisationsIndisponibles)} description={t($ => $.messages[organizationErrorKey(error)])} retry={() => void refetch()} busy={isFetching} />;
   if (!data || (onlyOrganization && !unavailable && !deleted)) return <AuthPending />;
 
   return (
-    <ConsoleShell title="Vos organisations" navigation={[]} account={<Account user={user} />}>
+    <ConsoleShell title={t($ => $.messages.yourOrganizations)} navigation={[]} account={<Account user={user} />}>
       <section className="mx-auto max-w-3xl space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-2">
-            <h1 ref={heading} tabIndex={-1} className="text-page-title">Vos organisations</h1>
-            <p className="text-muted-foreground">Choisissez une organisation pour accéder à votre espace de travail.</p>
+            <h1 ref={heading} tabIndex={-1} className="text-page-title">{t($ => $.messages.yourOrganizations)}</h1>
+            <p className="text-muted-foreground">{t($ => $.messages.choisissezUneOrganisationPourAccederAVotreEspaceDe)}</p>
           </div>
           <Button type="button" variant="outline" size="sm" disabled={isFetching} aria-busy={isFetching} onClick={() => void refetch()}>
-            <RefreshCwIcon aria-hidden="true" />{isFetching ? "Actualisation…" : "Actualiser"}
+            <RefreshCwIcon aria-hidden="true" />{isFetching ? t($ => $.messages.refreshing) : t($ => $.messages.refresh)}
           </Button>
         </div>
-        {unavailable && <p role="status" className="rounded-lg border bg-warning-soft p-3 text-warning-strong">Cette organisation n'existe pas ou vous n'y avez plus accès. Choisissez une autre organisation.</p>}
-        {deleted && <p role="status" className="rounded-lg border bg-success-soft p-3 text-success-strong">L'organisation a été supprimée.</p>}
+        {unavailable && <p role="status" className="rounded-lg border bg-warning-soft p-3 text-warning-strong">{t($ => $.messages.cetteOrganisationNExistePasOuVousNY)}</p>}
+        {deleted && <p role="status" className="rounded-lg border bg-success-soft p-3 text-success-strong">{t($ => $.messages.lOrganisationAEteSupprimee)}</p>}
         {data.length === 0 ? (
           <div className="flex flex-col items-center gap-4 rounded-xl border bg-surface px-6 py-12 text-center">
             <span className="flex size-12 items-center justify-center rounded-xl bg-brand-soft text-brand"><Building2Icon aria-hidden="true" /></span>
-            <h2 className="font-display text-card-title">Aucune organisation pour le moment</h2>
-            <p className="max-w-md text-muted-foreground">Créez une organisation, ou demandez à son propriétaire de vous ajouter avec l'adresse {user.email}.</p>
-            <p className="text-muted-foreground">Si vous venez d'être ajouté, actualisez la liste.</p>
-            <Button type="button" onClick={() => setCreating(true)}><PlusIcon aria-hidden="true" />Créer une organisation</Button>
+            <h2 className="font-display text-card-title">{t($ => $.messages.aucuneOrganisationPourLeMoment)}</h2>
+            <p className="max-w-md text-muted-foreground">{t($ => $.messages.creezUneOrganisationOuDemandezASonProprietaireDe, { email: user.email })}</p>
+            <p className="text-muted-foreground">{t($ => $.messages.siVousVenezDEtreAjouteActualisezLaListe)}</p>
+            <Button type="button" onClick={() => setCreating(true)}><PlusIcon aria-hidden="true" />{t($ => $.messages.creerUneOrganisation)}</Button>
           </div>
         ) : (
           <>
@@ -67,13 +69,13 @@ export default function SelectOrganization() {
                   <Building2Icon aria-hidden="true" className="size-5 shrink-0 text-brand" />
                   <span className="min-w-0 flex-1 space-y-2">
                     <span className="block truncate font-semibold">{organization.name}</span>
-                    <Badge variant="secondary">{organization.access === "OWNER" ? "Propriétaire" : "Membre"}</Badge>
+                    <Badge variant="secondary">{organization.access === "OWNER" ? t($ => $.messages.owner) : t($ => $.messages.member)}</Badge>
                   </span>
                   <ArrowRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
                 </Link>
               ))}
             </div>
-            <Button type="button" variant="outline" onClick={() => setCreating(true)}><PlusIcon aria-hidden="true" />Créer une organisation</Button>
+            <Button type="button" variant="outline" onClick={() => setCreating(true)}><PlusIcon aria-hidden="true" />{t($ => $.messages.creerUneOrganisation)}</Button>
           </>
         )}
       </section>
