@@ -449,5 +449,7 @@ export default {
   "overviewMemberCount_one": "{{formattedCount}} membre",
   "overviewMemberCount_other": "{{formattedCount}} membres",
   "overviewMemberCount_zero": "{{formattedCount}} membres",
-  "overviewMemberCount_many": "{{formattedCount}} membres"
+  "overviewMemberCount_many": "{{formattedCount}} membres",
+  "memberBecameOwner": "{{email}} est maintenant propriétaire de l'organisation.",
+  "memberBecameMember": "{{email}} est maintenant membre de l'organisation."
 };

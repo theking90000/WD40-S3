@@ -1045,19 +1045,21 @@ translation backend or a JavaScript server in production.
 
 The console UI is extracted into the French source catalog, including route
 headings, accessibility labels, forms, errors, feedback and chart descriptions.
-The English catalog currently translates the language menu; other messages fall
-back to the existing French wording until English translations are added.
+The English catalog covers the same messages and route headings, using British
+English to match the `en-GB` formatting locale. French wording is preserved.
 The external OIDC provider's screens have their own language configuration.
 
 Catalogs live in `src/locales/{fr,en}/common.ts`. French messages are in
-`fr/messages.ts`, and route headings are in `fr/route-titles.ts`.
+`fr/messages.ts`, and route headings are in `fr/route-titles.ts`, with matching
+files under `en/`.
 `features/i18n/i18next.d.ts` types the selector API against the French shape.
 Components use `const { t } = useTranslation()` and calls such as
 `t($ => $.messages.signIn)`. Parameterized messages receive their values through
 the second argument. Plurals use `count` and i18next suffixes. Rich messages use
-`Trans` with named components. Add English resources under the same keys;
-missing English messages fall back to French. Extend the English catalog's
-`satisfies` constraint when adding translated sections.
+`Trans` with named components. Add messages to both catalogs under the same keys,
+preserving interpolation names and component tags. The English catalogs use
+`satisfies` against the French shapes to require complete coverage. Missing
+English messages at runtime fall back to French.
 
 Route handles use `routeTitle(key)` and are translated by the console layout.
 API error helpers return message keys derived from the existing error codes.
