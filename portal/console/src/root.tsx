@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { ReactNode } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration, useRouteError } from "react-router";
@@ -49,9 +50,10 @@ export default function App() {
 }
 
 export function ErrorBoundary() {
+  const { t } = useTranslation();
   const error = useRouteError();
   if (isRouteErrorResponse(error) && error.status === 404) {
-    return <AuthFailure title="Page introuvable" description="Cette page n'existe pas." />;
+    return <AuthFailure title={t($ => $.messages.pageIntrouvable)} description={t($ => $.messages.cettePageNExistePas)} />;
   }
   return <AuthFailure />;
 }

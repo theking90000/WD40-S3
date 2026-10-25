@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Outlet, useLoaderData, useRevalidator, useRouteError } from "react-router";
@@ -26,13 +27,14 @@ export default function SessionLayout() {
 }
 
 export function ErrorBoundary() {
+  const { t } = useTranslation();
   const error = useRouteError();
   return (
     <AuthFailure
       title={error instanceof AuthError && error.code === "email_not_verified"
-        ? "Vérifiez votre adresse email"
+        ? t($ => $.messages.verifiezVotreAdresseEmail)
         : error instanceof AuthError && error.code === "email_required"
-          ? "Adresse email nécessaire" : "Console indisponible"}
+          ? t($ => $.messages.adresseEmailNecessaire) : t($ => $.messages.consoleIndisponible)}
       description={organizationErrorMessage(error)}
     />
   );

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useId } from "react";
 import type { ReactNode } from "react";
 import { Link, useRevalidator } from "react-router";
@@ -11,20 +12,6 @@ import { Button } from "~/components/ui/button";
 import { LanguageSwitcher } from "~/features/i18n/components/language-switcher";
 import "./auth-screen.css";
 
-const features = [
-  { icon: FolderIcon, title: "Buckets", description: "Organisez vos fichiers" },
-  {
-    icon: KeyRoundIcon,
-    title: "Clés d'accès",
-    description: "Connectez vos applications",
-  },
-  {
-    icon: ShieldCheckIcon,
-    title: "Permissions",
-    description: "Contrôlez les accès",
-  },
-];
-
 export function AuthScreen({
   title,
   description,
@@ -34,6 +21,20 @@ export function AuthScreen({
   description: string;
   children?: ReactNode;
 }) {
+  const { t } = useTranslation();
+  const features = [
+    { icon: FolderIcon, title: t($ => $.messages.buckets), description: t($ => $.messages.organisezVosFichiers) },
+    {
+      icon: KeyRoundIcon,
+      title: t($ => $.messages.credentials),
+      description: t($ => $.messages.connectezVosApplications),
+    },
+    {
+      icon: ShieldCheckIcon,
+      title: t($ => $.messages.permissions),
+      description: t($ => $.messages.controlezLesAcces),
+    },
+  ];
   const titleId = useId();
   return (
     <main className="auth-screen">
@@ -43,10 +44,9 @@ export function AuthScreen({
             <DatabaseIcon aria-hidden="true" />
             <span>WD40-S3</span>
           </p>
-          <h2>Du stockage pour vos applications.</h2>
+          <h2>{t($ => $.messages.duStockagePourVosApplications)}</h2>
           <p className="auth-summary">
-            Un service compatible Amazon S3 pour stocker et récupérer vos
-            fichiers depuis vos logiciels.
+            {t($ => $.messages.unServiceCompatibleAmazonS3PourStockerEtRecuperer)}
           </p>
           <ul className="auth-features">
             {features.map(({ icon: Icon, title, description }) => (
@@ -72,21 +72,22 @@ export function AuthScreen({
 }
 
 export function AuthPending() {
+  const { t } = useTranslation();
   return (
     <AuthScreen
-      title="Vérification de la session"
-      description="Veuillez patienter pour accéder à la console."
+      title={t($ => $.messages.verificationDeLaSession)}
+      description={t($ => $.messages.veuillezPatienterPourAccederALaConsole)}
     >
       <p role="status" className="text-sm text-muted-foreground">
-        Chargement…
+        {t($ => $.messages.loading)}
       </p>
     </AuthScreen>
   );
 }
 
 export function AuthFailure({
-  title = "Authentification indisponible",
-  description = "Impossible de vérifier votre session. Réessayez dans un instant.",
+  title,
+  description,
   retry,
   busy = false,
 }: {
@@ -95,19 +96,20 @@ export function AuthFailure({
   retry?: () => void;
   busy?: boolean;
 }) {
+  const { t } = useTranslation();
   const revalidator = useRevalidator();
   return (
-    <AuthScreen title={title} description={description}>
+    <AuthScreen title={title ?? t($ => $.messages.authentificationIndisponible)} description={description ?? t($ => $.messages.impossibleDeVerifierVotreSessionReessayezDansUnInstant)}>
       <div role="alert" className="flex flex-wrap gap-2">
         <Button
           onClick={retry ?? (() => revalidator.revalidate())}
           disabled={busy || revalidator.state !== "idle"}
         >
-          {busy || revalidator.state !== "idle" ? "En cours…" : "Réessayer"}
+          {busy || revalidator.state !== "idle" ? t($ => $.messages.pending) : t($ => $.messages.retry)}
         </Button>
         <Button asChild variant="outline">
           <Link to="/login" replace>
-            Page de connexion
+            {t($ => $.messages.pageDeConnexion)}
           </Link>
         </Button>
       </div>
