@@ -6,41 +6,41 @@
 
 ## Turn Discord into high-performance S3 object storage
 
-WD40-S3 is an object storage system built on unconventional storage backends (aka Discord).
+Ever thought about storing your data on Discord? People have tried it before. With WD40-S3, the goal is to make it fast, keep memory usage low, and let you use the storage tools you already have.
 
-It is designed around three principles:
+WD40-S3 is an object storage system written in Rust, with Discord as its storage backend and S3 support for existing applications. Want to use it for backups? Point your S3 client at it. Want to mount it as a drive? Use a tool like rclone. Prefer a web interface? It comes with a console, and you can build your own on top of the API.
 
-- High performance and throughput, even with unconventional backends.
-- Composable systems that are easy to understand.
-- API interoperability, with S3 support for integration with existing tools and systems.
+It has reached **200 MB/s (1.6 Gbps)** download speed on a cheap **2-vCPU VPS**, using **80 MB of RAM** in total.
 
-## Self-host or use the hosted version
+Under the hood, it uses async Rust, parallel uploads, URL prefetching and pipelining. Large files are split into chunks, with on-the-fly block encryption that still allows random access.
 
-WD40-S3 consists of components that you can compile and run independently or embed in a single executable.
+You also get:
 
-To use the hosted version, create an account at [console.6700067.xyz](https://console.6700067.xyz). It supports S3 and lets you manage your own buckets and access keys.
+- S3 support tested with the AWS CLI, rclone and JuiceFS. Full S3 API coverage is still a work in progress.
+- A single executable with embedded components, or separate components you can run independently.
+- An integrated cloud console where users manage their buckets, access keys and usage.
+- Optional high-resolution metrics collection.
 
-You can also self-host the portal or use WD40-S3 without S3 support, since the S3 adapter is optional.
+## Try it or self-host
 
-## Store files on Discord
+Don't want to host it yourself? Try the demo at [console.6700067.xyz](https://console.6700067.xyz). Create an account, make a bucket, and connect your S3 client.
 
-Storing files on Discord isn't really complicated. However, building reliable storage that integrates with existing systems isn't straightforward.
+It's a demo, with no guarantees. Files are encrypted before they reach Discord, but we hold the keys needed to decrypt and serve them. Use non-sensitive data, or encrypt it yourself before uploading.
 
-The main limitations are:
+For self-hosting, you'll need Discord webhooks and a bot token for faster CDN URL refreshing. Using Discord as storage is at your own risk.
 
-- **File size:** currently limited to 20 MB per file, so storing larger files isn't trivial.
-- **Data privacy:** Discord (in which Tencent holds shares), Cloudflare (the spying proxy), and Google Cloud can access your data.
-- **Reliability:** managing bots and webhooks, rate limits, API changes and restrictions, the expiration of some URLs, and caching mechanisms.
-- **Interoperability:** the APIs are proprietary and specific to Discord, requiring custom integrations with existing systems.
+See the [portal setup](portal/README.md) to run the console, or the [file registry documentation](crates/file-registry/README.md) for the Discord storage configuration. You can also use WD40-S3 without S3, since the adapter is optional.
 
-WD40-S3 addresses these limitations:
+## Dealing with Discord
 
-- **File size:** larger uploads are split across multiple files and uploaded concurrently.
-- **Data privacy:** on-the-fly block encryption allows random access.
-- **Reliability:** centralized management handles credentials, rate limits, API constraints, and URL expiration.
-- **Interoperability:** a complete storage system is exposed through unified APIs, including S3 support.
+Uploading a file to Discord is easy. Turning that into storage you can use from other applications takes more work.
 
-## Project Origin
+- Discord limits individual file sizes. WD40-S3 splits larger objects into chunks and uploads them concurrently.
+- Signed CDN URLs expire. WD40-S3 handles URL refreshing, along with credentials and rate limits.
+- Files need encryption before they reach Discord. Block encryption lets WD40-S3 read part of a file without decrypting the whole thing.
+- Discord's APIs need custom integrations. WD40-S3 exposes storage APIs, including S3, for existing clients.
+
+## Project origin
 
 This project is part of a series of Discord storage projects:
 
