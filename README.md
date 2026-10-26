@@ -1,10 +1,12 @@
 <!-- # WD40 -->
 
+<!--
 <img src=".github/assets/banner.webp"
      alt="WD40-S3 - Discord-backed object storage"
      width="100%">
+-->
 
-## Turn Discord into high-performance S3 object storage
+## ⚡ Turn Discord into high-performance S3 object storage
 
 Ever thought about storing your data on Discord? People have tried it before. With WD40-S3, the goal is to make it fast, keep memory usage low, and let you use the storage tools you already have.
 
@@ -21,7 +23,7 @@ You also get:
 - An integrated cloud console where users manage their buckets, access keys and usage.
 - Optional high-resolution metrics collection.
 
-## Try it or self-host
+## 🚀 Try it or self-host
 
 Don't want to host it yourself? Try the demo at [console.6700067.xyz](https://console.6700067.xyz). Create an account, make a bucket, and connect your S3 client.
 
@@ -31,7 +33,7 @@ For self-hosting, you'll need Discord webhooks and a bot token for faster CDN UR
 
 See the [portal setup](portal/README.md) to run the console, or the [file registry documentation](crates/file-registry/README.md) for the Discord storage configuration. You can also use WD40-S3 without S3, since the adapter is optional.
 
-## Dealing with Discord
+## 🔧 Dealing with Discord
 
 Uploading a file to Discord is easy. Turning that into storage you can use from other applications takes more work.
 
@@ -40,7 +42,7 @@ Uploading a file to Discord is easy. Turning that into storage you can use from 
 - Files need encryption before they reach Discord. Block encryption lets WD40-S3 read part of a file without decrypting the whole thing.
 - Discord's APIs need custom integrations. WD40-S3 exposes storage APIs, including S3, for existing clients.
 
-## Project origin
+## 📜 Project origin
 
 This project is part of a series of Discord storage projects:
 
