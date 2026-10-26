@@ -4,7 +4,7 @@
      alt="WD40-S3 - Discord-backed object storage"
      width="100%">
 
-<!-- Store your files on Discord using object storage APIs. -->
+## Turn Discord into high-performance S3 object storage
 
 WD40-S3 is an object storage system built on unconventional storage backends (aka Discord).
 
