@@ -2,7 +2,11 @@ name: Build portal for Linux
 
 on:
   push:
+    paths-ignore:
+      - 'docs/**'
   pull_request:
+    paths-ignore:
+      - 'docs/**'
   workflow_dispatch:
 
 permissions:
