@@ -12,7 +12,7 @@ Ever thought about storing your data on Discord? People have tried it before. Wi
 
 WD40-S3 is an object storage system written in Rust, with Discord as its storage backend and S3 support for existing applications. Want to use it for backups? Point your S3 client at it. Want to mount it as a drive? Use a tool like rclone. Prefer a web interface? It comes with a console, and you can build your own on top of the API.
 
-It has reached **200 MB/s (1.6 Gbps)** download speed on a cheap **2-vCPU VPS**, using **80 MB of RAM** in total.
+It has reached **350 MB/s (2.8 Gbps)** download speed on a cheap **2-vCPU VPS**, using **80 MB of RAM** in total.
 
 Under the hood, it uses async Rust, parallel uploads, URL prefetching and pipelining. Large files are split into chunks, with on-the-fly block encryption that still allows random access.
 
